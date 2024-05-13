@@ -1274,7 +1274,7 @@ class Ui_MainWindow(object):
         self.pushButton_Loop.setAutoFillBackground(True)
         self.pushButton_Loop.setText("")
         icon4 = QtGui.QIcon()
-        icon4.addPixmap(QtGui.QPixmap("./core/ressources/icons/SDR_Postprocessor/loop_v4.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        icon4.addPixmap(QtGui.QPixmap("./core/ressources/icons/loop_v4.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         icon4.addPixmap(QtGui.QPixmap("./core/ressources/icons/loopactive_v4.png"), QtGui.QIcon.Normal, QtGui.QIcon.On)
         icon4.addPixmap(QtGui.QPixmap("./core/ressources/icons/loop_v4.png"), QtGui.QIcon.Active, QtGui.QIcon.Off)
         icon4.addPixmap(QtGui.QPixmap("./core/ressources/icons/loopactive_v4.png"), QtGui.QIcon.Active, QtGui.QIcon.On)
