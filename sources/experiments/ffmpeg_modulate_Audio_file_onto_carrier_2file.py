@@ -14,25 +14,32 @@ filelist 2: List of filenames of the slave trace to be attenuated by gain dB
 """
 
 def find_data_chunk(wav_file):
-    with open(wav_file, "rb") as f:
-        data = f.read()
-        pos = data.find(b"data")  # Suche nach "data" im Header
-        if pos != -1:
-            print(f'"data"-Chunk gefunden an Byte-Position: {pos}')
-        else:
-            print('"data"-Chunk nicht gefunden.')
-    return pos
+    try:
+        with open(wav_file, "rb") as f:
+            data = f.read()
+            pos = data.find(b"data")  # Suche nach "data" im Header
+            if pos != -1:
+                print(f'"data"-Chunk gefunden an Byte-Position: {pos}')
+            else:
+                print('"data"-Chunk nicht gefunden.')
+        return pos
+    except:
+        print(f"File {wav_file} cannot be read regularly.")  
+        return -1
+
 
 formatstring = "s16le"
 tSR = 1250000
 fcenter = 1125000
 fcarrier = 1400000
-fcarrier = 1251000
-lo_shift = abs(fcenter - fcarrier) #TODO: modify so as to also accept negative frequencies by sign change in sine signal
-modulation_factor = 0.0001
-pregain = 0.5
+#fcarrier = 800000
+lo_shift = (fcenter - fcarrier) #TODO: if lo_shift < 0 --> set sine sign in complex filter -1, or sine_sign = sign(lo_shift)
+sinus_sign = np.sign(lo_shift)  
+
+modulation_factor = 0.8
+pregain = 1
 #format = self.get_formattag()
-a = (np.tan(np.pi * lo_shift / tSR) - 1) / (np.tan(np.pi * lo_shift / tSR) + 1)
+a = (np.tan(np.pi * abs(lo_shift) / tSR) - 1) / (np.tan(np.pi * abs(lo_shift) / tSR) + 1)
 
 #a = (np.tan(np.pi * deltaf / iSR) - 1) / (np.tan(np.pi * deltaf / iSR) + 1)
 b = [a, 1]      # Numerator-Koeffizienten
@@ -44,7 +51,7 @@ filepath = "C:/Users/scharfetter_admin/Downloads"
 # filelist2 = ["synth_caro_spur6_0.wav"]
 #TODO: Filestart durch die sequenz '-skip_initial_bytes N', N = Byteoffset  genau trimmen
 filelist1 = ["AUDIOFILE"]
-output_filename = "test_output.wav"
+output_filename = "test_output.raw"
 out_path = os.path.join(filepath, output_filename)
 # for ix, input_filename in enumerate(filelist1):
 #     input_filename1 = filelist1[ix]
@@ -69,25 +76,6 @@ out_path = os.path.join(filepath, output_filename)
         # if format == 32bit float: convert to 16bit PCM
         # 
         # 
-        # ffmpeg_cmd = [
-        #     ffmpeg_file_path, "-y", "-loglevel", "error", "-hide_banner",
-        # ########################## implement correct reading format/codec, channel layout, sample rate  
-        #     "-f", formatstring, "-ar", str(sampling_rate), "-ac", "2", "-i", "str(in_path1)",  # Lese später von PIPE, auf die der Audiostream kommt
-        #     "-filter_complex",
-        #     "[0:a]aresample=osr=" + str(tSR) + ",channelsplit=channel_layout=stereo [re][im];"   ###### Umbauen, soll nur mono-stream lesen
-        #     "sine=frequency=" + str(lo_shift) + ":sample_rate="  + str(tSR) + "[sine_base];"
-        #     "[sine_base] asplit=2[sine_sin1][sine_sin2];"
-        #     "[sine_sin2]biquad=b0=" + str(a) + ":b1=1:b2=0:a0=1:a1=" + str(a) + ":a2=0[sine_cos];"
-        #     "[re][sine_cos]amultiply[mul_re];"
-        #     "[im][sine_sin1]amultiply[mul_im];"
-        #     "[mul_re]volume=volume=" + str(modulation_factor) + "[mfre];"
-        #     "[im]volume=volume=" + str(modulation_factor) + "[mfim];"
-        #     "[mfre][sine_cos]amix=inputs=2:duration=shortest[modre];"
-        #     "[mfim][sine_sin1]amix=inputs=2:duration=shortest[modim];"
-        #     "[modre]volume=volume=" + str(pregain) + "[outre];"
-        #     "[modim]volume=volume=" + str(pregain) + "[outim];"
-        #     "-map", "[###out###]", "-c:a", "pcm_s16", "-f", "caf", "out_path"  ###########TODO: modify for mapping outre, outim to stereo PCM aof stdout oder out PIPE
-        #     ]
 
             #     # Prozess starten
             #     ffmpeg_process = subprocess.Popen(ffmpeg_cmd, 
@@ -116,88 +104,81 @@ out_path = os.path.join(filepath, output_filename)
 # Konfigurierbare Parameter
 
 stream_url = "http://ght.phonomuseum.at/Sound/x/pa_0002-6918.mp3"  # Dein Webstream-URL
-#output_file = "output.caf"     # Output-Datei
+#stream_url = "C:/Users/scharfetter_admin/Downloads/Test_ffmpeg_modulator_JUST.wav"
+#stream_url = "C:/Users/scharfetter_admin/Downloads/01-They can't take that away from me.wav"
+#stream_url = "C:/Users/scharfetter_admin/Eigene Musik/Camerata Vocal Group/Just/03-Nobody knows.mp3"
+#stream_url = "C:/Users/scharfetter_admin/Eigene Musik/Camerata Vocal Group/Just/01-They can't take that away from me.mp3"
+#stream_url = "C:/Users/scharfetter_admin/Eigene Musik/Camerata Vocal Group/Just/01-They can't take that away from me.wav"
+#stream_url = "C:/Users/scharfetter_admin/Downloads/test_long.wav"
+
+# datachunkstart = find_data_chunk(stream_url)
+skipbytenr = 0
+# if datachunkstart >=0:
+#     skipbytenr = np.mod(datachunkstart,2) ####TODO TODO TODO: only correct for Sample-Align = 4
+# #unklar: Manchmal startet das erzeugte File mit 2 byte Offset, abhängig vom Original-Audiofile. Wieso passiert das ?
+# # Das heisst ja, dass real und Imaginärteil verkehrt herum starten, also verkehrt erzeugt werden.
+# #output_file = "output.caf"     # Output-Datei
 
 ffmpeg_cmd = [
     "ffmpeg", "-y", "-loglevel", "error", "-hide_banner",
+    "-skip_initial_bytes", str(skipbytenr),
     "-i", stream_url,  # Lies direkt vom Webstream
     "-filter_complex",
     # FILTERCHAIN
     # 1. Downmix zu Mono, Resampling, Normalisierung
-    "[0:a]aresample=osr=" + str(tSR) + ",pan=mono|c0=.5*c0+.5*c1,volume=1.0[mono];"
-    #"[0:a]aresample=osr=" + str(tSR) + ",channelsplit=channel_layout=stereo [re][im];"
+    "[0:a]aformat=sample_fmts=s16:channel_layouts=stereo,aresample=osr=" + str(tSR) + ",pan=mono|c0=.5*c0+.5*c1,volume=1.0[mono];"
     # 2. Sinus-Generator, Cosinus über Allpassfilter (biquad)
-    "sine=frequency=" + str(lo_shift) + ":sample_rate=" + str(tSR) + "[sine_base];"
-    "[sine_base]asplit=2[sine_sin][sine_for_cos];"
-    "[sine_for_cos]biquad=b0=" + str(a) + ":b1=1:b2=0:a0=1:a1=" + str(a) + ":a2=0[sine_cos];"
+    "sine=frequency=" + str(abs(lo_shift)) + ":sample_rate=" + str(tSR) + "[sine_base];"
+    "[sine_base]asplit=2[sine_for_sin][sine_for_cos];"
+    "[sine_for_sin]volume=volume=" + str(sinus_sign) + "[sine_sin_raw];"
+    "[sine_sin_raw]asplit=3[sine_sin][carrier_sin][carrier_sin_deb];"
+    "[sine_for_cos]biquad=b0=" + str(a) + ":b1=1:b2=0:a0=1:a1=" + str(a) + ":a2=0[sine_cos_base];"
+    "[sine_cos_base]asplit=3[sine_cos][carrier_cos][carrier_cos_deb];"
+    
     # # 3. Modulation (1 + modulation_factor * Y)
+    # Modulationsanteil:
     "[mono]volume=volume=" + str(modulation_factor) + "[modsig];"
     "[modsig]asplit=2[modsig1][modsig2];"
     "[modsig1][sine_cos]amultiply[mod_re_component];"
     "[modsig2][sine_sin]amultiply[mod_im_component];"
-    # 3. Modulationsanteil berechnen
-    #"[mono]volume={modulation_factor}[modsig];",
-    # "[modsig][sine_cos]amultiply[mul_re];"
-    # "[modsig][sine_sin]amultiply[mul_im];"
+    #DEBUG LINES
+    #"[mod_re_component]asplit=2[mod_re_component1][modre2];"
+    #"[mod_im_component]asplit=2[mod_im_component1][modim2];"
 
     # 4. Add DC = sin/cos-Anteil (1 * sin(t) bzw. 1 * cos(t))
-    "[mod_im_component]volume=volume=0.00001[inv_mod_im_component];"
-    "[mod_re_component][sine_cos]amix=inputs=2:duration=shortest[modre];"
-    "[sine_sin]volume=volume=1.0[sine_carrier];"
-    "[inv_mod_im_component][sine_carrier]amix=inputs=2:duration=shortest[modim];"
-    # 4. Trägeranteil separat skalieren (1.0) und addieren
-    # "[sine_cos]volume=1.0[carrier_cos];"
-    # "[sine_sin]volume=1.0[carrier_sin];"
-    # "[mul_re][carrier_cos]amix=inputs=2:duration=shortest[modre];"
-    # "[mul_im][carrier_sin]amix=inputs=2:duration=shortest[modim];"
+    # 4. Trägeranteil zu Modulationsanteil addieren
 
-
+    "[mod_re_component][carrier_cos]amix=inputs=2:duration=shortest[modre];"
+    "[mod_im_component][carrier_sin]amix=inputs=2:duration=shortest[modim];"
+    "[carrier_cos_deb]anullsink;"
+    "[carrier_sin_deb]anullsink;"
     # 5. Pregain anwenden
+
     "[modre]volume=volume=" + str(pregain) + "[outre];"
     "[modim]volume=volume=" + str(pregain) + "[outim];"
-    # "[carrier_cos]volume=" + str(pregain) + "[outre];"
-    # "[carrier_sin]volume=" + str(0.2*pregain) + "[outim];"
-    # "[re]anullsink;"
-    # "[im]anullsink;"
-    # aufteilen in Stereo-Output und auf Ausgabefile schreiben
-    #"[outre][outim]amerge=inputs=2,pan=stereo|c0<c0|c1<c1[stereoout]",
-    #"[outre][outim]amerge=inputs=2[interm]"
-    #"[outre][outim]amerge=inputs=2[merged];[merged]pan=stereo|c0<0.1*c0|c1<0.5*c1[stereoout]",
     "[outre][outim]amerge=inputs=2[merged];[merged]pan=stereo|c0=0.5*c0|c1=0.5*c1[stereoout]",
-    #"[interm]pan=stereo|c0<c0|c1<c1[stereoout]"
-    #"[stereoout]anull[out]",
-    "-map", "[stereoout]", "-c:a", "pcm_s16le", "-f", "wav", out_path
-    # "-map", "[stereoout]",
-    # #"-ac", "2", "-ar", str(tSR),
-    # "-c:a", "pcm_s16le",
-    # "-f", "wav", out_path
+    #DEBUG LINES
+    #"[modre2][modim2]amerge=inputs=2[mod_debug_stereo]",
+    #"-map", "[stereoout]", "-c:a", "pcm_s16le", "-f", "wav", out_path
+    "-map", "[stereoout]",
+    "-c:a", "pcm_s16le",
+    "-f", "s16le",   # reines RAW-PCM
+    out_path
+    #DEBUG LINES
+    #"-map", "[mod_debug_stereo]", "-c:a", "pcm_s16le", "-f", "wav", "debug_modre_modim.wav"
+
+    # ➕ Zusätzliche Ausgaben zur Analyse:
+    #"-map", "[carrier_cos_deb]", "-c:a", "pcm_s16le", "-f", "wav", "debug_carrier_cos.wav",
+    #"-map", "[carrier_sin_deb]", "-c:a", "pcm_s16le", "-f", "wav", "debug_carrier_sin.wav"
+    # "-map", "[modsig]", "-c:a", "pcm_s16le", "-f", "wav", "debug_modsig.wav",
+    # "-map", "[modre]", "-c:a", "pcm_s16le", "-f", "wav", "debug_modre.wav",
+    # "-map", "[modim]", "-c:a", "pcm_s16le", "-f", "wav", "debug_modim.wav",
 ]
-
-
-        #"[rsin][rcos]amerge=inputs=2,pan=stereo|c0<c0|c1<c1[out]",
-        #"-map", "[out]", "-c:a", "pcm_s16le", "-f", "wav", out_path
-#"[rsin][rcos]amerge=inputs=2,pan=stereo|c0<c0|c1<c1[out]",
-# ffmpeg_cmd = [
-#     "ffmpeg", "-y", "-loglevel", "error", "-hide_banner",
-#     "-i", stream_url,  # Lies direkt vom Webstream
-#     "-filter_complex",
-#     "[0:a]aresample=osr=" + str(tSR) + ",channelsplit=channel_layout=stereo [re][im];"
-#     "sine=frequency=" + str(lo_shift) + ":sample_rate=" + str(tSR) + "[sine_base];"
-#     "[sine_base]asplit=2[sine_sin][sine_for_cos];"
-#     "[sine_for_cos]biquad=b0=" + str(a) + ":b1=1:b2=0:a0=1:a1=" + str(a) + ":a2=0[sine_cos];"
-#     "[sine_cos]volume=" + str(pregain) + "[outre];"
-#     "[sine_sin]volume=" + str(0.5*pregain) + "[outim];"
-#     "[re]anullsink;"
-#     "[im]anullsink;"
-#     "[outre][outim]amerge=inputs=2[stereoout]",
-#     "-map", "[stereoout]",
-#     "-c:a", "pcm_s16le",
-#     "-f", "wav", out_path
-# ]
 
 print("Generierter FFmpeg-Befehl:")
 print(" ".join(ffmpeg_cmd))  # Zum Debuggen
 
+reft = time.time()
 try:
     # Prozess starten
     ffmpeg_process = subprocess.Popen(ffmpeg_cmd,  
@@ -220,3 +201,7 @@ except subprocess.TimeoutExpired:
     ffmpeg_process.kill()
     stdout, stderr = ffmpeg_process.communicate()
     print(f"ffmpeg wurde wegen Timeout beendet")
+
+st = time.time()
+et = st - reft
+print(f"ffmpeg finished in {et} seconds")
