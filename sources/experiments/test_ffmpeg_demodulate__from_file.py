@@ -75,7 +75,7 @@ carrierlist = [1422250]
 carrierlist = [1251000]
 gain = 1
 skipbytenr = 0
-filepath = "C:/Users/scharfetter_admin/Documents/MW_Aufzeichnungen/COHIRADIA/Softwareentwicklung/COHIRADIA_RFCorder/COHIRADIA_RFCorder"
+filepath = "C:/Users/######/Documents/MW_Aufzeichnungen/COHIRADIA/Softwareentwicklung/COHIRADIA_RFCorder/COHIRADIA_RFCorder"
 #filepath = "E:/COHIRADIA/Archiviert/unvollst_MW_30_and_31_12_2006_analogue_VR/Optional_intermediate_files/2GBSplit"
 #filepath = ["E:/liblice_30_03_2025"]
 #           E:\COHIRADIA\Archiviert\unvollst_MW_30_and_31_12_2006_analogue_VR\Optional_intermediate_files\2GBSplit
@@ -191,7 +191,7 @@ for fcarrier in carrierlist:
         #preset_volume_im = 0 #only real part 
         preset_volume_im = preset_volume # both parts
         #preset_volume = 0 # only imaginary part
-        ffmpeg_path = "C:/Users/scharfetter_admin/Documents/MW_Aufzeichnungen/COHIRADIA/Softwareentwicklung/COHIWizard_2023/sources/ffmpeg-master-latest-win64-gpl-shared/bin"
+        ffmpeg_path = "C:/Users/#####/Documents/MW_Aufzeichnungen/COHIRADIA/Softwareentwicklung/COHIWizard_2023/sources/ffmpeg-master-latest-win64-gpl-shared/bin"
         ffmpeg_execmd = os.path.join(ffmpeg_path, "ffmpeg.exe")
         if not TEST:
             ffmpeg_cmd = [
