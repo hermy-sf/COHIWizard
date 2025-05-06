@@ -273,7 +273,104 @@ class modulate_worker(QObject):
         print("ready")
         self.SigMessage.emit("----")
         return expected_max_amp, expected_RMS_amp
-    
+
+#     def modulate_block_ffmpeg(self, audio_block, carrier_freq, target_sample_rate, modulation_depth, cutoff_freq):
+#         #TODO TODO TODO: try out ffmpeg modulator, but there are transient jumps to be expected at the block borders
+#         """modulate audio block with ffmpeg to current carrier
+
+#         :param audio_block: _description_
+#         :type audio_block: _type_
+#         :param carrier_freq: _description_
+#         :type carrier_freq: _type_
+#         :param target_sample_rate: _description_
+#         :type target_sample_rate: _type_
+#         :param modulation_depth: _description_
+#         :type modulation_depth: _type_
+#         :param cutoff_freq: _description_
+#         :type cutoff_freq: _type_
+#         """
+#         pregain = 1
+#         sinus_sign = np.sign(carrier_freq) 
+#         a = (np.tan(np.pi * abs(carrier_freq) / target_sample_rate) - 1) / (np.tan(np.pi * abs(carrier_freq) / target_sample_rate) + 1)
+
+# # cmd = [
+# #     "ffmpeg",
+# #     "-hide_banner", "-loglevel", "error",
+# #     "-f", "f32le",            # Eingabeformat: float32 PCM
+# #     "-ar", str(tSR),          # Sample Rate
+# #     "-ac", "1",               # Mono
+# #     "-i", "pipe:0",           # Lesen von stdin
+# #     "-filter_complex", filter_chain,
+# #     "-f", "f32le",            # Rückgabe: float32 PCM
+# #     "-ac", "2",               # Stereo (für IQ)
+# #     "pipe:1"                  # Schreiben an stdout
+# # ]
+
+
+# # # Subprozess starten
+# # proc = subprocess.Popen(
+# #     cmd,
+# #     stdin=subprocess.PIPE,
+# #     stdout=subprocess.PIPE,
+# #     stderr=subprocess.PIPE
+# # )
+
+# # # Daten senden und Ergebnis lesen
+# # out_bytes, err = proc.communicate(audio_in.tobytes())
+
+# # # In numpy umwandeln
+# # output = np.frombuffer(out_bytes, dtype=np.float32).reshape(-1, 2)  # (N, 2) Stereo
+
+# # # Jetzt ist output[:, 0] der Realteil, output[:, 1] der Imaginärteil
+
+#         ffmpeg_cmd = [
+#             "ffmpeg", "-y", "-loglevel", "error", "-hide_banner",
+#             #"-ss", "0", "-t", "30.0", #30s von 0 weg verarbeiten 
+#             "-i", "pipe:0",  # Lies direkt von input pipe
+#             "-filter_complex",
+#             # FILTERCHAIN
+#             # 1. Downmix zu Mono, Resampling, Normalisierung
+#             "[0:a]aformat=sample_fmts=s16:channel_layouts=stereo,aresample=osr=" + str(target_sample_rate) +
+#             ",pan=mono|c0=.5*c0+.5*c1" +
+#             ",volume=1.0" +
+#             ",lowpass=f=" + str(cutoff_freq) +
+#             ",lowpass=f=" + str(cutoff_freq) +
+#             ",lowpass=f=" + str(cutoff_freq) +
+#             ",lowpass=f=" + str(cutoff_freq) +
+#             "[mono_lp];"
+#             # ",pan=mono|c0=.5*c0+.5*c1,volume=1.0[mono];"
+#             # 2. Sinus-Generator, Cosinus über Allpassfilter (biquad)
+#             "sine=frequency=" + str(abs(carrier_freq)) + ":sample_rate=" + str(target_sample_rate) + "[sine_base];"
+#             "[sine_base]asplit=2[sine_for_sin][sine_for_cos];"
+#             "[sine_for_sin]volume=volume=" + str(sinus_sign) + "[sine_sin_raw];"
+#             "[sine_sin_raw]asplit=3[sine_sin][carrier_sin][carrier_sin_deb];"
+#             "[sine_for_cos]biquad=b0=" + str(a) + ":b1=1:b2=0:a0=1:a1=" + str(a) + ":a2=0[sine_cos_base];"
+#             "[sine_cos_base]asplit=3[sine_cos][carrier_cos][carrier_cos_deb];"
+            
+#             # # 3. Modulation (1 + modulation_factor * Y)
+#             # Modulationsanteil:
+#             "[mono_lp]volume=volume=" + str(modulation_depth) + "[modsig];"
+#             "[modsig]asplit=2[modsig1][modsig2];"
+#             "[modsig1][sine_cos]amultiply[mod_re_component];"
+#             "[modsig2][sine_sin]amultiply[mod_im_component];"
+
+#             # 4. Add DC = sin/cos-Anteil (1 * sin(t) bzw. 1 * cos(t))
+#             # 4. Trägeranteil zu Modulationsanteil addieren
+#             "[mod_re_component][carrier_cos]amix=inputs=2:duration=shortest[modre];"
+#             "[mod_im_component][carrier_sin]amix=inputs=2:duration=shortest[modim];"
+#             "[carrier_cos_deb]anullsink;"
+#             "[carrier_sin_deb]anullsink;"
+#             # 5. Pregain anwenden
+#             "[modre]volume=volume=" + str(pregain) + "[outre];"
+#             "[modim]volume=volume=" + str(pregain) + "[outim];"
+#             "[outre][outim]amerge=inputs=2[merged];[merged]pan=stereo|c0=0.5*c0|c1=0.5*c1[stereoout]",
+
+#             "-map", "[stereoout]",
+#             "-c:a", "pcm_s16le",
+#             "-f", "s16le",   # reines RAW-PCM
+#             "pipe:1"
+#         ]
+
     def read_and_process_audio_blockwise(self, file_list, carrier_freq, target_sample_rate, ref_block_size, modulation_depth, zi, sample_offset, current_file_index, file_handles, audio_gain, silence, cumulative_time,sos, phase):
         """
         Read and process audio blockwise from the current file in the file_list, keeping the file handle open.
@@ -381,6 +478,7 @@ class modulate_worker(QObject):
                 aux[0 : len(audio_block)] = audio_block
                 audio_block = aux
             # Resamplingif required
+            ##### TODO: entry point for ffmpeg version: pass audio directly to ffmpeg
             if original_sample_rate != target_sample_rate:
                 audio_block = self.resample_audio(audio_block, original_sample_rate, target_sample_rate)
 
@@ -392,6 +490,8 @@ class modulate_worker(QObject):
             modulated_block = self.modulate_signal(filtered_block, carrier_freq, target_sample_rate, sample_offset, modulation_depth, phase)
             # update sample_offset for next block
             sample_offset += len(modulated_block)
+
+            #TODO: here end of ffmpeg, which returns the modulated block directly
 
             return modulated_block, zi, sample_offset, current_file_index, audio_gain, silence, cumulative_time
         
