@@ -135,20 +135,17 @@ pregain = 0.15 #TODO TODO: choose pregain according to expected total signal
 #format = self.get_formattag()
 
 #####True pathnames are not published here !
-filepath = "C:/Users/scharfetter_admin/Downloads"
-temppath = "C:/Users/scharfetter_admin/Downloads/temp"
+filepath = "C:/####"
+temppath = "C:/####/temp"
 
 #TODO: Filestart durch die sequenz '-skip_initial_bytes N', N = Byteoffset  genau trimmen
 output_filename = "test_output.raw"
 out_path = os.path.join(filepath, output_filename)
 
 reft = time.time()
-file_list = [Path("C:/Users/scharfetter_admin/Eigene Musik/Camerata Vocal Group/Just/01-They can't take that away from me.wav"),
-             Path("C:/Users/scharfetter_admin/Eigene Musik/Camerata Vocal Group/Just/03-Nobody knows.mp3"),
-             "http://ght.phonomuseum.at/Sound/x/pa_0002-6918.mp3"]
-
-file_list = [Path("C:/Users/scharfetter_admin/Eigene Musik/Comedian Harmonists/Greatest Hits - Vol. 1/08-Quant il pleut (Stormy Weather).wav"),
-            Path("C:/Users/scharfetter_admin/Eigene Musik/Comedian Harmonists/Greatest Hits - Vol. 1/13-Ein Freund, ein guter Freund.wav")]
+file_list = [Path("C:/###/file1.wav"),
+             Path("C:/###/file2.wav"),
+             "http://####URL/file3.mp3"]
 #ACHTUNG: lokale Dateinamen mit Path(), URLs bitte OHNE sonst error !
 
 carrier_list = [1400000, 800000, 900000, 540000,738000]
