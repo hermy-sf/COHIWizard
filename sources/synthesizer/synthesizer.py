@@ -55,7 +55,7 @@ class modulate_worker(QObject):
         __slots__: Dictionary with parameters
     :return : none
     """
-    __slots__ = ["carrier_frequencies", "playlists","sample_rate","block_size","cutoff_freq","modulation_depth","output_base_name","exp_num_samples","progress","logger","combined_signal_block","LO_freq","gain", "method_object","silence_duration","filesize_limit","ffmpeg_path","synthesizer_temp_path"]
+    __slots__ = ["carrier_frequencies", "playlists","sample_rate","block_size","cutoff_freq","modulation_depth","output_base_name","exp_num_samples","progress","logger","combined_signal_block","LO_freq","gain", "method_object","silence_duration","filesize_limit","ffmpeg_path","synthesizer_temp_path","autolevel"]
     SigFinished = pyqtSignal()
     SigPupdate = pyqtSignal()
     SigMessage = pyqtSignal(str)
@@ -142,6 +142,10 @@ class modulate_worker(QObject):
         self.__slots__[17] = _value
     def get_synthesizer_temp_path(self):
         return(self.__slots__[17])
+    def set_autolevel(self,_value):
+        self.__slots__[18] = _value
+    def get_autolevel(self):
+        return(self.__slots__[18])
     
     def modulate_terminate(self):
         print("modulate terminate received")
@@ -611,7 +615,7 @@ class modulate_worker_ffmpeg(QObject):
         __slots__: Dictionary with parameters
     :return : none
     """
-    __slots__ = ["carrier_frequencies", "playlists","sample_rate","block_size","cutoff_freq","modulation_depth","output_base_name","exp_num_samples","progress","logger","combined_signal_block","LO_freq","gain", "method_object","silence_duration","filesize_limit","ffmpeg_path","synthesizer_temp_path"]
+    __slots__ = ["carrier_frequencies", "playlists","sample_rate","block_size","cutoff_freq","modulation_depth","output_base_name","exp_num_samples","progress","logger","combined_signal_block","LO_freq","gain", "method_object","silence_duration","filesize_limit","ffmpeg_path","synthesizer_temp_path", "autolevel"]
     SigFinished = pyqtSignal()
     SigPupdate = pyqtSignal()
     SigMessage = pyqtSignal(str)
@@ -698,6 +702,10 @@ class modulate_worker_ffmpeg(QObject):
         self.__slots__[17] = _value
     def get_synthesizer_temp_path(self):
         return(self.__slots__[17])
+    def set_autolevel(self,_value):
+        self.__slots__[18] = _value
+    def get_autolevel(self):
+        return(self.__slots__[18])
     
     def modulate_terminate(self):
         print("modulate terminate received")
@@ -722,79 +730,24 @@ class modulate_worker_ffmpeg(QObject):
         #init_phases = self.generate_multisine_phases(carrier_frequencies)
         self.process_multiple_carriers_ffmpeg(carrier_frequencies, playlists, sample_rate, cutoff_freq, modulation_depth, output_base_name, exp_num_samples, silence_duration)
         self.SigFinished.emit()
-    
 
-    def display_signal_level(self,signal):
+    def process_and_concat_audio(self,input_files, output_path, sample_rate=44100, fc_lp=4500, silence_duration=4.0, autolevel_flag=False):
+        """ concatenate multiple audio files with silence in between
+        :param input_files: list of input files
+        :type input_files: list
+        :param output_path: path to output file
+        :type output_path: str
+        :param sample_rate: sample rate, defaults to 44100
+        :type sample_rate: int, optional
+        :param fc_lp: cutoff frequency for lowpass filter, defaults to 4500
+        :type fc_lp: int, optional
+        :param silence_duration: duration of silence between files, defaults to 4.0
+        :type silence_duration: float, optional
+        :param autolevel_flag: flag for automatic level adjustment, defaults to False
+        :type autolevel_flag: bool, optional
+        :return: None
         """
-        calculate the RMS and peak values of a signal
-        """
-
-    def get_wav_maxlevel(self,wav_file, carrier_freq, threshold_percentile=95, spike_duration_ms=1):
-        """determine expected max signal level of an audio file. Do not consider short spikes with a duration of less than a ms
-
-        :param wav_file: path of the audio file
-        :type wav_file: str
-        :param threshold_percentile: allowable max signal in % of FSR, defaults to 95
-        :type threshold_percentile: int, optional
-        :param spike_duration_ms: max duration of a spike (will be ignored then), defaults to 1
-        :type spike_duration_ms: int, optional
-        :param carrier_freq: carrier frequency
-        :type carrier_freq: float
-        :return: expected max amp
-        :rtype: float
-        """
-        print(f"file: {Path(wav_file).stem} level checking")
-        LO_freq = self.get_LO_freq()
-        print(f"LO_freq: {LO_freq}, carrier_frequ: {carrier_freq}")
-        self.SigMessage.emit(f"auto level @ f {str(np.ceil((carrier_freq + LO_freq/1000)))}: " + Path(wav_file).stem)
-        #self.gui.label_audioset_name.setText(f"file: {Path(wav_file).stem} level checking")
-        #TODO CHECK last change:data, sample_rate = sf.read(wav_file)
-        method_object = self.get_method_object()
-        print(f"calling method: {method_object.readsoundfile}, argument: {wav_file}")
-                    #TODO TODO TODO LAST: catch error when returned False: Fils not foun o.ä. --> break loop
-
-        errorstatus, a = method_object.readsoundfile(wav_file)
-        #TODO CHECK: treat errorstatus correctly
-        #if not a:
-        if errorstatus:
-            self.SigError.emit(str(a))
-            self.SigFinished.emit()
-            #TODO: make correct errorhandling chain with errorstatus, value and treat in uppermost level !
-            return False
-        data = a.read()
-        sample_rate = a.samplerate
-        # convert to Mono, if signal is stereo TODO: check: mean may be lower than individual channel values !
-        if len(data.shape) > 1:
-            data = data.mean(axis=1)
-        # calc absolute amplitudes
-        amplitudes = np.abs(data)   
-        # calc sample duration in milliseconds
-        sample_duration_ms = 1000 / sample_rate
-        # calc number of samples which can be considered as 'short peaks'
-        max_spike_samples = int(spike_duration_ms / sample_duration_ms)
-        # Berechne den Schwellenwert für die Amplitude auf Basis des `threshold_percentile`-Perzentils
-        threshold_value = np.percentile(amplitudes, threshold_percentile)
-        # Erstelle eine Kopie der Amplituden und setze kurze Spitzen auf Null
-        filtered_amplitudes = amplitudes.copy() 
-        # Durchlaufe die Amplituden und setze kurze Spitzen unterhalb der max_spike_samples auf 0
-        for i in range(1, len(amplitudes) - 1):
-            # Wenn eine Amplitude den Schwellenwert überschreitet
-            if amplitudes[i] >= threshold_value:
-                # Prüfe, ob es eine kurze Spitze ist (alle Amplituden in diesem Bereich überschreiten den Schwellenwert)
-                start = max(i - max_spike_samples // 2, 0)
-                end = min(i + max_spike_samples // 2, len(amplitudes))
-                if np.all(amplitudes[start:end] >= threshold_value):
-                    # Setze die Spitzen im Bereich auf 0
-                    filtered_amplitudes[start:end] = 0
-        # Bestimme die erwartete maximale Amplitude nach Filterung der Spitzen
-        expected_max_amp = filtered_amplitudes.max() if filtered_amplitudes.size > 0 else amplitudes.max()
-        expected_RMS_amp = filtered_amplitudes.std() if filtered_amplitudes.size > 0 else amplitudes.std()
-        print("ready")
-        self.SigMessage.emit("----")
-        return expected_max_amp, expected_RMS_amp
-
-
-    def process_and_concat_audio(self,input_files, output_path, sample_rate=44100, fc_lp=4500, silence_duration=4.0):
+        
         assert len(input_files) > 0, "minimum one file is required"
         print("process_and_concat_audio reached")
         # 6x Lowpass-Filter for 12. order pseudo-Butterworth
@@ -826,28 +779,90 @@ class modulate_worker_ffmpeg(QObject):
                 concat_parts.append(f"[a{i // 2}]")
             else:
                 concat_parts.append(f"[s{i // 2}]")
-
-        filter_concat = ";".join(filters) + ";" + "".join(concat_parts) + f"concat=n={len(concat_parts)}:v=0:a=1[outa]"
+        if not autolevel_flag:
+            filter_concat = ";".join(filters) + ";" + "".join(concat_parts) + f"concat=n={len(concat_parts)}:v=0:a=1[out]"
+        else:
+            # Full filter chain with loudness normalization after concat
+            filter_concat = (
+                ";".join(filters) + ";" +
+                "".join(concat_parts) +
+                f"concat=n={len(concat_parts)}:v=0:a=1[outa];" +
+                "[outa]loudnorm=I=-16:TP=-1.5:LRA=11[out]"
+            )
 
         # FFmpeg-command
         cmd = [
             os.path.join(self.get_ffmpeg_path(), "ffmpeg"), "-y", *inputs,
-            #"ffmpeg", "-y", "-loglevel", "debug", *inputs,
             "-filter_complex", filter_concat,
-            "-map", "[outa]",
-            #"-f", "s16le", "-acodec", "pcm_s16le", # for raw output
+            "-map", "[out]",
             "-f", "wav", "-acodec", "pcm_s16le", #for debug
             str(output_path)
         ]
         #print("Running FFmpeg command:\n", " ".join(cmd))
         subprocess.run(cmd, check=True)
 
-    def run_ffmpeg_with_progress(self,ffmpeg_cmd, total_duration_sec, numcarriers, percent_old):
+    def get_aligned_block(self, filename, block_size, alignment, safety_margin):
+        """reads a block of data from the end of a file, aligned to a specified byte boundary
+
+        :param filename: _description_
+        :type filename: _type_
+        :param block_size: _description_
+        :type block_size: _type_
+        :param alignment: _description_
+        :type alignment: _type_
+        :param safety_margin: _description_
+        :type safety_margin: _type_
+        :return: _description_
+        :rtype: _type_
+        """
+        file_size = os.path.getsize(filename)
+
+        # Zielposition: ein Stück vor Dateiende
+        max_read_pos = file_size - safety_margin
+        if max_read_pos < block_size:
+            self.logger.debug("short file, no valid data, return dummy array")
+            return np.ones(block_size, dtype=np.complex128)  # file too small, return dummy value
+
+        # Starte Block so, dass Anfang < max_read_pos und ausgerichtet
+        #start = max_read_pos - (block_size)
+        #start -= start % alignment  # Rundung auf nächstes Vielfaches von ALIGNMENT
+        # determine how many blocks N fit into interval max_read_pos - block size
+        # Then start = N * block_size
+        start = int(np.floor(max_read_pos / block_size)) * block_size
+        #start = max_read_pos - (block_size)
+        start -= start % alignment  # Rundung auf nächstes Vielfaches von ALIGNMENT
+        self.logger.debug(f"start position of block: {start}")
+
+        data = np.empty(block_size, dtype=np.int16)
+        with open(filename, "rb") as f:
+            f.seek(start)
+            #fileHandle.readinto(data)
+            f.readinto(data)
+            #return f.read(block_size)
+            # convert to complex
+            int_data = np.frombuffer(data, dtype=np.int16)
+            complex_data = (int_data[::2] + 1j * int_data[1::2]) / 32768.0
+            # real_part = data[0::2]
+            # imag_part = data[1::2]
+            # complex_data = real_part + 1j * imag_part
+            self.logger.debug(f"get_aligned_block; return complex data of len:{len(complex_data)}")
+            return complex_data
+        
+        
+    def run_ffmpeg_with_progress(self,ffmpeg_cmd, total_duration_sec, numcarriers, percent_old, filename):
         """Start ffmpeg command with intermediate output of the progress; progress is reported in 'progress'
-        :param ffmpeg_cmd: _description_
-        :type ffmpeg_cmd: _type_
-        :param total_duration_sec: _description_
-        :type total_duration_sec: _type_
+        :param ffmpeg_cmd: modulatingffmpeg command to be executed
+        :type ffmpeg_cmd: list of str
+        :param total_duration_sec: total duration of the file
+        :type total_duration_sec: float
+        :param numcarriers: number of carriers
+        :type numcarriers: int
+        :param percent_old: old progress value from previous run
+        :type percent_old: float
+        :param filename: name of the file to be processed
+        :type filename: str
+        :return: progress value after current run
+        :rtype: float
         """
         process = subprocess.Popen(
             ffmpeg_cmd,
@@ -864,12 +879,16 @@ class modulate_worker_ffmpeg(QObject):
                 h, m, s, ms = map(int, match.groups())
                 elapsed = h * 3600 + m * 60 + s + ms / 100.0
                 percent = (elapsed / total_duration_sec) * 100 / numcarriers + percent_old
-                print(f"\rProgress: {percent:.1f}%", end='')
+                #print(f"\rProgress: {percent:.1f}%", end='')
                 #TODO TODO: send update signal for GUI progress bar here
                 self.set_progress(percent)
                 #TODO TODO TODO: generate signal block by reading the last section from the file being generated 
                 #so far DUMMY block
-                combined_signal_block = 0.7*np.ones(2**16, dtype=np.complex128)
+                #combined_signal_block = 0.7*np.ones(2**16, dtype=np.complex128)
+                block_size = 4096 * 256           # Oder 44100 * 2 für 1 Sekunde Audio
+                alignment = 4                # Blockstart must be int multiple of  4
+                safety_margin = 8192         # 8kB safety margin from file end
+                combined_signal_block = self.get_aligned_block(filename, 2*block_size, alignment, safety_margin)
                 #spr = np.abs(np.fft.fft(combined_signal_block[0:min(2**16,len(combined_signal_block))]))
                 self.set_combined_signal_block(combined_signal_block)
                 self.SigPupdate.emit()
@@ -897,6 +916,7 @@ class modulate_worker_ffmpeg(QObject):
         :param exp_num_samples: expected number of samples #NEEDED ???
         :type exp_num_samples: int #NEEDED ???
         """
+        AUTOLEVEL = self.get_autolevel() #automatic level control of concatenated audio; takes longer time; 
         # carrier frequencies ist eine liste aller LO-Offsets in kHz !
         # playlists[i][j] ist eine 2-Dim liste mit den vollen Pfaden der Audio Files, [i] ist der carrierindex, [j] ist der Audioindex einer Audioserie des carriers i
         self.set_progress(0)
@@ -911,7 +931,8 @@ class modulate_worker_ffmpeg(QObject):
         total_duration_sec = exp_num_samples / sample_rate
         #max_samples_per_file = max_file_size // 4  # complex 16-bit PCM = 4 bytes per sample #OBSOLETE ?
         #perc_progress_old = 0 #OBSOLETE ?
-        pregain = self.get_gain()
+        pregain = 10 * self.get_gain()
+        self.logger.debug(f"pregain: {pregain}")
         firstround = True
         percent_old = 0
         for ix, carrierf in enumerate(carrier_frequencies):
@@ -931,7 +952,7 @@ class modulate_worker_ffmpeg(QObject):
             self.SigMessage.emit(f"concatenate playlist @ f {str(np.ceil((carrier_frequencies[ix] + self.get_LO_freq()/1000)))}")                
 
 #Rem after tests 11-05            #self.SigMessage.emit(f"concatenating playlist @ f {str(np.ceil((carrier_frequencies[ix])))}")
-            self.process_and_concat_audio(playlists[ix], temp_wav_cat_file, audio_sample_rate, cutoff_freq, silence_duration)
+            self.process_and_concat_audio(playlists[ix], temp_wav_cat_file, audio_sample_rate, cutoff_freq, silence_duration, AUTOLEVEL)
             self.logger.debug(f"proc. mult. carr. ffmpeg: carrier: {carrier_frequencies[ix]} Hz, LO_freq: {self.get_LO_freq()} Hz")
             #configure allpass for sin/cos shift
             a = (np.tan(np.pi * abs(lo_shift) / sample_rate) - 1) / (np.tan(np.pi * abs(lo_shift) / sample_rate) + 1)
@@ -1026,7 +1047,7 @@ class modulate_worker_ffmpeg(QObject):
             self.logger.debug(" ".join(ffmpeg_cmd))  # Zum Debuggen
             self.SigMessage.emit(f"modulate c. {str(ix+1)}/{len(carrier_frequencies)} @ f {str(np.ceil((carrier_frequencies[ix] + self.get_LO_freq()/1000)))}")                
             self.logger.debug(f"################ number of carriers: {len(carrier_frequencies)})")
-            percent_old = self.run_ffmpeg_with_progress(ffmpeg_cmd, total_duration_sec,len(carrier_frequencies), percent_old)
+            percent_old = self.run_ffmpeg_with_progress(ffmpeg_cmd, total_duration_sec,len(carrier_frequencies), percent_old, output_IQ_filename)
             firstround = False
 
             #print("synthesis completed, cleanup residuals")
@@ -1131,6 +1152,7 @@ class synthesizer_m(QObject):
         self.mdl["SR_currindex"] = 0
         self.mdl["modfactor"] = 0.8
         self.mdl["ffmpeg_autocheck"] = True
+        self.mdl["preview"] = False
         # try:
         #     subprocess.run("ffmpeg -version", stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
         #     #self.logger.debug(f"__init_ m check for ffmpeg , installation found")
@@ -1546,6 +1568,7 @@ class synthesizer_v(QObject):
         self.gui.pushButton_loadproject.clicked.connect(self.load_project)
         self.gui.pushButton_clearproject.clicked.connect(self.clear_project)
         self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_band_thread)
+        self.gui.synthesizer_pushbutton_preview.clicked.connect(self.preview)
         #self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_band)
         self.gui.timeEdit_reclength.timeChanged.connect(self.carrier_ix_changed)
         self.gui.synthesizer_pushbutton_cancel.clicked.connect(self.cancel_modulate)
@@ -1823,6 +1846,19 @@ class synthesizer_v(QObject):
         slider = (20*np.log10(wanted_gain) + self.GAINOFFSET)*10/9
         self.gui.verticalSlider_Gain.setProperty("value", float(slider))
 
+    def preview(self):
+        """
+        generate short preview of the SDR file
+        """
+        self.gui.synthesizer_pushbutton_preview.clicked.disconnect(self.preview)
+        preset_time = QTime(0,0,20) 
+        self.gui.timeEdit_reclength.setTime(preset_time)
+        self.preset_gain()
+        self.m["preview"] = True
+        self.create_band_thread()
+        self.gui.synthesizer_pushbutton_preview.clicked.connect(self.preview)
+        self.m["preview"] = False
+
     def create_band_thread(self):
         """slot function for the CREATE button
         pre-set gain, check some conditions. 
@@ -1875,7 +1911,8 @@ class synthesizer_v(QObject):
                 self.errorhandler(value)
                 return
             self.autosave = False
-        self.preset_gain()  #gain is set indirectly by setting the gain slider position
+        if not self.gui.synthesizer_radioBut_FAST_mode.isChecked():
+            self.preset_gain()  #gain is set indirectly by setting the gain slider position
 
         #if self.gui.radiobutton_AGC.isChecked():
         #TODO TODO TODO: implement AGC method and AUTO clipping repair or clipping warning
@@ -1904,35 +1941,38 @@ class synthesizer_v(QObject):
         #TODO TODO TODO: maybe correct for no carrier at frequency 0, make that correct ! subtract BW/2
         carrier_frequencies = self.m["carrierarray"] - self.m["LO"]
         existcheck = True
-        while existcheck:
-            options = QFileDialog.Options()
-            #options |= QFileDialog.DontUseNativeDialog
-            #TODO: why does it take so long to display the existing file list ?
-            output_base_name, _ = QFileDialog.getSaveFileName(self.m["QTMAINWINDOWparent"], 
-                                                    "Save File", 
-                                                    self.m["recording_path"],  # Standard rec path, Standardmäßig kein voreingestellter Dateiname
-                                                    "wav Files (*.wav)",  # Filter for data type wav
-                                                    options=options)
-            if output_base_name:
-                if (os.path.exists(output_base_name) or os.path.exists(str(Path(output_base_name).with_suffix("")) + "_0.wav")):
-                    msg = QMessageBox()
-                    msg.setIcon(QMessageBox.Question)
-                    msg.setText("overwrite file")
-                    msg.setInformativeText("you are about to overwrite an existing file. Do you really want to proceed ?")
-                    msg.setWindowTitle("overwrite")
-                    msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-                    msg.buttonClicked.connect(self.popup)
-                    msg.exec_()
-                    if self.yesno == "&Yes":
+        if not self.m["preview"]:
+            while existcheck:
+                options = QFileDialog.Options()
+                #options |= QFileDialog.DontUseNativeDialog
+                #TODO: why does it take so long to display the existing file list ?
+                output_base_name, _ = QFileDialog.getSaveFileName(self.m["QTMAINWINDOWparent"], 
+                                                        "Save File", 
+                                                        self.m["recording_path"],  # Standard rec path, Standardmäßig kein voreingestellter Dateiname
+                                                        "wav Files (*.wav)",  # Filter for data type wav
+                                                        options=options)
+                if output_base_name:
+                    if (os.path.exists(output_base_name) or os.path.exists(str(Path(output_base_name).with_suffix("")) + "_0.wav")):
+                        msg = QMessageBox()
+                        msg.setIcon(QMessageBox.Question)
+                        msg.setText("overwrite file")
+                        msg.setInformativeText("you are about to overwrite an existing file. Do you really want to proceed ?")
+                        msg.setWindowTitle("overwrite")
+                        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+                        msg.buttonClicked.connect(self.popup)
+                        msg.exec_()
+                        if self.yesno == "&Yes":
+                            existcheck = False
+                    else:
                         existcheck = False
                 else:
                     existcheck = False
-            else:
-                existcheck = False
-                self.activate_control_elements(True)
-                self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_band_thread)
-                return(False)
-        
+                    self.activate_control_elements(True)
+                    self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_band_thread)
+                    return(False)
+        else:
+            output_base_name = os.path.join(self.m["recording_path"],"preview_temp_000.wav")
+
         #TODO TODO: modify output base name so that it doesn't contain any extension and no _# at the end
 
 
@@ -1945,8 +1985,16 @@ class synthesizer_v(QObject):
         
         self.toggle = False
         self.modulate_thread = QThread(parent = self)
-        self.modulate_worker = modulate_worker() #TODO TODO TODO: test new worker
-        #self.modulate_worker = modulate_worker_ffmpeg() #TODO TODO TODO: test new worker
+        if self.gui.synthesizer_radioBut_FAST_mode.isChecked():
+            self.modulate_worker = modulate_worker_ffmpeg() #TODO TODO TODO: test new worker
+        else:
+            self.modulate_worker = modulate_worker()
+        if self.gui.synthesizer_radioBut_FAST_autolevel.isChecked():
+            self.modulate_worker.set_autolevel(True)
+        else:
+            self.modulate_worker.set_autolevel(False)       
+
+
         self.modulate_worker.moveToThread(self.modulate_thread)
         self.modulate_worker.set_carrier_frequencies(carrier_frequencies)
         #self.modulate_worker.set_synthesizer_temp_path(self.m["temp_path"])
