@@ -30,6 +30,7 @@ import soundfile as sf
 from scipy.signal import sosfilt, butter, resample
 from pathlib import Path
 import urllib
+import sys
 import urllib.request
 
 import platform
@@ -54,7 +55,7 @@ class modulate_worker(QObject):
         __slots__: Dictionary with parameters
     :return : none
     """
-    __slots__ = ["carrier_frequencies", "playlists","sample_rate","block_size","cutoff_freq","modulation_depth","output_base_name","exp_num_samples","progress","logger","combined_signal_block","LO_freq","gain", "method_object","silence_duration","filesize_limit"]
+    __slots__ = ["carrier_frequencies", "playlists","sample_rate","block_size","cutoff_freq","modulation_depth","output_base_name","exp_num_samples","progress","logger","combined_signal_block","LO_freq","gain", "method_object","silence_duration","filesize_limit","ffmpeg_path","synthesizer_temp_path"]
     SigFinished = pyqtSignal()
     SigPupdate = pyqtSignal()
     SigMessage = pyqtSignal(str)
@@ -132,7 +133,15 @@ class modulate_worker(QObject):
     def set_filesize_limit(self,_value):
         self.__slots__[15] = _value
     def get_filesize_limit(self):
-        return(self.__slots__[15]) 
+        return(self.__slots__[15])
+    def set_ffmpeg_path(self,_value):
+        self.__slots__[16] = _value
+    def get_ffmpeg_path(self):
+        return(self.__slots__[16])
+    def set_synthesizer_temp_path(self,_value):
+        self.__slots__[17] = _value
+    def get_synthesizer_temp_path(self):
+        return(self.__slots__[17])
     
     def modulate_terminate(self):
         print("modulate terminate received")
@@ -274,102 +283,6 @@ class modulate_worker(QObject):
         self.SigMessage.emit("----")
         return expected_max_amp, expected_RMS_amp
 
-#     def modulate_block_ffmpeg(self, audio_block, carrier_freq, target_sample_rate, modulation_depth, cutoff_freq):
-#         #TODO TODO TODO: try out ffmpeg modulator, but there are transient jumps to be expected at the block borders
-#         """modulate audio block with ffmpeg to current carrier
-
-#         :param audio_block: _description_
-#         :type audio_block: _type_
-#         :param carrier_freq: _description_
-#         :type carrier_freq: _type_
-#         :param target_sample_rate: _description_
-#         :type target_sample_rate: _type_
-#         :param modulation_depth: _description_
-#         :type modulation_depth: _type_
-#         :param cutoff_freq: _description_
-#         :type cutoff_freq: _type_
-#         """
-#         pregain = 1
-#         sinus_sign = np.sign(carrier_freq) 
-#         a = (np.tan(np.pi * abs(carrier_freq) / target_sample_rate) - 1) / (np.tan(np.pi * abs(carrier_freq) / target_sample_rate) + 1)
-
-# # cmd = [
-# #     "ffmpeg",
-# #     "-hide_banner", "-loglevel", "error",
-# #     "-f", "f32le",            # Eingabeformat: float32 PCM
-# #     "-ar", str(tSR),          # Sample Rate
-# #     "-ac", "1",               # Mono
-# #     "-i", "pipe:0",           # Lesen von stdin
-# #     "-filter_complex", filter_chain,
-# #     "-f", "f32le",            # Rückgabe: float32 PCM
-# #     "-ac", "2",               # Stereo (für IQ)
-# #     "pipe:1"                  # Schreiben an stdout
-# # ]
-
-
-# # # Subprozess starten
-# # proc = subprocess.Popen(
-# #     cmd,
-# #     stdin=subprocess.PIPE,
-# #     stdout=subprocess.PIPE,
-# #     stderr=subprocess.PIPE
-# # )
-
-# # # Daten senden und Ergebnis lesen
-# # out_bytes, err = proc.communicate(audio_in.tobytes())
-
-# # # In numpy umwandeln
-# # output = np.frombuffer(out_bytes, dtype=np.float32).reshape(-1, 2)  # (N, 2) Stereo
-
-# # # Jetzt ist output[:, 0] der Realteil, output[:, 1] der Imaginärteil
-
-#         ffmpeg_cmd = [
-#             "ffmpeg", "-y", "-loglevel", "error", "-hide_banner",
-#             #"-ss", "0", "-t", "30.0", #30s von 0 weg verarbeiten 
-#             "-i", "pipe:0",  # Lies direkt von input pipe
-#             "-filter_complex",
-#             # FILTERCHAIN
-#             # 1. Downmix zu Mono, Resampling, Normalisierung
-#             "[0:a]aformat=sample_fmts=s16:channel_layouts=stereo,aresample=osr=" + str(target_sample_rate) +
-#             ",pan=mono|c0=.5*c0+.5*c1" +
-#             ",volume=1.0" +
-#             ",lowpass=f=" + str(cutoff_freq) +
-#             ",lowpass=f=" + str(cutoff_freq) +
-#             ",lowpass=f=" + str(cutoff_freq) +
-#             ",lowpass=f=" + str(cutoff_freq) +
-#             "[mono_lp];"
-#             # ",pan=mono|c0=.5*c0+.5*c1,volume=1.0[mono];"
-#             # 2. Sinus-Generator, Cosinus über Allpassfilter (biquad)
-#             "sine=frequency=" + str(abs(carrier_freq)) + ":sample_rate=" + str(target_sample_rate) + "[sine_base];"
-#             "[sine_base]asplit=2[sine_for_sin][sine_for_cos];"
-#             "[sine_for_sin]volume=volume=" + str(sinus_sign) + "[sine_sin_raw];"
-#             "[sine_sin_raw]asplit=3[sine_sin][carrier_sin][carrier_sin_deb];"
-#             "[sine_for_cos]biquad=b0=" + str(a) + ":b1=1:b2=0:a0=1:a1=" + str(a) + ":a2=0[sine_cos_base];"
-#             "[sine_cos_base]asplit=3[sine_cos][carrier_cos][carrier_cos_deb];"
-            
-#             # # 3. Modulation (1 + modulation_factor * Y)
-#             # Modulationsanteil:
-#             "[mono_lp]volume=volume=" + str(modulation_depth) + "[modsig];"
-#             "[modsig]asplit=2[modsig1][modsig2];"
-#             "[modsig1][sine_cos]amultiply[mod_re_component];"
-#             "[modsig2][sine_sin]amultiply[mod_im_component];"
-
-#             # 4. Add DC = sin/cos-Anteil (1 * sin(t) bzw. 1 * cos(t))
-#             # 4. Trägeranteil zu Modulationsanteil addieren
-#             "[mod_re_component][carrier_cos]amix=inputs=2:duration=shortest[modre];"
-#             "[mod_im_component][carrier_sin]amix=inputs=2:duration=shortest[modim];"
-#             "[carrier_cos_deb]anullsink;"
-#             "[carrier_sin_deb]anullsink;"
-#             # 5. Pregain anwenden
-#             "[modre]volume=volume=" + str(pregain) + "[outre];"
-#             "[modim]volume=volume=" + str(pregain) + "[outim];"
-#             "[outre][outim]amerge=inputs=2[merged];[merged]pan=stereo|c0=0.5*c0|c1=0.5*c1[stereoout]",
-
-#             "-map", "[stereoout]",
-#             "-c:a", "pcm_s16le",
-#             "-f", "s16le",   # reines RAW-PCM
-#             "pipe:1"
-#         ]
 
     def read_and_process_audio_blockwise(self, file_list, carrier_freq, target_sample_rate, ref_block_size, modulation_depth, zi, sample_offset, current_file_index, file_handles, audio_gain, silence, cumulative_time,sos, phase):
         """
@@ -412,6 +325,7 @@ class modulate_worker(QObject):
             # check if file open, if not: check level and power statistics, afterwards open the file and save the handles
             if (current_file_index not in file_handles) and (not silence):
                 #print(f"############### index: {current_file_index} file_handles: {file_handles}, file path: {file_path}")
+                print(carrier_freq)
                 max_level, RMS_amp = self.get_wav_maxlevel(file_path, carrier_freq, threshold_percentile, spike_duration_ms)
                 audio_gain = self.AUDIO_MAXAMP/max_level
                 self.logger.debug(f"Audiofile {file_path} max_level: {max_level}, RMS_amp: {RMS_amp}, audio_gain auto: {audio_gain}")
@@ -516,9 +430,10 @@ class modulate_worker(QObject):
         :type modulation_depth: _type_
         :param output_base_name: _description_
         :type output_base_name: _type_
-        :param exp_num_samples: _description_
-        :type exp_num_samples: _type_
+        :param exp_num_samples: expected number of samples
+        :type exp_num_samples: integer
         """
+        print(f"#######################  carrier frequencies: {carrier_frequencies}")
         self.set_progress(0)
         self.logger.debug(f"process_multiple_carriers_blockwise; carrier_frequencies:{carrier_frequencies}")
         self.stopix = False
@@ -690,8 +605,502 @@ class modulate_worker(QObject):
         self.mutex.unlock()
         return wavheader["stoptime_dt"]
 
+class modulate_worker_ffmpeg(QObject):
+    """ worker class for generating modulated signals in a separate thread with ffmpeg
+    :param : no regular parameters; as this is a thread worker communication occurs via
+        __slots__: Dictionary with parameters
+    :return : none
+    """
+    __slots__ = ["carrier_frequencies", "playlists","sample_rate","block_size","cutoff_freq","modulation_depth","output_base_name","exp_num_samples","progress","logger","combined_signal_block","LO_freq","gain", "method_object","silence_duration","filesize_limit","ffmpeg_path","synthesizer_temp_path"]
+    SigFinished = pyqtSignal()
+    SigPupdate = pyqtSignal()
+    SigMessage = pyqtSignal(str)
+    SigError = pyqtSignal(str)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.stopix = False #TODO: check if necessary
+        self.mutex = QMutex() #TODO: check if necessary
+        self.CHUNKSIZE = int(1024**2) #TODO: check if necessary, not used anywhere
+        self.AUDIO_MAXAMP = 0.9 #max amplitude of the audio signal
+        #self.SILENCE_DURATION = 4   #Default duration of silent periods between subsequent audio files (s)
+
+ 
+    def set_carrier_frequencies(self,_value):
+        self.__slots__[0] = _value
+    def get_carrier_frequencies(self):
+        return(self.__slots__[0])
+    def set_playlists(self,_value):
+        self.__slots__[1] = _value
+    def get_playlists(self):
+        return(self.__slots__[1])
+    def set_sample_rate(self,_value):
+        self.__slots__[2] = _value
+    def get_sample_rate(self):
+        return(self.__slots__[2])
+    def set_block_size(self,_value): #NOT NEEDED
+        self.__slots__[3] = _value
+    def get_block_size(self):#NOT NEEDED
+        return(self.__slots__[3])
+    def set_cutoff_freq(self,_value):
+        self.__slots__[4] = _value
+    def get_cutoff_freq(self):
+        return(self.__slots__[4])
+    def set_modulation_depth(self,_value):
+        self.__slots__[5] = _value
+    def get_modulation_depth(self):
+        return(self.__slots__[5])
+    def set_output_base_name(self,_value):
+        self.__slots__[6] = _value
+    def get_output_base_name(self):
+        return(self.__slots__[6])
+    def set_exp_num_samples(self,_value):
+        self.__slots__[7] = _value
+    def get_exp_num_samples(self):
+        return(self.__slots__[7])
+    def set_progress(self,_value):
+        self.__slots__[8] = _value
+    def get_progress(self):
+        return(self.__slots__[8])
+    def set_logger(self,_value):
+        self.__slots__[9] = _value
+    def get_logger(self):
+        return(self.__slots__[9])
+    def set_combined_signal_block(self,_value):
+        self.__slots__[10] = _value
+    def get_combined_signal_block(self):
+        return(self.__slots__[10])
+    def set_LO_freq(self,_value):
+        self.__slots__[11] = _value
+    def get_LO_freq(self):
+        return(self.__slots__[11])
+    def set_gain(self,_value):
+        self.__slots__[12] = _value
+    def get_gain(self):
+        return(self.__slots__[12])
+    def set_method_object(self,_value):
+        self.__slots__[13] = _value
+    def get_method_object(self):
+        return(self.__slots__[13])
+    def set_silence_duration(self,_value):
+        self.__slots__[14] = _value
+    def get_silence_duration(self):
+        return(self.__slots__[14])  
+    def set_filesize_limit(self,_value):
+        self.__slots__[15] = _value
+    def get_filesize_limit(self):
+        return(self.__slots__[15])
+    def set_ffmpeg_path(self,_value):
+        self.__slots__[16] = _value
+    def get_ffmpeg_path(self):
+        return(self.__slots__[16])
+    def set_synthesizer_temp_path(self,_value):
+        self.__slots__[17] = _value
+    def get_synthesizer_temp_path(self):
+        return(self.__slots__[17])
+    
+    def modulate_terminate(self):
+        print("modulate terminate received")
+        self.stopix = True
+
+    def start_modulator(self):
+        """fetches several parameters from the main thread and starts process_multiple_carriers_ffmpeg
+        emits SigFinished after comletion of the task for triggering termination of the worker thread
+        """
+        print("ffmpeg start modulator reached")
+        self.logger = self.get_logger()
+        self.stopix = False
+        carrier_frequencies = self.get_carrier_frequencies()
+        playlists = self.get_playlists()
+        sample_rate = self.get_sample_rate()
+        #block_size = self.get_block_size()
+        cutoff_freq = self.get_cutoff_freq()
+        modulation_depth = self.get_modulation_depth()
+        output_base_name = self.get_output_base_name()
+        exp_num_samples = self.get_exp_num_samples()
+        silence_duration = self.get_silence_duration()
+        #init_phases = self.generate_multisine_phases(carrier_frequencies)
+        self.process_multiple_carriers_ffmpeg(carrier_frequencies, playlists, sample_rate, cutoff_freq, modulation_depth, output_base_name, exp_num_samples, silence_duration)
+        self.SigFinished.emit()
+    
+
+    def display_signal_level(self,signal):
+        """
+        calculate the RMS and peak values of a signal
+        """
+
+    def get_wav_maxlevel(self,wav_file, carrier_freq, threshold_percentile=95, spike_duration_ms=1):
+        """determine expected max signal level of an audio file. Do not consider short spikes with a duration of less than a ms
+
+        :param wav_file: path of the audio file
+        :type wav_file: str
+        :param threshold_percentile: allowable max signal in % of FSR, defaults to 95
+        :type threshold_percentile: int, optional
+        :param spike_duration_ms: max duration of a spike (will be ignored then), defaults to 1
+        :type spike_duration_ms: int, optional
+        :param carrier_freq: carrier frequency
+        :type carrier_freq: float
+        :return: expected max amp
+        :rtype: float
+        """
+        print(f"file: {Path(wav_file).stem} level checking")
+        LO_freq = self.get_LO_freq()
+        print(f"LO_freq: {LO_freq}, carrier_frequ: {carrier_freq}")
+        self.SigMessage.emit(f"auto level @ f {str(np.ceil((carrier_freq + LO_freq/1000)))}: " + Path(wav_file).stem)
+        #self.gui.label_audioset_name.setText(f"file: {Path(wav_file).stem} level checking")
+        #TODO CHECK last change:data, sample_rate = sf.read(wav_file)
+        method_object = self.get_method_object()
+        print(f"calling method: {method_object.readsoundfile}, argument: {wav_file}")
+                    #TODO TODO TODO LAST: catch error when returned False: Fils not foun o.ä. --> break loop
+
+        errorstatus, a = method_object.readsoundfile(wav_file)
+        #TODO CHECK: treat errorstatus correctly
+        #if not a:
+        if errorstatus:
+            self.SigError.emit(str(a))
+            self.SigFinished.emit()
+            #TODO: make correct errorhandling chain with errorstatus, value and treat in uppermost level !
+            return False
+        data = a.read()
+        sample_rate = a.samplerate
+        # convert to Mono, if signal is stereo TODO: check: mean may be lower than individual channel values !
+        if len(data.shape) > 1:
+            data = data.mean(axis=1)
+        # calc absolute amplitudes
+        amplitudes = np.abs(data)   
+        # calc sample duration in milliseconds
+        sample_duration_ms = 1000 / sample_rate
+        # calc number of samples which can be considered as 'short peaks'
+        max_spike_samples = int(spike_duration_ms / sample_duration_ms)
+        # Berechne den Schwellenwert für die Amplitude auf Basis des `threshold_percentile`-Perzentils
+        threshold_value = np.percentile(amplitudes, threshold_percentile)
+        # Erstelle eine Kopie der Amplituden und setze kurze Spitzen auf Null
+        filtered_amplitudes = amplitudes.copy() 
+        # Durchlaufe die Amplituden und setze kurze Spitzen unterhalb der max_spike_samples auf 0
+        for i in range(1, len(amplitudes) - 1):
+            # Wenn eine Amplitude den Schwellenwert überschreitet
+            if amplitudes[i] >= threshold_value:
+                # Prüfe, ob es eine kurze Spitze ist (alle Amplituden in diesem Bereich überschreiten den Schwellenwert)
+                start = max(i - max_spike_samples // 2, 0)
+                end = min(i + max_spike_samples // 2, len(amplitudes))
+                if np.all(amplitudes[start:end] >= threshold_value):
+                    # Setze die Spitzen im Bereich auf 0
+                    filtered_amplitudes[start:end] = 0
+        # Bestimme die erwartete maximale Amplitude nach Filterung der Spitzen
+        expected_max_amp = filtered_amplitudes.max() if filtered_amplitudes.size > 0 else amplitudes.max()
+        expected_RMS_amp = filtered_amplitudes.std() if filtered_amplitudes.size > 0 else amplitudes.std()
+        print("ready")
+        self.SigMessage.emit("----")
+        return expected_max_amp, expected_RMS_amp
 
 
+    def process_and_concat_audio(self,input_files, output_path, sample_rate=44100, fc_lp=4500, silence_duration=4.0):
+        assert len(input_files) > 0, "minimum one file is required"
+        print("process_and_concat_audio reached")
+        # 6x Lowpass-Filter for 12. order pseudo-Butterworth
+        lp_filter_chain = ",".join([f"lowpass=f={fc_lp}"] * 6)
+
+        inputs = []
+        filters = []
+        for idx, infile in enumerate(input_files):
+            inputs.extend(["-i", str(infile)])
+            filters.append(
+                f"[{idx}:a]"
+                f"aresample={sample_rate},"
+                f"pan=mono|c0=0.4*c0+0.4*c1," #TODO: 0.4 ist nur ein Versuch gegen Clipping
+                f"{lp_filter_chain}"
+                f"[a{idx}]"
+            )
+        # silence parts
+        num_silences = len(input_files) - 1
+        for j in range(num_silences):
+            inputs.extend([
+                "-f", "lavfi", "-t", str(silence_duration),
+                "-i", f"aevalsrc=0:d={silence_duration}:s={sample_rate}"
+            ])
+            filters.append(f"[{len(input_files) + j}:a]aresample={sample_rate}[s{j}]")
+        # concatenation: [a0][s0][a1][s1][a2]...
+        concat_parts = []
+        for i in range(len(input_files) + num_silences):
+            if i % 2 == 0:
+                concat_parts.append(f"[a{i // 2}]")
+            else:
+                concat_parts.append(f"[s{i // 2}]")
+
+        filter_concat = ";".join(filters) + ";" + "".join(concat_parts) + f"concat=n={len(concat_parts)}:v=0:a=1[outa]"
+
+        # FFmpeg-command
+        cmd = [
+            os.path.join(self.get_ffmpeg_path(), "ffmpeg"), "-y", *inputs,
+            #"ffmpeg", "-y", "-loglevel", "debug", *inputs,
+            "-filter_complex", filter_concat,
+            "-map", "[outa]",
+            #"-f", "s16le", "-acodec", "pcm_s16le", # for raw output
+            "-f", "wav", "-acodec", "pcm_s16le", #for debug
+            str(output_path)
+        ]
+        #print("Running FFmpeg command:\n", " ".join(cmd))
+        subprocess.run(cmd, check=True)
+
+    def run_ffmpeg_with_progress(self,ffmpeg_cmd, total_duration_sec, numcarriers, percent_old):
+        """Start ffmpeg command with intermediate output of the progress; progress is reported in 'progress'
+        :param ffmpeg_cmd: _description_
+        :type ffmpeg_cmd: _type_
+        :param total_duration_sec: _description_
+        :type total_duration_sec: _type_
+        """
+        process = subprocess.Popen(
+            ffmpeg_cmd,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            bufsize=1
+        )
+        time_re = re.compile(r'time=(\d+):(\d+):(\d+).(\d+)')
+
+        for line in process.stderr:
+            sys.stderr.write(line)  # optional: zeige FFmpeg-Ausgabe live
+            match = time_re.search(line)
+            if match:
+                h, m, s, ms = map(int, match.groups())
+                elapsed = h * 3600 + m * 60 + s + ms / 100.0
+                percent = (elapsed / total_duration_sec) * 100 / numcarriers + percent_old
+                print(f"\rProgress: {percent:.1f}%", end='')
+                #TODO TODO: send update signal for GUI progress bar here
+                self.set_progress(percent)
+                #TODO TODO TODO: generate signal block by reading the last section from the file being generated 
+                #so far DUMMY block
+                combined_signal_block = 0.7*np.ones(2**16, dtype=np.complex128)
+                #spr = np.abs(np.fft.fft(combined_signal_block[0:min(2**16,len(combined_signal_block))]))
+                self.set_combined_signal_block(combined_signal_block)
+                self.SigPupdate.emit()
+        process.wait()
+        print("\nDone.")
+        return percent
+
+    def process_multiple_carriers_ffmpeg(self, carrier_frequencies, playlists, sample_rate, cutoff_freq, modulation_depth, output_base_name, exp_num_samples, silence_duration):
+        """_summary_
+        Process audio from multiple playlists blockwise, each corresponding to a different carrier frequency.
+        Write the combined output to multiple WAV files if the 2 GB limit is exceeded.
+
+        :param carrier_frequencies: list of carrier frequencise
+        :type carrier_frequencies: list of float
+        :param playlists: _description_
+        :type playlists: _type_
+        :param sample_rate: sample rate
+        :type sample_rate: float
+        :param cutoff_freq: cutoff frequency of the lowpass filter for audio before modulation
+        :type cutoff_freq: float
+        :param modulation_depth: modulation depth
+        :type modulation_depth: float
+        :param output_base_name: filename of the SDR IQ file to be generated WITHOUT extension
+        :type output_base_name: str
+        :param exp_num_samples: expected number of samples #NEEDED ???
+        :type exp_num_samples: int #NEEDED ???
+        """
+        # carrier frequencies ist eine liste aller LO-Offsets in kHz !
+        # playlists[i][j] ist eine 2-Dim liste mit den vollen Pfaden der Audio Files, [i] ist der carrierindex, [j] ist der Audioindex einer Audioserie des carriers i
+        self.set_progress(0)
+        self.logger.debug(f"process_multiple_carriers_ffmpeg; carrier_frequencies:{carrier_frequencies}")
+        print(f"process_multiple_carriers_ffmpeg; carrier_frequencies:{carrier_frequencies}")
+        self.stopix = False
+        max_file_size = self.get_filesize_limit() #2 * 1024**3  # 2 GB in bytes
+        self.logger.debug(f"max filesize set to: {max_file_size}")
+        self.logger.debug(f"process_multiple_carriers_ffmpeg: expected overall filesize: {4*exp_num_samples}")
+        print(f"process_multiple_carriers_ffmpeg: expected overall filesize: {4*exp_num_samples}")
+
+        total_duration_sec = exp_num_samples / sample_rate
+        #max_samples_per_file = max_file_size // 4  # complex 16-bit PCM = 4 bytes per sample #OBSOLETE ?
+        #perc_progress_old = 0 #OBSOLETE ?
+        pregain = self.get_gain()
+        firstround = True
+        percent_old = 0
+        for ix, carrierf in enumerate(carrier_frequencies):
+        # loop over all carriers in list carrier_frequencies
+            self.logger.debug("################################")
+            self.logger.debug(f"modulation round: {ix}")
+            lo_shift = - carrierf*1000
+            #out_path = os.path.dirname(output_base_name)
+            #generate path and filenames for output and temp files
+            output_IQ_filename = f"{output_base_name}.raw"   ###########TODO TODO TODO: change temp path to subdir of output path
+            temp_path = self.get_synthesizer_temp_path()
+            temp_wav_cat_file = os.path.join(temp_path, "audio_cat_file.wav")
+            self.logger.debug(f"debug process_multiple_carriers_ffmpeg, temporary-file-path: {temp_path}")
+            self.logger.debug(f"debug process_multiple_carriers_ffmpeg, output-file-name: {output_IQ_filename}")
+            # generate concatenated autio file for carrier #
+            audio_sample_rate = 41100 #TODO: shift definition to more central location
+            self.SigMessage.emit(f"concatenate playlist @ f {str(np.ceil((carrier_frequencies[ix] + self.get_LO_freq()/1000)))}")                
+
+#Rem after tests 11-05            #self.SigMessage.emit(f"concatenating playlist @ f {str(np.ceil((carrier_frequencies[ix])))}")
+            self.process_and_concat_audio(playlists[ix], temp_wav_cat_file, audio_sample_rate, cutoff_freq, silence_duration)
+            self.logger.debug(f"proc. mult. carr. ffmpeg: carrier: {carrier_frequencies[ix]} Hz, LO_freq: {self.get_LO_freq()} Hz")
+            #configure allpass for sin/cos shift
+            a = (np.tan(np.pi * abs(lo_shift) / sample_rate) - 1) / (np.tan(np.pi * abs(lo_shift) / sample_rate) + 1)
+            sinus_sign = np.sign(lo_shift)  
+            ffmpeg_cmd = []
+
+            # rename out file to temp file if exists
+            temp_outfile_copy = os.path.join(temp_path, "temp_out.raw")
+
+            if ix > 0:
+                #move previous output file to temp_out.raw                
+                try:
+                    os.remove(temp_outfile_copy)  #TODO define good temp path
+                except:
+                    pass
+                try:
+                    os.rename(output_IQ_filename, temp_outfile_copy)  #TODO define good temp path
+                    print(f"Renamed {output_IQ_filename} to {temp_outfile_copy}")
+                except:
+                    pass
+            #TODO TODO TODO: shift cmd generation to extra function !
+            #generate cmd for ffmpeg
+            ffmpeg_cmd1 = [
+                os.path.join(self.get_ffmpeg_path(), "ffmpeg"), "-y", #"-loglevel", "error", "-hide_banner",
+                "-ss", "0", "-t", str(total_duration_sec), 
+                "-i", temp_wav_cat_file
+            ]
+
+            if not firstround:
+                mixterm = "[outre][outim]amerge=inputs=2[merged];[1:a][merged]amix=inputs=2:duration=shortest:dropout_transition=0:normalize=0[udated_iq_out]"
+            else:
+                mixterm = "[outre][outim]amerge=inputs=2[merged];[merged]pan=stereo|c0=0.5*c0|c1=0.5*c1[iq_out]"
+
+            ffmpeg_cmd2 = [
+                "-filter_complex",
+                # FILTERCHAIN
+                # 1. Downmix zu Mono, Resampling, Normalisierung
+                "[0:a]aformat=sample_fmts=s16:channel_layouts=stereo,aresample=osr=" + str(sample_rate) +
+                ",pan=mono|c0=.5*c0+.5*c1" +
+                ",volume=1.0" +
+                ",lowpass=f=" + str(cutoff_freq) +
+                ",lowpass=f=" + str(cutoff_freq) +
+                ",lowpass=f=" + str(cutoff_freq) +
+                ",lowpass=f=" + str(cutoff_freq) +
+                "[mono_lp];"
+                # 2. Sinus-Generator, Cosinus über Allpassfilter (biquad)
+                "sine=frequency=" + str(abs(lo_shift)) + ":sample_rate=" + str(sample_rate) + "[sine_base];"
+                "[sine_base]asplit=2[sine_for_sin][sine_for_cos];"
+                "[sine_for_sin]volume=volume=" + str(sinus_sign) + "[sine_sin_raw];"
+                "[sine_sin_raw]asplit=3[sine_sin][carrier_sin][carrier_sin_deb];"
+                "[sine_for_cos]biquad=b0=" + str(a) + ":b1=1:b2=0:a0=1:a1=" + str(a) + ":a2=0[sine_cos_base];"
+                "[sine_cos_base]asplit=3[sine_cos][carrier_cos][carrier_cos_deb];"
+                # # 3. Modulation (1 + modulation_factor * Y)
+                # modulation part:
+                "[mono_lp]volume=volume=" + str(modulation_depth) + "[modsig];"
+                "[modsig]asplit=2[modsig1][modsig2];"
+                "[modsig1][sine_cos]amultiply[mod_re_component];"
+                "[modsig2][sine_sin]amultiply[mod_im_component];"
+                # 4. Add carrier part = sin/cos-Anteil (1 * sin(t) bzw. 1 * cos(t))
+
+                "[mod_re_component][carrier_cos]amix=inputs=2:duration=shortest[modre];"
+                "[mod_im_component][carrier_sin]amix=inputs=2:duration=shortest[modim];"
+                "[carrier_cos_deb]anullsink;"
+                "[carrier_sin_deb]anullsink;"
+                # 5. apply Pregain anwenden
+                "[modre]volume=volume=" + str(pregain) + "[outre];"
+                "[modim]volume=volume=" + str(pregain) + "[outim];" + str(mixterm)
+            ]
+
+            ffmpeg_cmd3 = [
+                
+                "-c:a", "pcm_s16le",
+                "-f", "s16le",   # reines RAW-PCM
+                output_IQ_filename
+                #DEBUG LINES
+                #"-map", "[mod_debug_stereo]", "-c:a", "pcm_s16le", "-f", "wav", "debug_modre_modim.wav"
+            ]
+
+            # move output file of previous run to temp_out.raw
+
+            if firstround:
+                ffmpeg_intb = ["-map", "[iq_out]"]
+                ffmpeg_cmd = ffmpeg_cmd1 + ffmpeg_cmd2 + ffmpeg_intb + ffmpeg_cmd3
+                #print(ffmpeg_cmd)
+            else:
+                ffmpeg_inta = ["-f", "s16le", "-ar",  str(sample_rate), "-ac",  "2", "-i", temp_outfile_copy] #TODO: make this line dependent on run; this is not for run 0
+                ffmpeg_intb = ["-map", "[udated_iq_out]"
+                ]
+                ffmpeg_cmd = ffmpeg_cmd1+ ffmpeg_inta + ffmpeg_cmd2 + ffmpeg_intb + ffmpeg_cmd3
+
+            self.logger.debug("Generierter FFmpeg-Befehl:")
+            self.logger.debug(" ".join(ffmpeg_cmd))  # Zum Debuggen
+            self.SigMessage.emit(f"modulate c. {str(ix+1)}/{len(carrier_frequencies)} @ f {str(np.ceil((carrier_frequencies[ix] + self.get_LO_freq()/1000)))}")                
+            self.logger.debug(f"################ number of carriers: {len(carrier_frequencies)})")
+            percent_old = self.run_ffmpeg_with_progress(ffmpeg_cmd, total_duration_sec,len(carrier_frequencies), percent_old)
+            firstround = False
+
+            #print("synthesis completed, cleanup residuals")
+            self.SigMessage.emit("CLEANUP")
+
+            # Finally delete temp file
+            try:
+                os.remove(temp_outfile_copy)  #remove temporary out IQ file
+            except OSError as e:
+                print(f"Error deleting file: {e}")
+            try:
+                os.remove(temp_wav_cat_file)  #remove temporary audio concatenations
+
+            except OSError as e:
+                print(f"Error deleting file: {e}")
+
+                    # generate sdr-raw file for carrier # and write to out file
+                    # remove temp file if exists 
+
+        self.logger.debug(f"synthesizer worker carrier frequencies: {carrier_frequencies}")
+        # Initialize file_handles as a list of empty dictionaries for each carrier
+        # file_handles = [{} for _ in carrier_frequencies] 
+        # total_samples_written = 0
+        # overall_samples_written = 0
+        # file_index = 0
+        # audio_gain = np.zeros(len(playlists))
+
+        file_stats = os.stat(output_IQ_filename)
+        filesize = file_stats.st_size
+        #self.logger.debug(f"synthesizer modulate: filesize last out file: {filesize}")
+        output_file_name_with_wavheader = os.path.join(os.path.dirname(output_IQ_filename),Path(output_IQ_filename).stem)
+        output_file_name_with_wavheader += ".wav"
+        #check if file exists and delete it before renaming the new file
+        try:
+            os.remove(output_file_name_with_wavheader)
+        except:
+            pass
+        os.rename(output_IQ_filename, output_file_name_with_wavheader)
+        production_starttime = datetime.now()
+        production_starttime = production_starttime.astimezone(pytz.utc)
+        self.logger.debug(f"process multiple carriers ffmpeg: generate wavheader, filename: {output_file_name_with_wavheader} ")
+        self.wav_header_generator(output_file_name_with_wavheader,filesize,sample_rate, production_starttime,"")
+        # self.logger.debug(f"write last wavheader into {output_file_name_wavheader}")
+        
+        # #TODO : Check if already completely o.k. ! write true SDRUno-Header into the first 216 bytes of the closed file
+        # for file_handle_dict in file_handles:
+        #     for handle in file_handle_dict.values():
+        #         handle.close()
+        self.logger.debug(f"synthesizer ffmpeg modulate task completed, only raw IQ file written")
+        self.SigMessage.emit("JOB COMPLETED")
+
+    def wav_header_generator(self, output_file_name, filesize,sample_rate, starttime, next_output_file_name):
+        """generate wavheader for output_file_name:
+        :param: output_file_name
+        """
+        LO_freq = self.get_LO_freq()
+
+        playtime = filesize/4/sample_rate
+        self.mutex.lock()
+        self.logger.debug(f"wav_header_generator: playtime of file {playtime}")
+        self.logger.debug(f"wav_header_generator: calculated filesize of file {filesize}")
+        #generate basic SDR wavheader
+        wavheader = WAVheader_tools.basic_wavheader(self,0,int(np.floor(sample_rate)),LO_freq,16,filesize,starttime)
+        wavheader["starttime"] = [starttime.year, starttime.month, 0, starttime.day, starttime.hour, starttime.minute, starttime.second, int(starttime.microsecond/1000)]  
+        wavheader["starttime_dt"] = starttime
+        wavheader["stoptime_dt"] = wavheader["starttime_dt"] + ndatetime.timedelta(seconds = np.floor(playtime))
+        spt = wavheader["stoptime_dt"] 
+        wavheader["stoptime"] = [spt.year, spt.month, 0, spt.day, spt.hour, spt.minute, spt.second, int(spt.microsecond/1000)] 
+        wavheader["nextfilename"] = Path(next_output_file_name).stem + Path(next_output_file_name).suffix
+        self.logger.debug(f"wav_header_generator: wavheader {wavheader}")
+
+        WAVheader_tools.write_sdruno_header(self,output_file_name,wavheader,True) ##TODO TODO TODO Linux conf: self.m["f1"],self.m["wavheader"] must be in Windows format
+        self.mutex.unlock()
+        return wavheader["stoptime_dt"]
 
 
 class synthesizer_m(QObject):
@@ -1336,7 +1745,7 @@ class synthesizer_v(QObject):
         #use RMS value as indicator for signal strength 
         refvol = 0.71 #could be used for rescaling to amplitude values
         volume = np.linalg.norm(data)/refvol/np.sqrt(len(data))
-        self.logger.debug(f"synthesizer showRFdata volume: {volume} ")
+        #self.logger.debug(f"synthesizer showRFdata volume: {volume} ")
         span = 80
         #vol = 1.5*np.std(volume)/scl/refvol
         dBvol = 20*np.log10(volume)
@@ -1466,7 +1875,8 @@ class synthesizer_v(QObject):
                 self.errorhandler(value)
                 return
             self.autosave = False
-        self.preset_gain()
+        self.preset_gain()  #gain is set indirectly by setting the gain slider position
+
         #if self.gui.radiobutton_AGC.isChecked():
         #TODO TODO TODO: implement AGC method and AUTO clipping repair or clipping warning
             #gain = 10**((self.gui.verticalSlider_Gain.value()/100*90 - self.GAINOFFSET)/20)
@@ -1529,11 +1939,19 @@ class synthesizer_v(QObject):
         block_size = 2**18   # Maximum block length
         #total_reclength = self.get_reclength()
         #exp_num_samples = total_reclength * self.m["sample_rate"]*1000
+        synthesizer_temp_path = os.path.join(os.path.dirname(Path(output_base_name)),"temp")
+        if not os.path.exists(synthesizer_temp_path):
+            os.makedirs(synthesizer_temp_path)
+        
         self.toggle = False
         self.modulate_thread = QThread(parent = self)
-        self.modulate_worker = modulate_worker()
+        self.modulate_worker = modulate_worker() #TODO TODO TODO: test new worker
+        #self.modulate_worker = modulate_worker_ffmpeg() #TODO TODO TODO: test new worker
         self.modulate_worker.moveToThread(self.modulate_thread)
         self.modulate_worker.set_carrier_frequencies(carrier_frequencies)
+        #self.modulate_worker.set_synthesizer_temp_path(self.m["temp_path"])
+        self.modulate_worker.set_synthesizer_temp_path(synthesizer_temp_path)
+        self.modulate_worker.set_ffmpeg_path(self.m["ffmpeg_path"])
         self.modulate_worker.set_playlists(playlists)
         self.modulate_worker.set_sample_rate(int(self.m["sample_rate"]*1000))
         self.modulate_worker.set_block_size(block_size)

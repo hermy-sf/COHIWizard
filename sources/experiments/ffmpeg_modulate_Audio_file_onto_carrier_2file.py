@@ -135,17 +135,20 @@ pregain = 0.15 #TODO TODO: choose pregain according to expected total signal
 #format = self.get_formattag()
 
 #####True pathnames are not published here !
-filepath = "C:/#####"
+filepath = "C:/Users/scharfetter_admin/Downloads"
+temppath = "C:/Users/scharfetter_admin/Downloads/temp"
 
 #TODO: Filestart durch die sequenz '-skip_initial_bytes N', N = Byteoffset  genau trimmen
 output_filename = "test_output.raw"
 out_path = os.path.join(filepath, output_filename)
 
 reft = time.time()
-file_list = [Path("C:/####.wav"),
-             Path("C:/###.mp3"),
-             "http://####/#/#/####.mp3"]
+file_list = [Path("C:/Users/scharfetter_admin/Eigene Musik/Camerata Vocal Group/Just/01-They can't take that away from me.wav"),
+             Path("C:/Users/scharfetter_admin/Eigene Musik/Camerata Vocal Group/Just/03-Nobody knows.mp3"),
+             "http://ght.phonomuseum.at/Sound/x/pa_0002-6918.mp3"]
 
+file_list = [Path("C:/Users/scharfetter_admin/Eigene Musik/Comedian Harmonists/Greatest Hits - Vol. 1/08-Quant il pleut (Stormy Weather).wav"),
+            Path("C:/Users/scharfetter_admin/Eigene Musik/Comedian Harmonists/Greatest Hits - Vol. 1/13-Ein Freund, ein guter Freund.wav")]
 #ACHTUNG: lokale Dateinamen mit Path(), URLs bitte OHNE sonst error !
 
 carrier_list = [1400000, 800000, 900000, 540000,738000]
@@ -154,19 +157,19 @@ lp_freq = 4500
 
 ###############################################
 
-output_file = os.path.join(filepath, "audio_cat_file.raw")
-output_file = os.path.join(filepath, "audio_cat_file.wav") #NUR FÜR TEST
+audio_cat_file = os.path.join(filepath, "audio_cat_file.raw")
+audio_cat_file = os.path.join(temppath, "audio_cat_file.wav") #NUR FÜR TEST
 sample_rate = 41100
 silence_duration = 4.0
 
 # generate the concatenated audio file for carrier #
 #TODO: generate the cat file for each carrier individually
-process_and_concat_audio(file_list, output_file, sample_rate, lp_freq, silence_duration)
-cat_file_list = [output_file,output_file, output_file, output_file,output_file]
+process_and_concat_audio(file_list, audio_cat_file, sample_rate, lp_freq, silence_duration)
+cat_file_list = [audio_cat_file,audio_cat_file, audio_cat_file, audio_cat_file,audio_cat_file]
 
 # generate synthesis file sequentially for each carrier
 
-total_duration_sec = 500
+total_duration_sec = 30
 total_duration = str(total_duration_sec)
 #TODO TODO: get total duration of source audio
 
@@ -183,7 +186,7 @@ for ix,inputfile in enumerate(cat_file_list):
     ffmpeg_cmd = []
     if ix > 0:
     #move previous output file to temp_out.raw
-        previous_outfile = os.path.join(filepath, "temp_out.raw")
+        previous_outfile = os.path.join(temppath, "temp_out.raw")
         try:
             os.remove(previous_outfile)  #TODO define good temp path
         except:
@@ -271,16 +274,24 @@ for ix,inputfile in enumerate(cat_file_list):
 
     #delete previous_outfile in the last run
 
-    if ix == len(file_list) - 1:
-        try:
-            os.remove(previous_outfile)
-            print(f"Removed temporary intermediate product {previous_outfile}")
-        except OSError as e:
-            print(f"Error deleting file: {e}")
+    # if ix == len(file_list) - 1:
+    #     try:
+    #         os.remove(previous_outfile)
+    #         print(f"Removed temporary intermediate product {previous_outfile}")
+    #     except OSError as e:
+    #         print(f"Error deleting file: {e}")
 
 # Finally delete temp file
 try:
     os.remove(previous_outfile)  #TODO define good temp path
+
+except OSError as e:
+    print(f"Error deleting file: {e}")
+
+    # Finally delete temp file
+try:
+    os.remove(audio_cat_file)  #TODO define good temp path
+
 except OSError as e:
     print(f"Error deleting file: {e}")
 
