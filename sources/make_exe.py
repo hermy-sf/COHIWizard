@@ -34,7 +34,8 @@ list_widget_modules = list(config['widget'].values())
 hooks_path = os.path.join(os.getcwd())
 #root string
 #command = 'pyinstaller --icon=COHIWizard_ico4.ico --onefile --log-level=DEBUG --additional-hooks-dir=hooks --paths=' + hooks_path + ' -F COHIWizard.py '#pyinstaller --onefile --additional-hooks-dir=hooks dein_script.py
-command = 'pyinstaller --icon=COHIWizard_ico4.ico --onefile -F COHIWizard.py '#pyinstaller --onefile --additional-hooks-dir=hooks dein_script.py
+command = 'pyinstaller --icon=COHIWizard_ico4.ico --onefile COHIWizard.py --paths=. '#pyinstaller --onefile --additional-hooks-dir=hooks dein_script.py
+#command = 'pyinstaller --icon=COHIWizard_ico4.ico --onefile sources/COHIWizard.py --paths=sources'
 # include hidden imports according to config_modules.yaml
 for ix in range(len(list_mvct_directories)): 
     module = list_mvct_directories[ix] + "." + list_mvct_modules[ix] 

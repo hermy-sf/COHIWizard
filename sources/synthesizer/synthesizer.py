@@ -34,8 +34,7 @@ import sys
 import urllib.request
 
 import platform
-import zipfile
-import tarfile
+
 
 #import io
 # import pydub
@@ -1642,6 +1641,8 @@ class synthesizer_v(QObject):
         self.gui.listWidget_playlist.clear()
         # item = QtWidgets.QListWidgetItem()
         # self.gui.listWidget_sourcelist.addItem(item)
+        #newline
+        #newline
         self.gui.lineEdit_audiocutoff_freq.setText(self.STD_AUDIOBW)
         self.gui.lineEdit_carrierdistance.setText(self.STD_CARRIERDISTANCE)
         self.gui.spinBox_numcarriers.setProperty("value", self.DEF_NUMCARRIERS)
