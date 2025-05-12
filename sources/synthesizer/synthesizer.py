@@ -731,7 +731,7 @@ class modulate_worker_ffmpeg(QObject):
         self.process_multiple_carriers_ffmpeg(carrier_frequencies, playlists, sample_rate, cutoff_freq, modulation_depth, output_base_name, exp_num_samples, silence_duration)
         self.SigFinished.emit()
 
-    def process_and_concat_audio(self,input_files, output_path, sample_rate=44100, fc_lp=4500, silence_duration=4.0, autolevel_flag=False):
+    def process_and_concat_audio(self,input_files, output_path, sample_rate=44100, fc_lp=4500, silence_duration=4.0, autolevel_flag=False, max_duration_sec=None):
         """ concatenate multiple audio files with silence in between
         :param input_files: list of input files
         :type input_files: list
@@ -790,14 +790,20 @@ class modulate_worker_ffmpeg(QObject):
                 "[outa]loudnorm=I=-16:TP=-1.5:LRA=11[out]"
             )
 
+
         # FFmpeg-command
         cmd = [
             os.path.join(self.get_ffmpeg_path(), "ffmpeg"), "-y", *inputs,
             "-filter_complex", filter_concat,
-            "-map", "[out]",
-            "-f", "wav", "-acodec", "pcm_s16le", #for debug
-            str(output_path)
+            "-map", "[out]"
+            # "-f", "wav", "-acodec", "pcm_s16le", #for debug
+            # str(output_path)
         ]
+        if max_duration_sec is not None:
+            cmd.extend(["-t", str(max_duration_sec)])
+
+        cmd.extend(["-f", "wav", "-acodec", "pcm_s16le", str(output_path)])
+
         #print("Running FFmpeg command:\n", " ".join(cmd))
         subprocess.run(cmd, check=True)
 
@@ -867,7 +873,8 @@ class modulate_worker_ffmpeg(QObject):
         process = subprocess.Popen(
             ffmpeg_cmd,
             stderr=subprocess.PIPE,
-            universal_newlines=True,
+            text=True,  # entspricht universal_newlines=True
+            encoding='utf-8',
             bufsize=1
         )
         time_re = re.compile(r'time=(\d+):(\d+):(\d+).(\d+)')
@@ -952,7 +959,12 @@ class modulate_worker_ffmpeg(QObject):
             self.SigMessage.emit(f"concatenate playlist @ f {str(np.ceil((carrier_frequencies[ix] + self.get_LO_freq()/1000)))}")                
 
 #Rem after tests 11-05            #self.SigMessage.emit(f"concatenating playlist @ f {str(np.ceil((carrier_frequencies[ix])))}")
-            self.process_and_concat_audio(playlists[ix], temp_wav_cat_file, audio_sample_rate, cutoff_freq, silence_duration, AUTOLEVEL)
+            if str(output_base_name).find("preview_temp_000") > 0:
+                max_duration = 20
+                self.logger.debug(f"max duration during concat: {max_duration} s")
+            else:
+                max_duration = None
+            self.process_and_concat_audio(playlists[ix], temp_wav_cat_file, audio_sample_rate, cutoff_freq, silence_duration, AUTOLEVEL, max_duration)
             self.logger.debug(f"proc. mult. carr. ffmpeg: carrier: {carrier_frequencies[ix]} Hz, LO_freq: {self.get_LO_freq()} Hz")
             #configure allpass for sin/cos shift
             a = (np.tan(np.pi * abs(lo_shift) / sample_rate) - 1) / (np.tan(np.pi * abs(lo_shift) / sample_rate) + 1)
@@ -982,7 +994,8 @@ class modulate_worker_ffmpeg(QObject):
             ]
 
             if not firstround:
-                mixterm = "[outre][outim]amerge=inputs=2[merged];[1:a][merged]amix=inputs=2:duration=shortest:dropout_transition=0:normalize=0[udated_iq_out]"
+                mixterm = "[outre][outim]amerge=inputs=2[merged];[1:a]highpass=f=1000[filtered_input1];[filtered_input1][merged]amix=inputs=2:duration=shortest:dropout_transition=0:normalize=0[udated_iq_out]"
+                #mixterm = "[outre][outim]amerge=inputs=2[merged];[1:a][merged]amix=inputs=2:duration=shortest:dropout_transition=0:normalize=0[udated_iq_out]"
             else:
                 mixterm = "[outre][outim]amerge=inputs=2[merged];[merged]pan=stereo|c0=0.5*c0|c1=0.5*c1[iq_out]"
 
@@ -3661,6 +3674,20 @@ class TableDialog(QDialog):
         buttons.accepted.connect(self.accept)  # close dialogue and return OK
         buttons.rejected.connect(self.reject)  # close dialogue and return Cancel
         layout.addWidget(buttons)
+
+        # fill first row with empty item
+        self.table.setItem(0, 0, QTableWidgetItem(""))
+
+        # connect cellChanged signal
+        self.table.cellChanged.connect(self.handle_cell_changed)
+
+    def handle_cell_changed(self, row, column):
+        # If the changed cell is in the last row, append a new empty row
+        if row == self.table.rowCount() - 1:
+            self.table.blockSignals(True)  # avoid recursive signal
+            self.table.insertRow(self.table.rowCount())
+            self.table.setItem(self.table.rowCount() - 1, 0, QTableWidgetItem(""))
+            self.table.blockSignals(False)
 
     def get_table_data(self):
         """
