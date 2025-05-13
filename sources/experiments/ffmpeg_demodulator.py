@@ -25,7 +25,7 @@ def butterworth_biquad_coeffs(order, cutoff_freq, sample_rate):
     for section in sos:
         b0, b1, b2, a0, a1, a2 = section
         biquads.append((b0, b1, b2, a0, a1, a2))
-    
+
     return biquads  # Gibt eine Liste mit zwei Tupeln zurück (jeweils eine Stufe)
 
 # **2️⃣ Festlegen der gewünschten Grenzfrequenz & Sampling-Rate**
