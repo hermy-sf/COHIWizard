@@ -31,9 +31,9 @@ from scipy.signal import sosfilt, butter, resample
 from pathlib import Path
 import urllib
 import sys
-import urllib.request
-
+from scipy.optimize import fsolve
 import platform
+import psutil
 
 
 #import io
@@ -214,7 +214,6 @@ class modulate_worker(QObject):
         """
         N = len(frequencies)  # Anzahl der Frequenzkomponenten
         phases = np.array([-np.pi * k * (k - 1) / N for k in range(1, N + 1)])
-
         return phases
 
 
@@ -709,6 +708,35 @@ class modulate_worker_ffmpeg(QObject):
     def modulate_terminate(self):
         print("modulate terminate received")
         self.stopix = True
+    
+    def generate_multisine_delays(self,frequencies,sampling_rate,alignment=4):
+        """
+        Generates Schröder phases for a multisine signal and convert them to delays in Samples.
+        The phases are shifted so that the first entry is zero (reference phase)
+        :param: frequencies: List of frequency components (Hz) 
+        :type: list
+        :param: sampling_rate (S/s)
+        :type: int 
+        :param: alignment: block alignment: typical 4
+        :type: int
+        :return: delays: Array of delays in samples
+        :rtype: np.ndarray
+        :return: phases: Array of Schröder phases
+        :rtype: np.ndarray
+        """
+        N = len(frequencies)  # Anzahl der Frequenzkomponenten
+        phases = np.array([-np.pi * k * (k - 1) / N for k in range(1, N + 1)])
+        phases = phases - np.ones(len(phases)) * phases[0]  # subtract first phase --> first carrier is reference with zero phase
+        #convert to delays
+        delays = np.zeros(len(phases))
+        for i in range(len(phases)):
+            delays[i] = (phases[i] * sampling_rate * alignment) / (2 * np.pi * frequencies[i] )
+            #round to nearest alignment
+            delays[i] = int(np.round(delays[i] / alignment) * alignment)
+        return delays, phases
+
+# ph = w * T = w * ts * N / alignment = w/fs*N/alignment
+# N = ph * fs * alignment/ (w )
 
     def start_modulator(self):
         """fetches several parameters from the main thread and starts process_multiple_carriers_ffmpeg
@@ -869,6 +897,8 @@ class modulate_worker_ffmpeg(QObject):
         :return: progress value after current run
         :rtype: float
         """
+        errorstate = False
+        value = ""
         process = subprocess.Popen(
             ffmpeg_cmd,
             stderr=subprocess.PIPE,
@@ -898,9 +928,51 @@ class modulate_worker_ffmpeg(QObject):
                 #spr = np.abs(np.fft.fft(combined_signal_block[0:min(2**16,len(combined_signal_block))]))
                 self.set_combined_signal_block(combined_signal_block)
                 self.SigPupdate.emit()
+                if self.stopix:
+                    while process.poll() is None:
+                        self.mutex.lock()
+                        self.logger.debug("********__________ffmpeg>>>>>>>>>killing process")
+                        print("********__________ffmpeg>>>>>>>>>killing process")
+                        #Get the process and its children
+                        parent = psutil.Process(process.pid)
+                        children = parent.children(recursive=True)
+                        # Terminate the process and its children
+                        for child in children:
+                            child.terminate()
+                        #print(f" poll: {self.ret.poll()}")
+                        self.mutex.unlock()
+                        parent.wait(timeout=5)
+                        value = "terminated"
+                        errorstate = True
+                        return errorstate, value
+                        #print(f" poll: {self.ret.poll()}")
+                    #self.logger.debug("********__________soxwriter: terminate sox process on cancel")
+
         process.wait()
         print("\nDone.")
-        return percent
+        value = percent
+        return errorstate, value
+
+    def allpass_coeff_for_phase_shift(self, f0, fs, target_phi_rad):
+        """
+        calculates the coefficient a for an allpass of 1st order which has a desired phase
+        at the target frequency f0.
+        
+        :param f0: target frequency in Hz
+        :type f0: float
+        :param fs: sampling rate in Hz
+        :type fs: float
+        :param target_phi_rad: desired phase shift in rad
+        :type target_phi_rad: float array
+        :return a: coefficient for allpass of 1st order
+        :rtype: float
+        """
+        omega = 2 * np.pi * f0 / fs  # digitale Kreisfrequenz
+        numerator = np.tan(omega/2) - np.tan(target_phi_rad/2)
+        denominator = np.tan(omega/2) + np.tan(target_phi_rad/2)
+        a = numerator / denominator
+        return a
+
 
     def process_multiple_carriers_ffmpeg(self, carrier_frequencies, playlists, sample_rate, cutoff_freq, modulation_depth, output_base_name, exp_num_samples, silence_duration):
         """_summary_
@@ -933,10 +1005,16 @@ class modulate_worker_ffmpeg(QObject):
         self.logger.debug(f"max filesize set to: {max_file_size}")
         self.logger.debug(f"process_multiple_carriers_ffmpeg: expected overall filesize: {4*exp_num_samples}")
         print(f"process_multiple_carriers_ffmpeg: expected overall filesize: {4*exp_num_samples}")
+        abs_carrier_frequencies = carrier_frequencies * 1000 + np.ones(len(carrier_frequencies)) * self.get_LO_freq()
+        self.logger.debug(f"absolute carrier frequencies: {abs_carrier_frequencies}") 
+        alignment = 4                                                              
+        delays, phases = self.generate_multisine_delays(abs_carrier_frequencies,sample_rate,alignment)
+        phases = phases%np.pi/2
+        self.logger.debug(f"Schröder phases : {phases} and delays: {delays} @ sampling rate: {sample_rate} and frequencies: {abs_carrier_frequencies}")
+        #TODO TODO TODO: implement delays in ffmpeg filter chain
+
 
         total_duration_sec = exp_num_samples / sample_rate
-        #max_samples_per_file = max_file_size // 4  # complex 16-bit PCM = 4 bytes per sample #OBSOLETE ?
-        #perc_progress_old = 0 #OBSOLETE ?
         pregain = 10 * self.get_gain()
         self.logger.debug(f"pregain: {pregain}")
         firstround = True
@@ -946,7 +1024,6 @@ class modulate_worker_ffmpeg(QObject):
             self.logger.debug("################################")
             self.logger.debug(f"modulation round: {ix}")
             lo_shift = - carrierf*1000
-            #out_path = os.path.dirname(output_base_name)
             #generate path and filenames for output and temp files
             output_IQ_filename = f"{output_base_name}.raw"   ###########TODO TODO TODO: change temp path to subdir of output path
             temp_path = self.get_synthesizer_temp_path()
@@ -966,8 +1043,18 @@ class modulate_worker_ffmpeg(QObject):
             self.process_and_concat_audio(playlists[ix], temp_wav_cat_file, audio_sample_rate, cutoff_freq, silence_duration, AUTOLEVEL, max_duration)
             self.logger.debug(f"proc. mult. carr. ffmpeg: carrier: {carrier_frequencies[ix]} Hz, LO_freq: {self.get_LO_freq()} Hz")
             #configure allpass for sin/cos shift
-            a = (np.tan(np.pi * abs(lo_shift) / sample_rate) - 1) / (np.tan(np.pi * abs(lo_shift) / sample_rate) + 1)
+            a90 = (np.tan(np.pi * abs(lo_shift) / sample_rate) - 1) / (np.tan(np.pi * abs(lo_shift) / sample_rate) + 1)
             sinus_sign = np.sign(lo_shift)  
+            #TODO: calculate allpass filter coeffs for 90° phase shift
+            a = self.allpass_coeff_for_phase_shift(abs(lo_shift), sample_rate, np.pi/2)
+            #TODO: calculate allpass filter coeffs for Schröder phase shift,  CHECK what really happens for negative frequencies !
+            a1 = self.allpass_coeff_for_phase_shift(abs(lo_shift), sample_rate, phases[ix])
+            #idea: shift sine by schröder phase with allpass(a1) --> ref sine
+            # shift sine by schröder phase + pi/2 for cosine
+
+            self.logger.debug(f"allpass a1 coeffs: {a1}")
+            self.logger.debug(f"allpass a coeff for 90° {a90}")
+            self.logger.debug(f"allpass a coeff for 90° from coeffanalyticfunction: {a}")
             ffmpeg_cmd = []
 
             # rename out file to temp file if exists
@@ -1005,13 +1092,15 @@ class modulate_worker_ffmpeg(QObject):
                 "[0:a]aformat=sample_fmts=s16:channel_layouts=stereo,aresample=osr=" + str(sample_rate) +
                 ",pan=mono|c0=.5*c0+.5*c1" +
                 ",volume=1.0" +
-                ",lowpass=f=" + str(cutoff_freq) +
-                ",lowpass=f=" + str(cutoff_freq) +
-                ",lowpass=f=" + str(cutoff_freq) +
-                ",lowpass=f=" + str(cutoff_freq) +
+                # ",lowpass=f=" + str(cutoff_freq) +
+                # ",lowpass=f=" + str(cutoff_freq) +
+                # ",lowpass=f=" + str(cutoff_freq) +
+                # ",lowpass=f=" + str(cutoff_freq) +
                 "[mono_lp];"
                 # 2. Sinus-Generator, Cosinus über Allpassfilter (biquad)
-                "sine=frequency=" + str(abs(lo_shift)) + ":sample_rate=" + str(sample_rate) + "[sine_base];"
+                "sine=frequency=" + str(abs(lo_shift)) + ":sample_rate=" + str(sample_rate) + "[sine_base0];"
+                "[sine_base0]biquad=b0=" + str(a1) + ":b1=1:b2=0:a0=1:a1=" + str(a1) + ":a2=0[sine_base1];"
+                "[sine_base1]biquad=b0=" + str(a1) + ":b1=1:b2=0:a0=1:a1=" + str(a1) + ":a2=0[sine_base];"
                 "[sine_base]asplit=2[sine_for_sin][sine_for_cos];"
                 "[sine_for_sin]volume=volume=" + str(sinus_sign) + "[sine_sin_raw];"
                 "[sine_sin_raw]asplit=3[sine_sin][carrier_sin][carrier_sin_deb];"
@@ -1057,11 +1146,11 @@ class modulate_worker_ffmpeg(QObject):
 
             self.logger.debug("Generierter FFmpeg-Befehl:")
             self.logger.debug(" ".join(ffmpeg_cmd))  # Zum Debuggen
-            self.SigMessage.emit(f"modulate c. {str(ix+1)}/{len(carrier_frequencies)} @ f {str(np.ceil((carrier_frequencies[ix] + self.get_LO_freq()/1000)))}")                
+            self.SigMessage.emit(f"modulate c. {str(ix+1)}/{len(carrier_frequencies)} @ f {str(np.ceil((carrier_frequencies[ix] + self.get_LO_freq()/1000)))}, SP: {np.round(phases[ix]/np.pi*180*2,1)}")                
             self.logger.debug(f"################ number of carriers: {len(carrier_frequencies)})")
-            percent_old = self.run_ffmpeg_with_progress(ffmpeg_cmd, total_duration_sec,len(carrier_frequencies), percent_old, output_IQ_filename)
+            errorstate, value = self.run_ffmpeg_with_progress(ffmpeg_cmd, total_duration_sec,len(carrier_frequencies), percent_old, output_IQ_filename)
+            
             firstround = False
-
             #print("synthesis completed, cleanup residuals")
             self.SigMessage.emit("CLEANUP")
 
@@ -1078,6 +1167,9 @@ class modulate_worker_ffmpeg(QObject):
 
                     # generate sdr-raw file for carrier # and write to out file
                     # remove temp file if exists 
+            if errorstate:
+                break
+            percent_old = value
 
         self.logger.debug(f"synthesizer worker carrier frequencies: {carrier_frequencies}")
         # Initialize file_handles as a list of empty dictionaries for each carrier
