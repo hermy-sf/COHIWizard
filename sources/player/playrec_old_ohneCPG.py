@@ -467,7 +467,7 @@ class playrec_c(QObject):
         else:
             #auxi.standard_errorbox("dataformat not supported, only 16, 24 and 32 bits per sample are possible")
             errorstate = True
-            value = f"dataformat not supported, only {device_ID_dict ['resolutions']} bits per sample are possible"
+            value = f"dataformat not supported, only {device_ID_dict ["resolutions"]} bits per sample are possible"
             return(errorstate,value)
                 
         self.m["timescaler"] = self.m["wavheader"]['nSamplesPerSec']*self.m["wavheader"]['nBlockAlign']
@@ -847,7 +847,7 @@ class playrec_c(QObject):
                     if errorstate:
                         Formatcheck_False = True
                         #self.errorhandler(value)
-                        print(f"invalid STEMLABRATES, skip file in list: {self.m['f1']}")
+                        print(f"invalid STEMLABRATES, skip file in list: {self.m["f1"]}")
                     self.SigRelay.emit("cexex_playrec",["listhighlighter",self.m["playlist_ix"]])
                     time.sleep(0.1)
                 
@@ -1305,7 +1305,7 @@ class playrec_v(QObject):
                                        
             else:
                 errorstate = True
-                value = f"unknown connection type in SDR device driver: {self.m['device_ID_dict']['connection_type']}"
+                value = f"unknown connection type in SDR device driver: {self.m["device_ID_dict"]["connection_type"]}"
 
         except:
             self.logger.error("sdrdevice_changehandler: cannot identify SDR device")    

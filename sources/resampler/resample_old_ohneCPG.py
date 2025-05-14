@@ -1276,7 +1276,7 @@ class resample_c(QObject):
                 ffmpeg_type = "u8"
             else:
                 #TODO: implement standard error pipeline
-                auxi.standard_errorbox(f"Wav format {wFormatTag_TYPE} together with {str(self.m['sBPS'])} is not supported, this file cannot be processed")
+                auxi.standard_errorbox(f"Wav format {wFormatTag_TYPE} together with {str(self.m["sBPS"])} is not supported, this file cannot be processed")
                 return False
 
         elif self.m['wFormatTag']  == 3:
@@ -1285,7 +1285,7 @@ class resample_c(QObject):
                 ffmpeg_type = "f" + str(self.m["sBPS"]) + "le"
             else:
                 #TODO: implement standard error pipeline
-                auxi.standard_errorbox(f"Wav format {wFormatTag_TYPE} together with {str(self.m['sBPS'])} is not supported, this file cannot be processed")
+                auxi.standard_errorbox(f"Wav format {wFormatTag_TYPE} together with {str(self.m["sBPS"])} is not supported, this file cannot be processed")
                 return False
         else:
             #TODO: implement standard error pipeline
@@ -1303,7 +1303,7 @@ class resample_c(QObject):
                 ffmpeg_target_type = "u8"
             else:
                 #TODO: implement standard error pipeline
-                auxi.standard_errorbox(f"target Wav format {tFormatTag_TYPE} together with {str(self.m['tBPS'])} is not supported, this file cannot be processed")
+                auxi.standard_errorbox(f"target Wav format {tFormatTag_TYPE} together with {str(self.m["tBPS"])} is not supported, this file cannot be processed")
                 return False
         elif self.m['tFormatTag']  == 3:
             tFormatTag_TYPE = "floating-point"
@@ -1311,7 +1311,7 @@ class resample_c(QObject):
                 ffmpeg_target_type = "f" + str(self.m["tBPS"]) + "le"
             else:
                 #TODO: implement standard error pipeline
-                auxi.standard_errorbox(f"Wav format {tFormatTag_TYPE} together with {str(self.m['tBPS'])} is not supported, this file cannot be processed")
+                auxi.standard_errorbox(f"Wav format {tFormatTag_TYPE} together with {str(self.m["tBPS"])} is not supported, this file cannot be processed")
                 return False
         else:
             #TODO: implement standard error pipeline
@@ -1330,8 +1330,6 @@ class resample_c(QObject):
         #print(f">>>>>>>>oooooooooo   --> ffmpeg source format type: {ffmpeg_type}, target type: {ffmpeg_target_type}")
         self.logger.debug(f">>>>>>>>oooooooooo   --> ffmpeg source format type: {ffmpeg_type}, target type: {ffmpeg_target_type}")
 
-        # TODO: Obsolete, delete after tests 24-02-2025
-        #obsolete: soxstring = 'sox --norm=-3 -e ' + wFormatTag_TYPE + ' -t  ' + sox_filetype + ' -r ' + str(self.m["sSR"]) + ' -b '+ str(self.m["sBPS"]) + ' -c 2 ' + '"' + source_fn  + '"' + ' -e signed-integer -t raw -r ' + str(int(tSR)) + ' -b ' + str(self.m["tBPS"]) + ' -c 2 '  + '"' + target_fn  + '"' 
         #TODO TODO TODO: generalize ffmpeg command for all filetypes
         #soxstring = 'sox -e ' + wFormatTag_TYPE + ' -t  ' + sox_filetype + ' -r ' + str(self.m["sSR"]) + ' -b '+ str(self.m["sBPS"]) + ' -c 2 ' + '"' + source_fn  + '"' + ' -e signed-integer -t raw -r ' + str(int(tSR)) + ' -b ' + str(self.m["tBPS"]) + ' -c 2 '  + '"' + target_fn  + '"' + ' gain ' + str(self.m["resampling_gain"])
         # if self.m["sBPS"] == 24:
@@ -1356,7 +1354,6 @@ class resample_c(QObject):
 
         #ffmpeg_prefix = self.m["metadata"]["ffmpeg_path"]
         
-
 
         if self.m["actionlabel"] == "TYPE MATCH": #only recode between f32 and target SR
             #soxstring = 'ffmpeg -y -f f32le -ar ' + str(self.m["sSR"]) + ' -ac 2 -i ' + source_fn + ' -af "volume=normalize" -f ' + ffmpeg_target_type + ' ' + target_fn
@@ -1447,7 +1444,7 @@ class resample_c(QObject):
                 ffmpeg_type = "u8"
             else:
                 #TODO: implement standard error pipeline
-                auxi.standard_errorbox(f"Wav format {wFormatTag_TYPE} together with {str(self.m['sBPS'])} is not supported, this file cannot be processed")
+                auxi.standard_errorbox(f"Wav format {wFormatTag_TYPE} together with {str(self.m["sBPS"])} is not supported, this file cannot be processed")
                 return False
 
         elif self.m['wFormatTag']  == 3:
@@ -1456,7 +1453,7 @@ class resample_c(QObject):
                 ffmpeg_type = "f" + str(self.m["sBPS"]) + "le"
             else:
                 #TODO: implement standard error pipeline
-                auxi.standard_errorbox(f"Wav format {wFormatTag_TYPE} together with {str(self.m['sBPS'])} is not supported, this file cannot be processed")
+                auxi.standard_errorbox(f"Wav format {wFormatTag_TYPE} together with {str(self.m["sBPS"])} is not supported, this file cannot be processed")
                 return False
         else:
             #TODO: implement standard error pipeline
