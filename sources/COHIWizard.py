@@ -1,4 +1,4 @@
-#Version 2.1.0
+#Version 2.1.1
 # -*- coding: utf-8 -*-logfile
 # for redirecting all print messages to logfile : activate sys.stdout = self.logfile at the end of __init__
 #install Windows exe with: pyinstaller --icon=COHIWizard_ico4.ico –F COHIWizard.py
@@ -12,6 +12,7 @@
 
 """
 #@author: Hermann Scharfetter
+
 
 Core code with the purpose to 
 - instantiate all GUI widgets and modules
@@ -1201,7 +1202,7 @@ if __name__ == '__main__':
     xcore_v.updateConfigElements() 
     xcore_v.SigRelay.emit("cexex_all_",["canvasbuild",gui])   # communicate reference to gui instance to all modules which instanciate a canvas with auxi.generate_canvas(self,gridref,gridc,gridt,gui)
     xcore_v.SigRelay.emit("cm_all_",xcore_v.m["rootpath"])
-    print("COHIWIzard Version 2.1.0, 11-05-2025, (C) Hermann Scharfetter")
+    print("COHIWIzard Version 2.1.1, 18-05-2025, (C) Hermann Scharfetter")
 
     sys.exit(app.exec_())
 

@@ -1962,9 +1962,11 @@ class synthesizer_v(QObject):
         """
         self.gui.synthesizer_pushbutton_preview.clicked.disconnect(self.preview)
         preset_time = QTime(0,0,20) 
-        self.gui.timeEdit_reclength.setTime(preset_time)
+
         #self.preset_gain()
         if self.FIRSTPREVIEW:
+            self.create_duration = self.gui.timeEdit_reclength.time()
+            self.gui.timeEdit_reclength.setTime(preset_time)
             self.preset_gain()  #gain is set indirectly by setting the gain slider position
             self.FIRSTPREVIEW = False
         self.m["preview"] = True
@@ -1981,6 +1983,8 @@ class synthesizer_v(QObject):
         self.gui.synthesizer_pushbutton_create.clicked.disconnect(self.create_slot)
         time.sleep(0.5)
         self.activate_control_elements(False)
+        if self.m["preview"]:
+            self.gui.timeEdit_reclength.setTime(self.create_duration)
         palette = self.gui.synthesizer_pushbutton_create.palette()
         self.cancel_background_color = palette.color(self.gui.synthesizer_pushbutton_create.backgroundRole())
         if self.FIRSTPREVIEW:
@@ -2386,7 +2390,7 @@ class synthesizer_v(QObject):
         self.gui.lineEdit_audiocutoff_freq.setEnabled(value)
         self.gui.timeEdit_reclength.setEnabled(value)
         #self.gui.synthesizer_radioBut_Spectrum.setEnabled(value)
-        self.gui.radiobutton_AGC.setEnabled(value)
+        #self.gui.radiobutton_AGC.setEnabled(value)
         self.gui.synthesizer_radioBut_no2GBsplitting.setEnabled(value)
         
 
