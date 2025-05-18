@@ -11,15 +11,15 @@
    </rect>
   </property>
   <property name="sizePolicy">
-   <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
-    <horstretch>0</horstretch>
-    <verstretch>0</verstretch>
+   <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+    <horstretch>1</horstretch>
+    <verstretch>1</verstretch>
    </sizepolicy>
   </property>
   <property name="minimumSize">
    <size>
-    <width>1200</width>
-    <height>800</height>
+    <width>0</width>
+    <height>0</height>
    </size>
   </property>
   <property name="windowTitle">
@@ -34,13 +34,13 @@
      <widget class="QScrollArea" name="scrollArea">
       <property name="sizePolicy">
        <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-        <horstretch>0</horstretch>
-        <verstretch>0</verstretch>
+        <horstretch>1</horstretch>
+        <verstretch>1</verstretch>
        </sizepolicy>
       </property>
       <property name="maximumSize">
        <size>
-        <width>1500</width>
+        <width>16777215</width>
         <height>16777215</height>
        </size>
       </property>
@@ -61,9 +61,15 @@
         <rect>
          <x>0</x>
          <y>0</y>
-         <width>1222</width>
-         <height>838</height>
+         <width>1187</width>
+         <height>781</height>
         </rect>
+       </property>
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Expanding" vsizetype="Ignored">
+         <horstretch>1</horstretch>
+         <verstretch>1</verstretch>
+        </sizepolicy>
        </property>
        <layout class="QGridLayout" name="gridLayout">
         <item row="0" column="0">
@@ -73,19 +79,19 @@
           </property>
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
+            <horstretch>1</horstretch>
+            <verstretch>1</verstretch>
            </sizepolicy>
           </property>
           <property name="minimumSize">
            <size>
-            <width>1200</width>
-            <height>816</height>
+            <width>0</width>
+            <height>0</height>
            </size>
           </property>
           <property name="maximumSize">
            <size>
-            <width>1500</width>
+            <width>16777215</width>
             <height>16777215</height>
            </size>
           </property>
@@ -153,16 +159,22 @@
            <bool>false</bool>
           </property>
           <widget class="QWidget" name="tab_playrec">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+             <horstretch>1</horstretch>
+             <verstretch>1</verstretch>
+            </sizepolicy>
+           </property>
            <attribute name="title">
             <string>Player</string>
            </attribute>
            <layout class="QGridLayout" name="gridLayout_2">
             <item row="0" column="0">
-             <layout class="QGridLayout" name="gridLayout_10" columnstretch="0,0,0,0,0,0,0,0,0,0,0,0,0">
+             <layout class="QGridLayout" name="gridLayout_10" rowstretch="1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1" columnstretch="1,1,1,1,1,1,1,1,1,1,1,1,1,0">
               <property name="sizeConstraint">
-               <enum>QLayout::SetDefaultConstraint</enum>
+               <enum>QLayout::SetNoConstraint</enum>
               </property>
-              <item row="0" column="2">
+              <item row="0" column="3">
                <widget class="QLabel" name="label">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
@@ -175,8 +187,14 @@
                 </property>
                </widget>
               </item>
-              <item row="6" column="11">
+              <item row="6" column="12">
                <widget class="QLabel" name="label_8">
+                <property name="sizePolicy">
+                 <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                  <horstretch>0</horstretch>
+                  <verstretch>0</verstretch>
+                 </sizepolicy>
+                </property>
                 <property name="palette">
                  <palette>
                   <active>
@@ -360,7 +378,7 @@
                 </property>
                </widget>
               </item>
-              <item row="2" column="12">
+              <item row="2" column="13">
                <widget class="QComboBox" name="playrec_comboBox_startuptab">
                 <property name="enabled">
                  <bool>false</bool>
@@ -757,7 +775,7 @@
                 </property>
                </widget>
               </item>
-              <item row="3" column="7" rowspan="2">
+              <item row="3" column="8" rowspan="2">
                <widget class="QLabel" name="label_43">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Fixed" vsizetype="Maximum">
@@ -779,13 +797,13 @@ Track</string>
                 </property>
                </widget>
               </item>
-              <item row="0" column="10" rowspan="14" alignment="Qt::AlignBottom">
+              <item row="0" column="11" rowspan="14" alignment="Qt::AlignBottom">
                <widget class="QTableWidget" name="tableWidget">
                 <property name="enabled">
                  <bool>true</bool>
                 </property>
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Fixed" vsizetype="Maximum">
+                 <sizepolicy hsizetype="Fixed" vsizetype="Expanding">
                   <horstretch>0</horstretch>
                   <verstretch>0</verstretch>
                  </sizepolicy>
@@ -1084,7 +1102,7 @@ Track</string>
                 </item>
                </widget>
               </item>
-              <item row="20" column="8" colspan="3">
+              <item row="20" column="9" colspan="3">
                <widget class="QLabel" name="label_showdate">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
@@ -1114,7 +1132,7 @@ Track</string>
                 </property>
                </widget>
               </item>
-              <item row="9" column="11">
+              <item row="9" column="12">
                <widget class="QLabel" name="label_LO">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Minimum" vsizetype="Maximum">
@@ -1205,7 +1223,7 @@ Track</string>
                 </property>
                </widget>
               </item>
-              <item row="20" column="7">
+              <item row="20" column="8">
                <widget class="QCheckBox" name="checkBox_UTC">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Fixed" vsizetype="Maximum">
@@ -1226,7 +1244,7 @@ Track</string>
                 </property>
                </widget>
               </item>
-              <item row="10" column="4" colspan="2">
+              <item row="10" column="5" colspan="2">
                <widget class="QLabel" name="label_42">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Fixed" vsizetype="Minimum">
@@ -1246,7 +1264,7 @@ Track</string>
                 </property>
                </widget>
               </item>
-              <item row="17" column="11">
+              <item row="17" column="12">
                <widget class="QLabel" name="playrec_label_RECSTART">
                 <property name="enabled">
                  <bool>false</bool>
@@ -1337,8 +1355,14 @@ Track</string>
                 </property>
                </widget>
               </item>
-              <item row="6" column="12">
+              <item row="6" column="13">
                <widget class="QComboBox" name="comboBox_stemlab">
+                <property name="sizePolicy">
+                 <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                  <horstretch>0</horstretch>
+                  <verstretch>0</verstretch>
+                 </sizepolicy>
+                </property>
                 <item>
                  <property name="text">
                   <string>stemlab</string>
@@ -1346,13 +1370,13 @@ Track</string>
                 </item>
                </widget>
               </item>
-              <item row="11" column="12">
+              <item row="11" column="13">
                <widget class="QLineEdit" name="lineEdit_LO_bias">
                 <property name="enabled">
                  <bool>false</bool>
                 </property>
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
+                 <sizepolicy hsizetype="Minimum" vsizetype="Maximum">
                   <horstretch>0</horstretch>
                   <verstretch>0</verstretch>
                  </sizepolicy>
@@ -1461,15 +1485,15 @@ Track</string>
                 </property>
                </widget>
               </item>
-              <item row="6" column="7">
+              <item row="6" column="8">
                <widget class="QPushButton" name="pushButton_adv1byte">
                 <property name="enabled">
                  <bool>true</bool>
                 </property>
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Fixed" vsizetype="Minimum">
-                  <horstretch>0</horstretch>
-                  <verstretch>0</verstretch>
+                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                  <horstretch>1</horstretch>
+                  <verstretch>1</verstretch>
                  </sizepolicy>
                 </property>
                 <property name="font">
@@ -1569,7 +1593,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="14" column="8">
+              <item row="14" column="9">
                <widget class="QLabel" name="label_9">
                 <property name="enabled">
                  <bool>true</bool>
@@ -1723,7 +1747,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="15" column="12">
+              <item row="15" column="13">
                <widget class="QTimeEdit" name="playrec_RECLENGTH_timeEdit">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
@@ -1744,7 +1768,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="4" column="12">
+              <item row="4" column="13">
                <widget class="QRadioButton" name="playrec_radioButtonpushButton_write_logfile">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Minimum" vsizetype="Maximum">
@@ -1913,13 +1937,13 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="7" column="7">
+              <item row="7" column="8">
                <widget class="QLabel" name="Label_Recindicator">
                 <property name="enabled">
                  <bool>true</bool>
                 </property>
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Fixed" vsizetype="Minimum">
+                 <sizepolicy hsizetype="Expanding" vsizetype="Minimum">
                   <horstretch>0</horstretch>
                   <verstretch>0</verstretch>
                  </sizepolicy>
@@ -2189,12 +2213,12 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="11" column="0" rowspan="7" colspan="4">
+              <item row="11" column="0" rowspan="7" colspan="5">
                <widget class="QListWidget" name="listWidget_sourcelist">
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
-                  <horstretch>0</horstretch>
-                  <verstretch>0</verstretch>
+                 <sizepolicy hsizetype="Expanding" vsizetype="Minimum">
+                  <horstretch>1</horstretch>
+                  <verstretch>1</verstretch>
                  </sizepolicy>
                 </property>
                 <property name="minimumSize">
@@ -2205,7 +2229,7 @@ UFL</string>
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>700</width>
+                  <width>2000</width>
                   <height>400</height>
                  </size>
                 </property>
@@ -2243,15 +2267,15 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="6" column="2" alignment="Qt::AlignHCenter">
+              <item row="6" column="3" alignment="Qt::AlignHCenter">
                <widget class="QPushButton" name="pushButton_Stop">
                 <property name="enabled">
                  <bool>true</bool>
                 </property>
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-                  <horstretch>0</horstretch>
-                  <verstretch>0</verstretch>
+                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                  <horstretch>1</horstretch>
+                  <verstretch>1</verstretch>
                  </sizepolicy>
                 </property>
                 <property name="minimumSize">
@@ -2262,8 +2286,8 @@ UFL</string>
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>200</width>
-                  <height>49</height>
+                  <width>1000</width>
+                  <height>245</height>
                  </size>
                 </property>
                 <property name="font">
@@ -2303,7 +2327,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="7" column="11" colspan="2">
+              <item row="7" column="12" colspan="2">
                <widget class="QLabel" name="label_BW_2">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
@@ -2432,13 +2456,13 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="10" column="12">
+              <item row="10" column="13">
                <widget class="QComboBox" name="comboBox_playrec_targetSR_2">
                 <property name="enabled">
                  <bool>true</bool>
                 </property>
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
+                 <sizepolicy hsizetype="Minimum" vsizetype="Maximum">
                   <horstretch>0</horstretch>
                   <verstretch>0</verstretch>
                  </sizepolicy>
@@ -2491,7 +2515,7 @@ UFL</string>
                 </item>
                </widget>
               </item>
-              <item row="0" column="5">
+              <item row="0" column="6">
                <widget class="QLabel" name="label_4">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
@@ -2504,13 +2528,13 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="8" column="12">
+              <item row="8" column="13">
                <widget class="QComboBox" name="comboBox_playrec_targetSR">
                 <property name="enabled">
                  <bool>true</bool>
                 </property>
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
+                 <sizepolicy hsizetype="Minimum" vsizetype="Maximum">
                   <horstretch>0</horstretch>
                   <verstretch>0</verstretch>
                  </sizepolicy>
@@ -2563,12 +2587,12 @@ UFL</string>
                 </item>
                </widget>
               </item>
-              <item row="1" column="1" rowspan="4" colspan="6">
+              <item row="1" column="1" rowspan="4" colspan="7">
                <widget class="QPushButton" name="pushButton">
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
                   <horstretch>1</horstretch>
-                  <verstretch>0</verstretch>
+                  <verstretch>1</verstretch>
                  </sizepolicy>
                 </property>
                 <property name="minimumSize">
@@ -2619,7 +2643,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="0" column="11" colspan="2">
+              <item row="0" column="12" colspan="2">
                <widget class="QLabel" name="label_BW_4">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Minimum" vsizetype="Maximum">
@@ -2775,12 +2799,12 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="11" column="4" rowspan="7" colspan="4">
+              <item row="11" column="5" rowspan="7" colspan="4">
                <widget class="QListWidget" name="listWidget_playlist">
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Fixed" vsizetype="Minimum">
+                 <sizepolicy hsizetype="Expanding" vsizetype="Minimum">
                   <horstretch>1</horstretch>
-                  <verstretch>0</verstretch>
+                  <verstretch>1</verstretch>
                  </sizepolicy>
                 </property>
                 <property name="minimumSize">
@@ -2817,15 +2841,15 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="6" column="4">
+              <item row="6" column="5">
                <widget class="QPushButton" name="pushButton_Loop">
                 <property name="enabled">
                  <bool>true</bool>
                 </property>
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-                  <horstretch>0</horstretch>
-                  <verstretch>0</verstretch>
+                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                  <horstretch>1</horstretch>
+                  <verstretch>1</verstretch>
                  </sizepolicy>
                 </property>
                 <property name="minimumSize">
@@ -2836,8 +2860,8 @@ UFL</string>
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>200</width>
-                  <height>49</height>
+                  <width>1000</width>
+                  <height>245</height>
                  </size>
                 </property>
                 <property name="font">
@@ -2876,7 +2900,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="18" column="11" colspan="2">
+              <item row="18" column="12" colspan="2">
                <widget class="Line" name="line_3">
                 <property name="font">
                  <font>
@@ -2894,15 +2918,15 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="6" column="6">
+              <item row="6" column="7">
                <widget class="QPushButton" name="pushButton_REC">
                 <property name="enabled">
                  <bool>true</bool>
                 </property>
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Fixed" vsizetype="Maximum">
-                  <horstretch>0</horstretch>
-                  <verstretch>0</verstretch>
+                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                  <horstretch>1</horstretch>
+                  <verstretch>1</verstretch>
                  </sizepolicy>
                 </property>
                 <property name="minimumSize">
@@ -2913,8 +2937,8 @@ UFL</string>
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>200</width>
-                  <height>49</height>
+                  <width>1000</width>
+                  <height>245</height>
                  </size>
                 </property>
                 <property name="baseSize">
@@ -3157,7 +3181,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="19" column="12">
+              <item row="19" column="13">
                <widget class="QCheckBox" name="checkBox_TESTMODE">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
@@ -3178,15 +3202,15 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="6" column="3" alignment="Qt::AlignHCenter">
+              <item row="6" column="4" alignment="Qt::AlignHCenter">
                <widget class="QPushButton" name="pushButton_Play">
                 <property name="enabled">
                  <bool>true</bool>
                 </property>
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-                  <horstretch>0</horstretch>
-                  <verstretch>0</verstretch>
+                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                  <horstretch>1</horstretch>
+                  <verstretch>1</verstretch>
                  </sizepolicy>
                 </property>
                 <property name="minimumSize">
@@ -3197,8 +3221,8 @@ UFL</string>
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>200</width>
-                  <height>49</height>
+                  <width>1000</width>
+                  <height>245</height>
                  </size>
                 </property>
                 <property name="font">
@@ -3241,7 +3265,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="3" column="12">
+              <item row="3" column="13">
                <widget class="QLineEdit" name="playrec_lineEdit_recordingpath">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
@@ -3271,7 +3295,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="3" column="11">
+              <item row="3" column="12">
                <widget class="QPushButton" name="playrec_pushButton_recordingpath">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Minimum" vsizetype="Maximum">
@@ -3557,12 +3581,12 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="7" column="1" colspan="6">
+              <item row="7" column="1" colspan="7">
                <widget class="QLineEdit" name="lineEditCurTime">
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-                  <horstretch>0</horstretch>
-                  <verstretch>0</verstretch>
+                 <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                  <horstretch>1</horstretch>
+                  <verstretch>1</verstretch>
                  </sizepolicy>
                 </property>
                 <property name="minimumSize">
@@ -3573,7 +3597,7 @@ UFL</string>
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>800</width>
+                  <width>2000</width>
                   <height>28</height>
                  </size>
                 </property>
@@ -3590,13 +3614,13 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="0" column="8" rowspan="14" alignment="Qt::AlignBottom">
+              <item row="0" column="9" rowspan="14" alignment="Qt::AlignBottom">
                <widget class="QSlider" name="verticalSlider_Gain">
                 <property name="enabled">
                  <bool>true</bool>
                 </property>
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Fixed" vsizetype="Maximum">
+                 <sizepolicy hsizetype="Fixed" vsizetype="Expanding">
                   <horstretch>0</horstretch>
                   <verstretch>0</verstretch>
                  </sizepolicy>
@@ -3928,13 +3952,13 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="0" column="9" rowspan="14" alignment="Qt::AlignBottom">
+              <item row="0" column="10" rowspan="14" alignment="Qt::AlignBottom">
                <widget class="QProgressBar" name="progressBar_volume">
                 <property name="enabled">
                  <bool>true</bool>
                 </property>
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Minimum" vsizetype="Maximum">
+                 <sizepolicy hsizetype="Minimum" vsizetype="Expanding">
                   <horstretch>0</horstretch>
                   <verstretch>3</verstretch>
                  </sizepolicy>
@@ -4307,7 +4331,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="14" column="9" colspan="2">
+              <item row="14" column="10" colspan="2">
                <widget class="QLabel" name="label_27">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
@@ -4398,7 +4422,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="1" column="12">
+              <item row="1" column="13">
                <widget class="QLineEdit" name="lineEdit_IPAddress">
                 <property name="enabled">
                  <bool>false</bool>
@@ -4548,7 +4572,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="20" column="12">
+              <item row="20" column="13">
                <widget class="QPushButton" name="pushButton_Shutdown">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Fixed" vsizetype="Maximum">
@@ -4722,7 +4746,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="17" column="12">
+              <item row="17" column="13">
                <widget class="QDateTimeEdit" name="playrec_RECSTART_dateTimeEdit">
                 <property name="enabled">
                  <bool>false</bool>
@@ -4810,7 +4834,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="11" column="11">
+              <item row="11" column="12">
                <widget class="QRadioButton" name="radioButton_LO_bias">
                 <property name="enabled">
                  <bool>true</bool>
@@ -5039,7 +5063,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="16" column="11">
+              <item row="16" column="12">
                <widget class="QRadioButton" name="playrec_radioButton_RECAUTOSTART">
                 <property name="enabled">
                  <bool>true</bool>
@@ -5214,7 +5238,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="16" column="12">
+              <item row="16" column="13">
                <widget class="QFrame" name="frame_16">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
@@ -5329,7 +5353,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="20" column="11">
+              <item row="20" column="12">
                <widget class="QLabel" name="label_showtime">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
@@ -5359,7 +5383,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="10" column="11">
+              <item row="10" column="12">
                <widget class="QLabel" name="label_presetband">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Minimum" vsizetype="Maximum">
@@ -5447,7 +5471,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="10" column="0" colspan="3">
+              <item row="10" column="0" colspan="4">
                <widget class="QPushButton" name="pushButton_act_playlist">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Fixed" vsizetype="Minimum">
@@ -5498,7 +5522,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="1" column="11">
+              <item row="1" column="12">
                <widget class="QPushButton" name="pushButton_IP">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Minimum" vsizetype="Maximum">
@@ -5949,7 +5973,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="0" column="4">
+              <item row="0" column="5">
                <widget class="QLabel" name="label_3">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
@@ -5962,7 +5986,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="14" column="11" colspan="2">
+              <item row="14" column="12" colspan="2">
                <widget class="QLabel" name="label_35">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
@@ -6166,7 +6190,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="0" column="6">
+              <item row="0" column="7">
                <widget class="QLabel" name="label_5">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
@@ -6179,7 +6203,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="15" column="11">
+              <item row="15" column="12">
                <widget class="QLabel" name="playrec_label_REC_duration">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Minimum" vsizetype="Maximum">
@@ -6348,7 +6372,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="4" column="11">
+              <item row="4" column="12">
                <widget class="QLabel" name="label_BW_3">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Minimum" vsizetype="Maximum">
@@ -6493,13 +6517,13 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="8" column="0" colspan="8">
+              <item row="8" column="0" colspan="9">
                <widget class="QScrollBar" name="ScrollBar_playtime">
                 <property name="enabled">
                  <bool>true</bool>
                 </property>
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
                   <horstretch>0</horstretch>
                   <verstretch>0</verstretch>
                  </sizepolicy>
@@ -6764,7 +6788,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="0" column="3">
+              <item row="0" column="4">
                <widget class="QLabel" name="label_2">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
@@ -6777,15 +6801,15 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="6" column="5">
+              <item row="6" column="6">
                <widget class="QPushButton" name="pushButton_FF">
                 <property name="enabled">
                  <bool>true</bool>
                 </property>
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Fixed" vsizetype="Maximum">
-                  <horstretch>0</horstretch>
-                  <verstretch>0</verstretch>
+                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                  <horstretch>1</horstretch>
+                  <verstretch>1</verstretch>
                  </sizepolicy>
                 </property>
                 <property name="minimumSize">
@@ -6796,8 +6820,8 @@ UFL</string>
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>200</width>
-                  <height>49</height>
+                  <width>1000</width>
+                  <height>245</height>
                  </size>
                 </property>
                 <property name="font">
@@ -6843,10 +6867,10 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="9" column="12">
+              <item row="9" column="13">
                <widget class="QLineEdit" name="lineEdit_playrec_LO">
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
+                 <sizepolicy hsizetype="Minimum" vsizetype="Maximum">
                   <horstretch>0</horstretch>
                   <verstretch>0</verstretch>
                  </sizepolicy>
@@ -6867,7 +6891,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="2" column="11">
+              <item row="2" column="12">
                <widget class="QLabel" name="playrec_label_startuptab">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Minimum" vsizetype="Maximum">
@@ -6991,7 +7015,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="12" column="11" colspan="2">
+              <item row="12" column="12" colspan="2">
                <widget class="Line" name="line">
                 <property name="font">
                  <font>
@@ -7028,7 +7052,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="8" column="11">
+              <item row="8" column="12">
                <widget class="QLabel" name="label_BW">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Fixed" vsizetype="Maximum">
@@ -7146,7 +7170,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="5" column="11" colspan="2">
+              <item row="5" column="12" colspan="2">
                <widget class="Line" name="line_2">
                 <property name="font">
                  <font>
@@ -7166,7 +7190,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="19" column="2" colspan="9">
+              <item row="19" column="3" colspan="9">
                <widget class="QLabel" name="label_Filename_Player">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Fixed" vsizetype="Minimum">
@@ -7196,7 +7220,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="19" column="11">
+              <item row="19" column="12">
                <widget class="QCheckBox" name="core_checkBox_show_spectrum">
                 <property name="text">
                  <string>Show spectrum</string>
@@ -7206,15 +7230,15 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="6" column="1">
+              <item row="6" column="2">
                <widget class="QPushButton" name="pushButton_REW">
                 <property name="enabled">
                  <bool>true</bool>
                 </property>
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-                  <horstretch>0</horstretch>
-                  <verstretch>0</verstretch>
+                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                  <horstretch>1</horstretch>
+                  <verstretch>1</verstretch>
                  </sizepolicy>
                 </property>
                 <property name="minimumSize">
@@ -7225,8 +7249,8 @@ UFL</string>
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>200</width>
-                  <height>49</height>
+                  <width>1000</width>
+                  <height>245</height>
                  </size>
                 </property>
                 <property name="font">

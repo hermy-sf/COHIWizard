@@ -941,7 +941,7 @@ class modulate_worker_ffmpeg(QObject):
                             child.terminate()
                         #print(f" poll: {self.ret.poll()}")
                         self.mutex.unlock()
-                        parent.wait(timeout=5)
+                        parent.wait(timeout=20)
                         value = "terminated"
                         errorstate = True
                         return errorstate, value
@@ -1071,6 +1071,9 @@ class modulate_worker_ffmpeg(QObject):
                     print(f"Renamed {output_IQ_filename} to {temp_outfile_copy}")
                 except:
                     pass
+            
+            pregain = 10 * self.get_gain()
+
             #TODO TODO TODO: shift cmd generation to extra function !
             #generate cmd for ffmpeg
             ffmpeg_cmd1 = [
@@ -1552,6 +1555,7 @@ class synthesizer_v(QObject):
         self.DEF_NUMCARRIERS = 2
         self.cf_HI = int(self.STD_fclow) + int(self.STD_CARRIERDISTANCE) * self.DEF_NUMCARRIERS
         self.GAINOFFSET = 80
+        self.FIRSTPREVIEW = True #label for marking the first run of a creation task (incl previews)  
         self.gui = gui
         self.synthesizer_c = synthesizer_c
         #self.norepeat = False
@@ -1671,7 +1675,7 @@ class synthesizer_v(QObject):
         self.gui.pushButton_saveproject.clicked.connect(self.save_project)
         self.gui.pushButton_loadproject.clicked.connect(self.load_project)
         self.gui.pushButton_clearproject.clicked.connect(self.clear_project)
-        self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_band_thread)
+        self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_slot)
         self.gui.synthesizer_pushbutton_preview.clicked.connect(self.preview)
         #self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_band)
         self.gui.timeEdit_reclength.timeChanged.connect(self.carrier_ix_changed)
@@ -1747,7 +1751,7 @@ class synthesizer_v(QObject):
         self.gui.synthesizer_radioBut_no2GBsplitting.setEnabled(True)
         self.gui.synthesizer_radioBut_no2GBsplitting.setChecked(False)
         try:
-            self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_band_thread)
+            self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_slot)
         except:
             pass
 
@@ -1959,11 +1963,32 @@ class synthesizer_v(QObject):
         self.gui.synthesizer_pushbutton_preview.clicked.disconnect(self.preview)
         preset_time = QTime(0,0,20) 
         self.gui.timeEdit_reclength.setTime(preset_time)
-        self.preset_gain()
+        #self.preset_gain()
+        if self.FIRSTPREVIEW:
+            self.preset_gain()  #gain is set indirectly by setting the gain slider position
+            self.FIRSTPREVIEW = False
         self.m["preview"] = True
         self.create_band_thread()
-        self.gui.synthesizer_pushbutton_preview.clicked.connect(self.preview)
+        
+        #self.m["preview"] = False
+
+    def create_slot(self):
+        """slot function for the CREATE button
+        pre-set gain, check some conditions. 
+        Then configure and start worker thread 'modulate_worker' for synthesis
+
+        """
+        self.gui.synthesizer_pushbutton_create.clicked.disconnect(self.create_slot)
+        time.sleep(0.5)
+        self.activate_control_elements(False)
+        palette = self.gui.synthesizer_pushbutton_create.palette()
+        self.cancel_background_color = palette.color(self.gui.synthesizer_pushbutton_create.backgroundRole())
+        if self.FIRSTPREVIEW:
+            self.preset_gain()  #gain is set indirectly by setting the gain slider position
+            self.FIRSTPREVIEW = True
         self.m["preview"] = False
+        self.create_band_thread()
+        #self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_slot)
 
     def create_band_thread(self):
         """slot function for the CREATE button
@@ -1980,7 +2005,10 @@ class synthesizer_v(QObject):
         #     self.errorhandler(value)
         #     return(errorstatus,value)        
         
-        self.gui.synthesizer_pushbutton_create.clicked.disconnect(self.create_band_thread)
+        try:
+            self.gui.synthesizer_pushbutton_create.clicked.disconnect(self.create_slot)
+        except:
+            pass
         time.sleep(0.1)
         self.activate_control_elements(False)
         palette = self.gui.synthesizer_pushbutton_create.palette()
@@ -1995,6 +2023,9 @@ class synthesizer_v(QObject):
         total_reclength = self.get_reclength()
         exp_num_samples = total_reclength * self.m["sample_rate"]*1000 
         expected_filesize = (exp_num_samples * 4)*1.5 #1.5 is safety margin, may still be insufficient in extreme cases
+        if self.gui.synthesizer_radioBut_FAST_mode.isChecked():
+            expected_filesize *= 2 # double space needed because of intermediate temp files with full recording length
+
         try:
             errorstatus, value = self.synthesizer_c.checkdiskspace(expected_filesize, self.m["recording_path"])
         except:
@@ -2017,8 +2048,9 @@ class synthesizer_v(QObject):
                 self.errorhandler(value)
                 return
             self.autosave = False
-        if not self.gui.synthesizer_radioBut_FAST_mode.isChecked():
-            self.preset_gain()  #gain is set indirectly by setting the gain slider position
+#        if not self.gui.synthesizer_radioBut_FAST_mode.isChecked():
+            #self.preset_gain()  #gain is set indirectly by setting the gain slider position
+        
 
         #if self.gui.radiobutton_AGC.isChecked():
         #TODO TODO TODO: implement AGC method and AUTO clipping repair or clipping warning
@@ -2074,7 +2106,7 @@ class synthesizer_v(QObject):
                 else:
                     existcheck = False
                     self.activate_control_elements(True)
-                    self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_band_thread)
+                    self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_slot)
                     return(False)
         else:
             output_base_name = os.path.join(self.m["recording_path"],"preview_temp_000.wav")
@@ -2143,8 +2175,9 @@ class synthesizer_v(QObject):
         if self.modulate_thread.isRunning():
             self.logger.debug("modulate: modulate_ thread started")
             self.syntesisrunning = True
-        time.sleep(0.1) # wait state for worker to start up
-        self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_band_thread)
+        time.sleep(0.5) # wait state for worker to start up
+        self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_slot)
+        self.gui.synthesizer_pushbutton_preview.clicked.connect(self.preview)
 
         return(True)
 
