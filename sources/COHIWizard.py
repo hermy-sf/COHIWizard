@@ -25,8 +25,11 @@ import datetime as ndatetime
 from datetime import datetime
 from pathlib import Path
 from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtWidgets import QMainWindow, QWidget, QApplication, QHBoxLayout, QLabel
-from PyQt5.QtCore import QTimer, QObject, QThread, pyqtSignal
+from PyQt5.QtWidgets import QMainWindow, QWidget, QApplication, QHBoxLayout, QLabel, QSizePolicy, QDesktopWidget
+# from PyQt5.QtGui import QFont, QFontMetrics
+
+from PyQt5.QtCore import QTimer, QObject, QThread, pyqtSignal, QSize, Qt
+from PyQt5.QtGui import QFont, QIcon, QFont, QFontMetrics
 import time
 import yaml
 import importlib
@@ -36,12 +39,18 @@ import logging
 from icons import Logos
 
 
+
 class starter(QMainWindow):
-    """instantiates the central GUI object and calls its setupUI method; type QMainwindow
+    """instantiates the MainWindow, instantiates a auxiliary gui object for the
+    core GUI and calls its setupUI method; The latter contains all derived structures such as centralwidget, Scrollarea, TabWidget etc.
+    :type : QMainwindow
 
     :param: none
     """
-    def __init__(self):
+    SigResize = pyqtSignal(str,object)
+
+
+    def __init__(self,skinindex):
         """instantiates SplashScreen object and then instantiates the central GUI as self.gui. 
         Then setupUi of the central GUI is called which sets up the Mainwindow and the central 
         widget of the player Tab.
@@ -55,13 +64,135 @@ class starter(QMainWindow):
         self.splash = SplashScreen()
         self.splash.setFocus()
         self.splash.show()
+        self.INACTIVATE_RESIZE = False
         #from core import COHIWizard_GUI_v10_reduced #alternative main GUI without scrollbars
         #self.gui = COHIWizard_GUI_v10_reduced.Ui_MainWindow()
         #from core import COHIWizard_GUI_v10_scroll #alternative main GUI with only vertical scrollbar
         #self.gui = COHIWizard_GUI_v10_scroll.Ui_MainWindow()
-        from core import COHIWizard_GUI_v10_scrollhv
-        self.gui = COHIWizard_GUI_v10_scrollhv.Ui_MainWindow()
+        #from core import COHIWizard_GUI_v10_scrollhv
+        #self.gui = COHIWizard_GUI_v10_scrollhv.Ui_MainWindow()
+        #TODO: import correct skin, use dynamic import
+        if skinindex == 0:
+            from core import COHIWizard_GUI_v10_scrollhv_skin_0
+            self.gui = COHIWizard_GUI_v10_scrollhv_skin_0.Ui_MainWindow()
+        else:
+            from core import COHIWizard_GUI_v10_scrollhv_skin_1
+            self.gui = COHIWizard_GUI_v10_scrollhv_skin_1.Ui_MainWindow()
+            
         self.gui.setupUi(self)
+        self.iconButtons = []
+        self.widgets_with_font = []
+        self.find_widgets_with_font()
+        screen = QDesktopWidget().availableGeometry()
+        aspectratio_opt =1024/857
+        screen_aspr =  int(screen.width())/int(screen.height())
+        if screen_aspr >= 1:
+            hnew = int(screen.height() * 0.9)
+            wnew = int(hnew * aspectratio_opt)
+        else:
+            wnew = int(screen.width() * 0.9)
+            hnew = int(wnew / aspectratio_opt)
+
+        self.resize(wnew, hnew)
+
+    def resizeEvent(self, event):
+        """resize event handler for the main window, handles resizing widgets based on size of MainWindow
+        Sends a Signal SigResize (label,size) while size is the size of the MainWindow
+        label is a MainWindow ID as information for the receiver of the signal
+        Signal is intended to be received by all 'view_' methods of alls tab modules and 'size' to be handled by their 
+        resizehandler method. 
+        :param: event
+        :type: object  
+        :raises: none
+        :return: none
+        :rtype: none
+        """
+
+        width = self.width()
+        size = self.size()
+        # font_size = max(10, width // 25)  # Mindestgröße von 10 pt
+        # font = QFont("Arial", font_size)
+        #elf.button.setFont(font)
+        # Standardverhalten beibehalten
+        super().resizeEvent(event)
+        self.SigResize.emit("cenralwidget",size)
+        #print(f"resize event caught, Signal sent, size: {size}")
+        self.resize_actor()
+
+    def resize_actor(self):
+        if self.INACTIVATE_RESIZE:
+            return
+        for button in self.iconButtons:
+            w = button.width()
+            h = button.height()
+            icon_size = QSize(int(w * 0.8), int(h * 0.8))
+            button.setIconSize(icon_size)
+        #print(f"buttonlist: {self.iconButtons}")
+        for widget in self.widgets_with_font:
+            # Schriftgröße als Anteil der Widget-Höhe
+            # h = widget.height()
+            # font_size = max(10, int(h * 0.55))  # Mindestgröße 10px
+
+            # font = widget.font()
+            # font.setPixelSize(font_size)
+            # widget.setFont(font)
+            min_size=5
+            max_size=20
+            #print("fit text fonts to best size")
+            self.fit_font_to_widget(widget, min_size, max_size)
+
+    def fit_font_to_widget(self, widget, min_size=8, max_size=100):
+        if self.INACTIVATE_RESIZE:
+            return
+        text = getattr(widget, "text", lambda: "")()
+        if not text:
+            return
+
+        best_size = min_size
+        low, high = min_size, max_size
+
+        while low <= high:
+            mid = (low + high) // 2
+            font = widget.font()
+            font.setPixelSize(mid)
+            fm = QFontMetrics(font)
+            rect = fm.boundingRect(widget.rect(), Qt.TextWordWrap, text)
+
+            if rect.width() <= widget.width() and rect.height() <= widget.height():
+                best_size = mid
+                low = mid + 1
+            else:
+                high = mid - 1
+
+        # Final anwenden
+        font = widget.font()
+        font.setPixelSize(best_size)
+        widget.setFont(font)
+
+
+
+    def find_icon_buttons(self):
+        if self.INACTIVATE_RESIZE:
+            return
+        """Suche rekursiv nach allen QPushButtons mit Icon"""
+        self.iconButtons.clear()
+        for button in self.findChildren(QPushButton):
+            if not button.icon().isNull():
+                self.iconButtons.append(button)
+
+
+    def find_widgets_with_font(self):
+        if self.INACTIVATE_RESIZE:
+            return
+        """Finde alle Widgets, die einen Font haben und Text anzeigen"""
+        # Optional: nur bestimmte Klassen einbeziehen
+        font_classes = (QPushButton, QLabel, QLineEdit, QCheckBox, QComboBox, QRadioButton,QTimeEdit, QTableWidgetItem, QProgressBar)
+
+        self.widgets_with_font = [
+            w for w in self.findChildren(QWidget)
+            if isinstance(w, font_classes) and hasattr(w, "font")
+        ]
+
 
 
 class core_m(QObject):
@@ -236,10 +367,12 @@ class core_v(QObject):
         # create method which inactivates all tabs except the one which is passed as keyword
         self.GUI_reset_status()
         self.gui = gui.gui
-
+        self.gui.Mainwindowreference = gui
         self.gui.actionFile_open.triggered.connect(self.cb_open_file)
         self.gui.actionOverwrite_header.triggered.connect(self.send_overwrite_header)
 
+        #
+        self.gui.Mainwindowreference.SigResize.connect(self.resizehandler)
         ###TODO: re-organize, there should be no access to gui elements of other modules
         self.gui.tabWidget.setCurrentIndex(0) #is being overridden later from config file core_v.__init__
         self.gui.playrec_comboBox_startuptab.setCurrentIndex(0)
@@ -282,6 +415,7 @@ class core_v(QObject):
                 os.makedirs(default_recordingpath)
             default_recordingpath = os.path.join(self.m["rootpath"],"out")
             self.m["metadata"]["recording_path"] = os.path.join(self.m["metadata"]["rootpath"], "out")
+            self.m["metadata"]["skinindex"] = 0
             auxi.standard_infobox("configuration file does not yet exist, a basic file will be generated. Please configure the STEMLAB IP address before using the Player")
             stream = open("config_wizard.yaml", "w")
             yaml.dump(self.m["metadata"], stream)
@@ -357,6 +491,19 @@ class core_v(QObject):
     #             self.gui.lineEdit_IPAddress.setCursorPosition(cursor + 1)  # Move cursor to the next field
     #             return True  # Ignore default Tab key behavior
     #     return super().eventFilter(source, event)
+
+    def resizehandler(self, label, size):
+        """resize handler for the main window, handles resizing widgets based on size of MainWindow
+        :param: label
+        :type: str
+        :param: size
+        :type: object
+        :raises: none
+        :return: none
+        :rtype: none
+        """
+        #print(f"###### RECEIVED BY playrec: resizehandler called, label {label}, size {size}")
+
 
     def send_overwrite_header(self):
         self.SigRelay.emit("cexex_waveditor",["overwrite_header",0])
@@ -1043,7 +1190,9 @@ if __name__ == '__main__':
         QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
     #print("v13")
     app = QApplication([])
-    gui = starter()
+    wiz_config = load_config_from_yaml("config_wizard.yaml")
+    skinindex = wiz_config["skinindex"] ##########TODO CHECK
+    gui = starter(skinindex)
     #print(f"__main__: gui = {gui} gui.gui = {gui.gui}")
     from auxiliaries import WAVheader_tools
     from auxiliaries import auxiliaries as auxi
@@ -1055,6 +1204,8 @@ if __name__ == '__main__':
     xcore_v = core_v(gui,xcore_c,xcore_m) # self.gui wird in xcore_v gestartet 
 
     config = load_config_from_yaml("config_modules.yaml")
+    #TODO TODO TODO: generalize: get from config !
+
     sub_module = "modules"
     mod_base = {'player':'playrec'}
     config['modules'] = {**mod_base, **config['modules']}
@@ -1072,12 +1223,13 @@ if __name__ == '__main__':
     #add dict of widget modules to config
     aux_dict = {}
     for ix in range(len(list_mvct_directories)):
-        aux_dict[list_mvct_directories[ix]] = list_mvct_directories[ix] + "_widget"
+        aux_dict[list_mvct_directories[ix]] = list_mvct_directories[ix] + "_widget_skin_" + str(skinindex)
     config["widget"] = aux_dict
     #print(f"__main__ 2nd if NEW: config, aux_dict: {config['widget']}")
     
     #get list of corresponding widget modules
     list_widget_modules = list(config['widget'].values())
+
     loaded_widget_modules = dynamic_import_from_config(config,"widget",xcore_v.logger)
     #print(loaded_widget_modules)
 
@@ -1095,7 +1247,7 @@ if __name__ == '__main__':
             else:
                 #generate new Widget, name it, label it , carry out its setupUi method, except for player,
                 #  whose UI already exists in form of xcore.gui and whose Tab also already exists
-                tabui.append(getattr(loaded_widget_modules[list_widget_modules[ix]], "Ui_" + list_widget_modules[ix])())
+                tabui.append(getattr(loaded_widget_modules[list_widget_modules[ix]], "Ui_" + list_widget_modules[ix].replace("_skin_" + str(skinindex),""))())
                 tab_widget.append(QtWidgets.QWidget())
                 tab_widget[ix].setWindowTitle(mod_name)
                 tab_widget[ix].setObjectName("tab_" + mod_name)
@@ -1202,7 +1354,19 @@ if __name__ == '__main__':
     xcore_v.updateConfigElements() 
     xcore_v.SigRelay.emit("cexex_all_",["canvasbuild",gui])   # communicate reference to gui instance to all modules which instanciate a canvas with auxi.generate_canvas(self,gridref,gridc,gridt,gui)
     xcore_v.SigRelay.emit("cm_all_",xcore_v.m["rootpath"])
+    xcore_v.SigRelay.emit("cm_all_",["Mainwindowreference",gui])
     print("COHIWIzard Version 2.1.1, 18-05-2025, (C) Hermann Scharfetter")
+    gui.find_icon_buttons()
+    gui.find_widgets_with_font()
+    time.sleep(0.1)
+    print("gui resize init")
+    gui.resize_actor()
+    time.sleep(0.1)
+    gui.find_icon_buttons()
+    gui.find_widgets_with_font()
+    gui.resize_actor()
+    print("gui resize init")
+
 
     sys.exit(app.exec_())
 

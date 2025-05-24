@@ -1752,6 +1752,7 @@ class synthesizer_v(QObject):
         self.gui.synthesizer_radioBut_no2GBsplitting.setChecked(False)
         try:
             self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_slot)
+            self.gui.synthesizer_pushbutton_preview.clicked.connect(self.preview)
         except:
             pass
 
@@ -1872,14 +1873,22 @@ class synthesizer_v(QObject):
         """
         # geometry scaling; absolute numbers are not relevant, only relative lengths
         #a = #10/139.5 #7/86  
+        scal_Rescaling = True
         c = 11/89 #16.5/139.5 #8/86
         b = 72/89 #(139.5 - 10 -16.5)/139.5 #(86 -7 -8)/86
         data = self.modulate_worker.get_combined_signal_block()
         #use RMS value as indicator for signal strength 
+        if scal_Rescaling:
+            span = 100
+            b = 80/100
+            c = 15/100
+        else:
+            span = 80
+
         refvol = 0.71 #could be used for rescaling to amplitude values
         volume = np.linalg.norm(data)/refvol/np.sqrt(len(data))
         #self.logger.debug(f"synthesizer showRFdata volume: {volume} ")
-        span = 80
+        #span = 80
         #vol = 1.5*np.std(volume)/scl/refvol
         dBvol = 20*np.log10(volume)
         rawvol = c + b + dBvol/span*b
@@ -1940,7 +1949,7 @@ class synthesizer_v(QObject):
         """
         #if self.CANVAS == False:
         self.plot_widget = pg.PlotWidget()
-        self.gui.gridLayout_synthesizer.addWidget(self.plot_widget,0,7,3,2)
+        self.gui.gridLayout_synthesizer.addWidget(self.plot_widget,0,7,3,3)
         self.plot_widget.getAxis('left').setStyle(tickFont=pg.QtGui.QFont('Arial', 6))
         self.plot_widget.getAxis('bottom').setStyle(tickFont=pg.QtGui.QFont('Arial', 6))
         self.plot_widget.setBackground('w')
@@ -1958,7 +1967,7 @@ class synthesizer_v(QObject):
 
     def preview(self):
         """
-        generate short preview of the SDR file
+        generate short preview of the SDR file                               
         """
         self.gui.synthesizer_pushbutton_preview.clicked.disconnect(self.preview)
         preset_time = QTime(0,0,20) 
@@ -2013,6 +2022,10 @@ class synthesizer_v(QObject):
             self.gui.synthesizer_pushbutton_create.clicked.disconnect(self.create_slot)
         except:
             pass
+        try:
+            self.gui.synthesizer_pushbutton_preview.clicked.disconnect(self.preview)
+        except:
+            pass
         time.sleep(0.1)
         self.activate_control_elements(False)
         palette = self.gui.synthesizer_pushbutton_create.palette()
@@ -2037,6 +2050,9 @@ class synthesizer_v(QObject):
             value = "Error when checking disk space, please make sure that the recording path (set in player Tab) is correct"
         if errorstatus:
             self.logger.debug(errorstatus)
+            self.FIRSTPREVIEW = True
+            self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_slot)
+            self.gui.synthesizer_pushbutton_preview.clicked.connect(self.preview)
             auxi.standard_errorbox(value)
             self.clear_project()
             return
@@ -2049,11 +2065,12 @@ class synthesizer_v(QObject):
             time.sleep(0.5)
             errorstatus, value = self.load_project()
             if errorstatus:
+                self.FIRSTPREVIEW = True
+                self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_slot)
+                self.gui.synthesizer_pushbutton_preview.clicked.connect(self.preview)
                 self.errorhandler(value)
                 return
             self.autosave = False
-#        if not self.gui.synthesizer_radioBut_FAST_mode.isChecked():
-            #self.preset_gain()  #gain is set indirectly by setting the gain slider position
         
 
         #if self.gui.radiobutton_AGC.isChecked():
@@ -2069,6 +2086,9 @@ class synthesizer_v(QObject):
             cumlen = cumlen + len(elem)
         if cumlen == 0:
             auxi.standard_errorbox("no playlists defined yet, cannot create anything")
+            self.FIRSTPREVIEW = True
+            self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_slot)
+            self.gui.synthesizer_pushbutton_preview.clicked.connect(self.preview)
             return
         self.SigActivateOtherTabs.emit("synthesizer","inactivate",["Synthesizer"])
         self.gui.progressBar_synth.setValue(0)
@@ -2109,8 +2129,11 @@ class synthesizer_v(QObject):
                         existcheck = False
                 else:
                     existcheck = False
-                    self.activate_control_elements(True)
                     self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_slot)
+                    self.gui.synthesizer_pushbutton_preview.clicked.connect(self.preview)
+                    self.FIRSTPREVIEW = True
+                    self.logger.debug("create_band_thread: no output file name given, cancel creation")
+                    self.activate_control_elements(True)
                     return(False)
         else:
             output_base_name = os.path.join(self.m["recording_path"],"preview_temp_000.wav")
@@ -2136,10 +2159,8 @@ class synthesizer_v(QObject):
         else:
             self.modulate_worker.set_autolevel(False)       
 
-
         self.modulate_worker.moveToThread(self.modulate_thread)
         self.modulate_worker.set_carrier_frequencies(carrier_frequencies)
-        #self.modulate_worker.set_synthesizer_temp_path(self.m["temp_path"])
         self.modulate_worker.set_synthesizer_temp_path(synthesizer_temp_path)
         self.modulate_worker.set_ffmpeg_path(self.m["ffmpeg_path"])
         self.modulate_worker.set_playlists(playlists)
@@ -2374,6 +2395,7 @@ class synthesizer_v(QObject):
         """  
         #self.gui.verticalSlider_Gain.setEnabled(value)
         self.gui.synthesizer_pushbutton_create.setEnabled(value)
+        self.gui.synthesizer_pushbutton_preview.setEnabled(value)
         self.gui.comboBox_cur_carrierfreq.setEnabled(value)
         self.gui.pushButton_saveproject.setEnabled(value)
         self.gui.pushButton_loadproject.setEnabled(value)

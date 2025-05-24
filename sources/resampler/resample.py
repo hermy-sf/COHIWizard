@@ -2614,7 +2614,7 @@ class resample_v(QObject):
         :return: none
         :rtype: none
         """
-        self.cref = auxi.generate_canvas(self,self.gui.gridLayout_5,[6,0,6,4],[-1,-1,-1,-1],gui)
+        self.cref = auxi.generate_canvas(self,self.gui.gridLayout_5,[6,0,7,5],[-1,-1,-1,-1],gui)
 
 
     def logfilehandler(self,_value):

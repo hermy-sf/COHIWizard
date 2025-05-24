@@ -2010,7 +2010,11 @@ class playrec_v(QObject):
         # self.cref = auxi.generate_canvas(self,self.gui.gridLayout_10,[13,11,1,2],[-1,-1,-1,-1],gui)
         # self.cref["ax"].tick_params(axis='both', which='major', labelsize=6)
         self.plot_widget = pg.PlotWidget()
-        self.gui.gridLayout_10.addWidget(self.plot_widget,13,11,1,2)
+        if self.m["metadata"]["skinindex"] == 0:
+            self.gui.gridLayout_10.addWidget(self.plot_widget,13,11,1,2)
+        else:    
+            self.gui.gridLayout_10.addWidget(self.plot_widget,13,12,1,2)
+        self.plot_widget.setMinimumSize(QSize(200, 0))
         self.plot_widget.getAxis('left').setStyle(tickFont=pg.QtGui.QFont('Arial', 6))
         self.plot_widget.getAxis('bottom').setStyle(tickFont=pg.QtGui.QFont('Arial', 6))
         self.plot_widget.setBackground('w')
@@ -2039,7 +2043,11 @@ class playrec_v(QObject):
         :return: _False if error, True on succes_
         :rtype: _Boolean_
         """
-        scal_NEW = True
+        scal_NEW = True #Updating, remove after tests
+        if self.m["metadata"]["skinindex"] == 1:
+            scal_Rescaling = True 
+        else:
+            scal_Rescaling = False
         # geometry scaling; absolute numbers are not relevant, only relative lengths
         #a = #10/139.5 #7/86  
         c = 11/89 #16.5/139.5 #8/86
@@ -2091,7 +2099,12 @@ class playrec_v(QObject):
         if self.m["TEST"]:
             return
         if scal_NEW:
-            span = 80
+            if scal_Rescaling:
+                span = 100
+                b = 80/100
+                c = 15/100
+            else:
+                span = 80
             refvol = 0.71
             vol = 1.5*np.std(cv)/normfactor/refvol
             dBvol = 20*np.log10(vol)

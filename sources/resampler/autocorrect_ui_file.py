@@ -25,7 +25,7 @@ def replace(file_path, text, subs, flags=0):
         file.write(file_contents)
 
     
-file_path = "./resampler/resampler_widget.py"
+file_path = "./resampler/resampler_widget_skin_0.py"
 
 text = "font.setPointSize(11)"
 subs = "font.setPointSize(11)"

@@ -400,9 +400,15 @@ class auxiliaries():
         gridref.addWidget(canvas,gridc[0],gridc[1],gridc[2],gridc[3])
         ax = figure.add_subplot(111)
         if gridt[0] >= 0:
-            toolbar = NavigationToolbar(canvas, gui)  
+            #toolbar = NavigationToolbar(canvas, gui)  
             ##TODO TODO TODO: in case of transfer to auxi: gui must be reference to the instance of the gui in the class starter
-            gridref.addWidget(toolbar,gridt[0],gridt[1],gridt[2],gridt[3])
+            #gridref.addWidget(toolbar,gridt[0],gridt[1],gridt[2],gridt[3])
+            toolbar = NavigationToolbar(canvas, gui)
+            # toolbar.setFixedHeight(30)
+            toolbar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            gridref.addWidget(toolbar, gridt[0], gridt[1], gridt[2], gridt[3])
+            #gridref.setColumnStretch(gridt[1], 1)
+
         cref["ax"] = ax
         cref["canvas"] = canvas
         cref["ax"].plot([], [])
