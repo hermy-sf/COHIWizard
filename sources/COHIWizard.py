@@ -136,7 +136,7 @@ class starter(QMainWindow):
             # font = widget.font()
             # font.setPixelSize(font_size)
             # widget.setFont(font)
-            min_size=5
+            min_size=11
             max_size=20
             #print("fit text fonts to best size")
             self.fit_font_to_widget(widget, min_size, max_size)
@@ -166,7 +166,12 @@ class starter(QMainWindow):
 
         # Final anwenden
         font = widget.font()
-        font.setPixelSize(best_size)
+        if widget.objectName().find("playrec_lineEdit_recordingpath") >= 0:
+            h = widget.height()
+            font_size = max(min_size, int(h * 0.5))
+            font.setPixelSize(font_size)
+        else:
+            font.setPixelSize(best_size)
         widget.setFont(font)
 
 
@@ -415,7 +420,7 @@ class core_v(QObject):
                 os.makedirs(default_recordingpath)
             default_recordingpath = os.path.join(self.m["rootpath"],"out")
             self.m["metadata"]["recording_path"] = os.path.join(self.m["metadata"]["rootpath"], "out")
-            self.m["metadata"]["skinindex"] = 0
+            self.m["metadata"]["skinindex"] = 1
             auxi.standard_infobox("configuration file does not yet exist, a basic file will be generated. Please configure the STEMLAB IP address before using the Player")
             stream = open("config_wizard.yaml", "w")
             yaml.dump(self.m["metadata"], stream)
@@ -1149,8 +1154,12 @@ class SplashScreen(QWidget):
 
 def load_config_from_yaml(file_path):
     """load module configuration from yaml file"""
-    with open(file_path, 'r') as file:
-        return yaml.safe_load(file)
+    try:
+        with open(file_path, 'r') as file:
+            return yaml.safe_load(file)
+    except:
+        return (None)
+
 
 def dynamic_import_from_config(config,sub_module,logger):
     """Dynamic import of modules based on module configuration"""
@@ -1191,7 +1200,10 @@ if __name__ == '__main__':
     #print("v13")
     app = QApplication([])
     wiz_config = load_config_from_yaml("config_wizard.yaml")
-    skinindex = wiz_config["skinindex"] ##########TODO CHECK
+    if wiz_config == None:
+        skinindex = 1
+    else:    
+        skinindex = wiz_config["skinindex"] ##########TODO CHECK
     gui = starter(skinindex)
     #print(f"__main__: gui = {gui} gui.gui = {gui.gui}")
     from auxiliaries import WAVheader_tools
@@ -1223,6 +1235,7 @@ if __name__ == '__main__':
     #add dict of widget modules to config
     aux_dict = {}
     for ix in range(len(list_mvct_directories)):
+
         aux_dict[list_mvct_directories[ix]] = list_mvct_directories[ix] + "_widget_skin_" + str(skinindex)
     config["widget"] = aux_dict
     #print(f"__main__ 2nd if NEW: config, aux_dict: {config['widget']}")

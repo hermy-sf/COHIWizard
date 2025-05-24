@@ -5,6 +5,7 @@ import subprocess
 import yaml
 import importlib
 import os
+import numpy as np
 
 def load_config_from_yaml(file_path):
     """load module configuration from yaml file"""
@@ -23,7 +24,10 @@ list_mvct_directories = list(config['modules'].keys())
 list_mvct_modules = list(config['modules'].values())
 #add dict of widget modules to config
 aux_dict = {}
+skinindexrange = np.arange(2)
 for ix in range(len(list_mvct_directories)):
+    #aux_dict[list_mvct_directories[ix]] = list_mvct_directories[ix] + "_widget"
+    #for skinindex in skinindexrange:
     aux_dict[list_mvct_directories[ix]] = list_mvct_directories[ix] + "_widget"
 config["widget"] = aux_dict
 #get list of corresponding widget modules
@@ -37,12 +41,19 @@ hooks_path = os.path.join(os.getcwd())
 command = 'pyinstaller --icon=COHIWizard_ico4.ico --onefile COHIWizard.py --paths=. '#pyinstaller --onefile --additional-hooks-dir=hooks dein_script.py
 #command = 'pyinstaller --icon=COHIWizard_ico4.ico --onefile sources/COHIWizard.py --paths=sources'
 # include hidden imports according to config_modules.yaml
+command += (f' --hidden-import=core.COHIWizard_GUI_v10_scrollhv_skin_0')
+command += (f' --hidden-import=core.COHIWizard_GUI_v10_scrollhv_skin_1')
 for ix in range(len(list_mvct_directories)): 
     module = list_mvct_directories[ix] + "." + list_mvct_modules[ix] 
+        #aux_dict[list_mvct_directories[ix]] = list_mvct_directories[ix] + "_widget_skin_" + str(skinindex)
     command += (f' --hidden-import={module}')
+
 for ix in range(len(list_mvct_directories)): 
     module = list_mvct_directories[ix] + "." + list_widget_modules[ix] 
-    command += (f' --hidden-import={module}')
+    #command += (f' --hidden-import={module}')
+    for skinindex in skinindexrange:
+        command += (f' --hidden-import={module}' + "_skin_" + str(skinindex))
+
 if os.path.exists(os.path.join(os.getcwd(),'dev_drivers')):
     list_dev_drivers = list(config["dev_workers"])
     for ix, key in enumerate(list_dev_drivers): 
