@@ -1200,6 +1200,7 @@ if __name__ == '__main__':
     #print("v13")
     app = QApplication([])
     wiz_config = load_config_from_yaml("config_wizard.yaml")
+    
     if wiz_config == None:
         skinindex = 1
     else:    
