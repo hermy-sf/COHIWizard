@@ -952,11 +952,8 @@ class modulate_worker_ffmpeg(QObject):
                         children = parent.children(recursive=True)
                         # Terminate the process and its children
                         for child in children:
-                            #child.terminate()
-                            #child.kill()
-                            child.send_signal(signal.SIGKILL)
-                        #print(f" poll: {self.ret.poll()}")
-                        parent.send_signal(signal.SIGKILL)
+                            child.terminate()
+                        parent.terminate()
                         self.mutex.unlock()
                         parent.wait(timeout=20)
                         value = "terminated"
