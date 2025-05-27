@@ -935,7 +935,7 @@ class modulate_worker_ffmpeg(QObject):
                 #TODO TODO TODO: generate signal block by reading the last section from the file being generated 
                 #so far DUMMY block
                 #combined_signal_block = 0.7*np.ones(2**16, dtype=np.complex128)
-                block_size = 4096 * 32           # Oder 44100 * 2 für 1 Sekunde Audio
+                block_size = 4096 * 256           # Oder 44100 * 2 für 1 Sekunde Audio
                 alignment = 4                # Blockstart must be int multiple of  4
                 safety_margin = 8192         # 8kB safety margin from file end
                 combined_signal_block = self.get_aligned_block(filename, 2*block_size, alignment, safety_margin)
@@ -1595,7 +1595,7 @@ class synthesizer_v(QObject):
         self.synthesizer_c.SigRelay.connect(self.rxhandler)
         self.synthesizer_c.SigRelay.connect(self.SigRelay.emit)
 
-        self.DATABLOCKSIZE = 1024*32
+        #self.DATABLOCKSIZE = 1024*32
         self.gui = gui #gui_state["gui_reference"]#system_state["gui_reference"]
         self.logger = synthesizer_m.logger
         self.syntesisrunning = False
