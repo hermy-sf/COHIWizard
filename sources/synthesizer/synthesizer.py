@@ -34,6 +34,7 @@ import sys
 from scipy.optimize import fsolve
 import platform
 import psutil
+import signal
 
 
 #import io
@@ -831,8 +832,10 @@ class modulate_worker_ffmpeg(QObject):
 
         cmd.extend(["-f", "wav", "-acodec", "pcm_s16le", str(output_path)])
 
+        self.logger.debug(f"audio cat command: {cmd}")
         #print("Running FFmpeg command:\n", " ".join(cmd))
         subprocess.run(cmd, check=True)
+        self.logger.debug("audio cat completed")
 
     def get_aligned_block(self, filename, block_size, alignment, safety_margin):
         """reads a block of data from the end of a file, aligned to a specified byte boundary
@@ -899,17 +902,28 @@ class modulate_worker_ffmpeg(QObject):
         """
         errorstate = False
         value = ""
+        # process = subprocess.Popen(
+        #     ffmpeg_cmd,
+        #     stderr=subprocess.PIPE,
+        #     text=True,  # entspricht universal_newlines=True
+        #     encoding='utf-8',
+        #     bufsize=1
+        # )
         process = subprocess.Popen(
             ffmpeg_cmd,
-            stderr=subprocess.PIPE,
-            text=True,  # entspricht universal_newlines=True
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL, 
+            text=True,
             encoding='utf-8',
             bufsize=1
         )
+
+
         time_re = re.compile(r'time=(\d+):(\d+):(\d+).(\d+)')
 
-        for line in process.stderr:
-            sys.stderr.write(line)  # optional: zeige FFmpeg-Ausgabe live
+        for line in process.stdout:
+            sys.stdout.write(line)  # optional: zeige FFmpeg-Ausgabe live
             match = time_re.search(line)
             if match:
                 h, m, s, ms = map(int, match.groups())
@@ -921,7 +935,7 @@ class modulate_worker_ffmpeg(QObject):
                 #TODO TODO TODO: generate signal block by reading the last section from the file being generated 
                 #so far DUMMY block
                 #combined_signal_block = 0.7*np.ones(2**16, dtype=np.complex128)
-                block_size = 4096 * 256           # Oder 44100 * 2 für 1 Sekunde Audio
+                block_size = 4096 * 32           # Oder 44100 * 2 für 1 Sekunde Audio
                 alignment = 4                # Blockstart must be int multiple of  4
                 safety_margin = 8192         # 8kB safety margin from file end
                 combined_signal_block = self.get_aligned_block(filename, 2*block_size, alignment, safety_margin)
@@ -938,17 +952,24 @@ class modulate_worker_ffmpeg(QObject):
                         children = parent.children(recursive=True)
                         # Terminate the process and its children
                         for child in children:
-                            child.terminate()
+                            #child.terminate()
+                            #child.kill()
+                            child.send_signal(signal.SIGKILL)
                         #print(f" poll: {self.ret.poll()}")
+                        parent.send_signal(signal.SIGKILL)
                         self.mutex.unlock()
                         parent.wait(timeout=20)
                         value = "terminated"
                         errorstate = True
                         return errorstate, value
                         #print(f" poll: {self.ret.poll()}")
-                    #self.logger.debug("********__________soxwriter: terminate sox process on cancel")
+                    self.logger.debug("********__________ffmpeg main job: terminate process on cancel")
 
-        process.wait()
+        #process.wait()
+        print("Before ffmpeg.wait()")
+        retcode = process.wait()
+        print(f"ffmpeg finished with code {retcode}")
+
         print("\nDone.")
         value = percent
         return errorstate, value
@@ -1077,7 +1098,7 @@ class modulate_worker_ffmpeg(QObject):
             #TODO TODO TODO: shift cmd generation to extra function !
             #generate cmd for ffmpeg
             ffmpeg_cmd1 = [
-                os.path.join(self.get_ffmpeg_path(), "ffmpeg"), "-y", #"-loglevel", "error", "-hide_banner",
+                os.path.join(self.get_ffmpeg_path(), "ffmpeg"), "-y", "-nostdin", #"-loglevel", "error", "-hide_banner",
                 "-ss", "0", "-t", str(total_duration_sec), 
                 "-i", temp_wav_cat_file
             ]
@@ -1101,14 +1122,16 @@ class modulate_worker_ffmpeg(QObject):
                 # ",lowpass=f=" + str(cutoff_freq) +
                 "[mono_lp];"
                 # 2. Sinus-Generator, Cosinus über Allpassfilter (biquad)
-                "sine=frequency=" + str(abs(lo_shift)) + ":sample_rate=" + str(sample_rate) + "[sine_base0];"
+                "sine=frequency=" + str(abs(lo_shift)) + ":sample_rate=" + str(sample_rate) + ":d=" + str(total_duration_sec) + "[sine_base0];"
                 "[sine_base0]biquad=b0=" + str(a1) + ":b1=1:b2=0:a0=1:a1=" + str(a1) + ":a2=0[sine_base1];"
                 "[sine_base1]biquad=b0=" + str(a1) + ":b1=1:b2=0:a0=1:a1=" + str(a1) + ":a2=0[sine_base];"
                 "[sine_base]asplit=2[sine_for_sin][sine_for_cos];"
                 "[sine_for_sin]volume=volume=" + str(sinus_sign) + "[sine_sin_raw];"
-                "[sine_sin_raw]asplit=3[sine_sin][carrier_sin][carrier_sin_deb];"
+                ##DEBUG##"[sine_sin_raw]asplit=3[sine_sin][carrier_sin][carrier_sin_deb];"
+                "[sine_sin_raw]asplit=2[sine_sin][carrier_sin];"
                 "[sine_for_cos]biquad=b0=" + str(a) + ":b1=1:b2=0:a0=1:a1=" + str(a) + ":a2=0[sine_cos_base];"
-                "[sine_cos_base]asplit=3[sine_cos][carrier_cos][carrier_cos_deb];"
+                ##DEBUG##"[sine_cos_base]asplit=3[sine_cos][carrier_cos][carrier_cos_deb];"
+                "[sine_cos_base]asplit=2[sine_cos][carrier_cos];"
                 # # 3. Modulation (1 + modulation_factor * Y)
                 # modulation part:
                 "[mono_lp]volume=volume=" + str(modulation_depth) + "[modsig];"
@@ -1119,8 +1142,8 @@ class modulate_worker_ffmpeg(QObject):
 
                 "[mod_re_component][carrier_cos]amix=inputs=2:duration=shortest[modre];"
                 "[mod_im_component][carrier_sin]amix=inputs=2:duration=shortest[modim];"
-                "[carrier_cos_deb]anullsink;"
-                "[carrier_sin_deb]anullsink;"
+                ##DEBUG##"[carrier_cos_deb]anullsink;"
+                ##DEBUG##"[carrier_sin_deb]anullsink;"
                 # 5. apply Pregain anwenden
                 "[modre]volume=volume=" + str(pregain) + "[outre];"
                 "[modim]volume=volume=" + str(pregain) + "[outim];" + str(mixterm)
@@ -1143,7 +1166,7 @@ class modulate_worker_ffmpeg(QObject):
                 #print(ffmpeg_cmd)
             else:
                 ffmpeg_inta = ["-f", "s16le", "-ar",  str(sample_rate), "-ac",  "2", "-i", temp_outfile_copy] #TODO: make this line dependent on run; this is not for run 0
-                ffmpeg_intb = ["-map", "[udated_iq_out]"
+                ffmpeg_intb = ["-shortest", "-map", "[udated_iq_out]"
                 ]
                 ffmpeg_cmd = ffmpeg_cmd1+ ffmpeg_inta + ffmpeg_cmd2 + ffmpeg_intb + ffmpeg_cmd3
 
