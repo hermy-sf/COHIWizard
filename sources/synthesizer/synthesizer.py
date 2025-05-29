@@ -780,18 +780,29 @@ class modulate_worker_ffmpeg(QObject):
         print("process_and_concat_audio reached")
         # 6x Lowpass-Filter for 12. order pseudo-Butterworth
         lp_filter_chain = ",".join([f"lowpass=f={fc_lp}"] * 6)
-
         inputs = []
         filters = []
         for idx, infile in enumerate(input_files):
             inputs.extend(["-i", str(infile)])
-            filters.append(
-                f"[{idx}:a]"
-                f"aresample={sample_rate},"
-                f"pan=mono|c0=0.4*c0+0.4*c1," #TODO: 0.4 ist nur ein Versuch gegen Clipping
-                f"{lp_filter_chain}"
-                f"[a{idx}]"
-            )
+            if autolevel_flag:
+                filters.append(
+                    f"[{idx}:a]"
+                    f"loudnorm=I=-16:TP=-1.5:LRA=11,"
+                    #######TODO TODO TODO: implement normalization at this stage !
+                    #"[outa]loudnorm=I=-16:TP=-1.5:LRA=11[out]"
+                    f"aresample={sample_rate},"
+                    f"pan=mono|c0=0.4*c0+0.4*c1," #TODO: 0.4 is a first rough idea against Clipping
+                    f"{lp_filter_chain}"
+                    f"[a{idx}]"
+                )
+            else:
+                filters.append(
+                    f"[{idx}:a]"
+                    f"aresample={sample_rate},"
+                    f"pan=mono|c0=0.4*c0+0.4*c1," #TODO: 0.4 is a first rough idea against Clipping
+                    f"{lp_filter_chain}"
+                    f"[a{idx}]"
+                )                
         # silence parts
         num_silences = len(input_files) - 1
         for j in range(num_silences):
@@ -807,16 +818,13 @@ class modulate_worker_ffmpeg(QObject):
                 concat_parts.append(f"[a{i // 2}]")
             else:
                 concat_parts.append(f"[s{i // 2}]")
-        if not autolevel_flag:
-            filter_concat = ";".join(filters) + ";" + "".join(concat_parts) + f"concat=n={len(concat_parts)}:v=0:a=1[out]"
-        else:
-            # Full filter chain with loudness normalization after concat
-            filter_concat = (
-                ";".join(filters) + ";" +
-                "".join(concat_parts) +
-                f"concat=n={len(concat_parts)}:v=0:a=1[outa];" +
-                "[outa]loudnorm=I=-16:TP=-1.5:LRA=11[out]"
-            )
+
+        filter_concat = (
+            ";".join(filters) + ";" + 
+            "".join(concat_parts) + 
+            f"concat=n={len(concat_parts)}:v=0:a=1[out]"
+        )
+
 
 
         # FFmpeg-command
@@ -872,15 +880,10 @@ class modulate_worker_ffmpeg(QObject):
         data = np.empty(block_size, dtype=np.int16)
         with open(filename, "rb") as f:
             f.seek(start)
-            #fileHandle.readinto(data)
             f.readinto(data)
-            #return f.read(block_size)
             # convert to complex
             int_data = np.frombuffer(data, dtype=np.int16)
             complex_data = (int_data[::2] + 1j * int_data[1::2]) / 32768.0
-            # real_part = data[0::2]
-            # imag_part = data[1::2]
-            # complex_data = real_part + 1j * imag_part
             self.logger.debug(f"get_aligned_block; return complex data of len:{len(complex_data)}")
             return complex_data
         
@@ -919,7 +922,6 @@ class modulate_worker_ffmpeg(QObject):
             bufsize=1
         )
 
-
         time_re = re.compile(r'time=(\d+):(\d+):(\d+).(\d+)')
 
         for line in process.stdout:
@@ -930,11 +932,7 @@ class modulate_worker_ffmpeg(QObject):
                 elapsed = h * 3600 + m * 60 + s + ms / 100.0
                 percent = (elapsed / total_duration_sec) * 100 / numcarriers + percent_old
                 #print(f"\rProgress: {percent:.1f}%", end='')
-                #TODO TODO: send update signal for GUI progress bar here
                 self.set_progress(percent)
-                #TODO TODO TODO: generate signal block by reading the last section from the file being generated 
-                #so far DUMMY block
-                #combined_signal_block = 0.7*np.ones(2**16, dtype=np.complex128)
                 block_size = 4096 * 256           # Oder 44100 * 2 für 1 Sekunde Audio
                 alignment = 4                # Blockstart must be int multiple of  4
                 safety_margin = 8192         # 8kB safety margin from file end
