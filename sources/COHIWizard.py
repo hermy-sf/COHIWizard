@@ -135,7 +135,7 @@ class starter(QMainWindow):
         self.resize_actor()
 
     def trigger_resize_event(self):
-        print("################>>>>>>>>>>>>>>>trigger resize<<<<<<<<<<<<<<<####################")
+        #print("################>>>>>>>>>>>>>>>trigger resize<<<<<<<<<<<<<<<####################")
         old_size = self.size()
         self.resize(old_size.width() + 1, old_size.height())
         self.resize(old_size)
@@ -1334,7 +1334,7 @@ if __name__ == '__main__':
     # set startup Tab
     xcore_v.gui.playrec_comboBox_startuptab.addItems(tabselector)
     xcore_v.gui.playrec_comboBox_startuptab.setEnabled(True)
-    try:
+    try: ###TODO TODO TODO: check if this call can be removed because it is repeated at the end of __main__
         xcore_v.gui.playrec_comboBox_startuptab.setCurrentIndex(int(xcore_v.m["metadata"]["startup_tab"]))
         xcore_v.gui.tabWidget.setCurrentIndex(int(xcore_v.m["metadata"]["startup_tab"]))
     except:
@@ -1375,5 +1375,14 @@ if __name__ == '__main__':
     # gui.find_icon_buttons()
     #gui.resize_actor()
     QTimer.singleShot(0, gui.resize_actor)
+    for ix, value in enumerate(tab_dict["tabname"]):
+        xcore_v.gui.tabWidget.setCurrentIndex(ix)
+        QTimer.singleShot(0, gui.trigger_resize_event)  # trigger resize event for each tab
+    try: ###TODO TODO TODO: check if the first previous call can be removed above !
+        xcore_v.gui.playrec_comboBox_startuptab.setCurrentIndex(int(xcore_v.m["metadata"]["startup_tab"]))
+        xcore_v.gui.tabWidget.setCurrentIndex(int(xcore_v.m["metadata"]["startup_tab"]))
+    except:
+        xcore_v.logger.debug("startup Tab not defined in configuration file config_wizard.yaml")
+        xcore_v.gui.tabWidget.setCurrentIndex(0)
     sys.exit(app.exec_())
 
