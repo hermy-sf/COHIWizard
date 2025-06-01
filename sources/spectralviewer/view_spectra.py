@@ -194,8 +194,11 @@ class view_spectra_v(QObject):
                 self.reset_GUI()
             if  _value[0].find("logfilehandler") == 0:
                 self.logfilehandler(_value[1])
-            if  _value[0].find("canvasbuild") == 0:
+            if  _value[0].find("resizeaction") == 0:
                 self.canvasbuild(_value[1])
+                print("resize action triggered in view_spectra")
+                _value[1].resize_initialize()
+
             if  _value[0].find("enablescrollbar") == 0:
                 self.gui.horizontalScrollBar_view_spectra.setEnabled(_value[1])
 

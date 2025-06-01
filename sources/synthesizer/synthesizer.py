@@ -3603,6 +3603,10 @@ class synthesizer_v(QObject):
                 print(self.m["recording_path"])
         if _key.find("cui_synthesizer") == 0:
             _value[0](_value[1]) #STILL UNCLEAR
+        # if _key.find("cexex_canvasbuild") == 0 or _key.find("cexex_all_") == 0:
+        #     if  _value[0].find("canvasbuild") == 0:
+        #         print("resize action triggered in synthesizer")
+        #         _value[1].resize_initialize()
         if _key.find("cexex_synthesizer") == 0  or _key.find("cexex_all_") == 0:
             if  _value[0].find("updateGUIelements") == 0:
                 self.updateGUIelements()
@@ -3616,6 +3620,10 @@ class synthesizer_v(QObject):
                     #self.m["ffmpeg_autocheck"] = True
                     #self.checkffmpeg_install()
                     pass
+            if  _value[0].find("resizeaction") == 0:
+                print("resize action triggered in resampler")
+                _value[1].resize_initialize()
+
 
                 #print(f"timertick: value of self.m['ffmpeg_autocheck'] {self.m["ffmpeg_autocheck"]}")
                 if self.syntesisrunning:

@@ -49,7 +49,6 @@ class starter(QMainWindow):
     """
     SigResize = pyqtSignal(str,object)
 
-
     def __init__(self,skinindex):
         """instantiates SplashScreen object and then instantiates the central GUI as self.gui. 
         Then setupUi of the central GUI is called which sets up the Mainwindow and the central 
@@ -107,7 +106,6 @@ class starter(QMainWindow):
         :return: none
         :rtype: none
         """
-
         width = self.width()
         size = self.size()
         # font_size = max(10, width // 25)  # Mindestgröße von 10 pt
@@ -117,17 +115,40 @@ class starter(QMainWindow):
         super().resizeEvent(event)
         self.SigResize.emit("cenralwidget",size)
         #print(f"resize event caught, Signal sent, size: {size}")
+        QTimer.singleShot(0, self.resize_actor)
+        #self.resize_actor()
+
+    def resize_initialize(self):
+        """initialize resize actor, finds all icon buttons and widgets with font and sets their size
+        :param: none
+        :type: none
+        :raises: none
+        :return: none
+        :rtype: none
+        """
+        print("initial window resizing")
+        # QTimer.singleShot(100,self.find_widgets_with_font)
+        # QTimer.singleShot(100,self.find_icon_buttons)
+        # QTimer.singleShot(100,self.resize_actor)
+        self.find_widgets_with_font()
+        #self.find_icon_buttons()
         self.resize_actor()
+
+    def trigger_resize_event(self):
+        print("################>>>>>>>>>>>>>>>trigger resize<<<<<<<<<<<<<<<####################")
+        old_size = self.size()
+        self.resize(old_size.width() + 1, old_size.height())
+        self.resize(old_size)
 
     def resize_actor(self):
         if self.INACTIVATE_RESIZE:
             return
-        for button in self.iconButtons:
-            w = button.width()
-            h = button.height()
-            icon_size = QSize(int(w * 0.8), int(h * 0.8))
-            button.setIconSize(icon_size)
-        #print(f"buttonlist: {self.iconButtons}")
+        # for button in self.iconButtons:
+        #     w = button.width()
+        #     h = button.height()
+        #     icon_size = QSize(int(w * 0.8), int(h * 0.8))
+        #     button.setIconSize(icon_size)
+        #   print("resize actor called")
         for widget in self.widgets_with_font:
             # Schriftgröße als Anteil der Widget-Höhe
             # h = widget.height()
@@ -138,7 +159,6 @@ class starter(QMainWindow):
             # widget.setFont(font)
             min_size=11
             max_size=20
-            #print("fit text fonts to best size")
             self.fit_font_to_widget(widget, min_size, max_size)
 
     def fit_font_to_widget(self, widget, min_size=8, max_size=100):
@@ -174,16 +194,14 @@ class starter(QMainWindow):
             font.setPixelSize(best_size)
         widget.setFont(font)
 
-
-
-    def find_icon_buttons(self):
-        if self.INACTIVATE_RESIZE:
-            return
-        """Suche rekursiv nach allen QPushButtons mit Icon"""
-        self.iconButtons.clear()
-        for button in self.findChildren(QPushButton):
-            if not button.icon().isNull():
-                self.iconButtons.append(button)
+    # def find_icon_buttons(self):
+    #     if self.INACTIVATE_RESIZE:
+    #         return
+    #     """Suche rekursiv nach allen QPushButtons mit Icon"""
+    #     self.iconButtons.clear()
+    #     for button in self.findChildren(QPushButton):
+    #         if not button.icon().isNull():
+    #             self.iconButtons.append(button)
 
 
     def find_widgets_with_font(self):
@@ -254,7 +272,7 @@ class core_c(QObject):
     :type: object 
     """
 
-    def __init__(self, core_m): #TODO: remove gui
+    def __init__(self, core_m):
         """establishes a reference to core_m.mdl as self.m and to core_m.logger as self.logger
 
         :param core_m: reference to instance of model object core_m
@@ -451,29 +469,12 @@ class core_v(QObject):
         # Add handlers to the logger
         self.logger.addHandler(warning_handler)
         self.logger.addHandler(debug_handler)
-        #TODO TODO TODO: remove after sox is not used any more 24-02-2025
-        #check if sox is installed so as to throw an error message on resampling, if not
-        # self.soxlink = "https://sourceforge.net/projects/sox/files/sox/14.4.2/"
-        # self.soxlink_altern = "https://sourceforge.net/projects/sox"
-        # self.soxnotexist = False
-        # try:
-        #     subproc3 = subprocess.run('sox -h', stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True, check=True)
-        # except subprocess.CalledProcessError as ex:
-        #     #print("sox FAIL")
-        #     self.logger.error("sox FAIL")
-        #     print(ex.stderr, file=sys.stderr, end='', flush=True)
-        #     print(ex.stdout, file=sys.stdout, end='', flush=True)
-        #     if len(ex.stderr) > 0: 
-        #         self.soxnotexist = True
         self.logger.info("core_v Init logger in core reached")
-        #self.core_c.SigRelay.connect(self.SigRelay.emit)        
         self.core_c.SigRelay.connect(self.rxhandler)
-        #self.core_c.recording_path_checker()
-        #self.gui.playrec_radioButtonpushButton_write_logfile.clicked.connect(self.togglelogfilehandler)
-        #self.gui.playrec_radioButtonpushButton_write_logfile.setChecked(True)
         ###TODO: re-organize, there should be no access to gui elements of other modules
         self.gui.playrec_pushButton_recordingpath.clicked.connect(self.core_c.recording_path_setter)
         self.updateConfigElements()
+        self.firsttick = True
         self.timethread = QThread()
         self.timertick = tw()
         self.timertick.moveToThread(self.timethread)
@@ -581,16 +582,6 @@ class core_v(QObject):
         self.SigRelay.emit("cm_all_",self.m["rootpath"])
         pass
 
-    # TODO: Obsolete, delete after tests 24-02-2025
-    # def togglelogfilehandler(self):
-    #     if self.gui.playrec_radioButtonpushButton_write_logfile.isChecked():  #TODO TODO: should be task of the playrec module ??
-    #         self.logger.setLevel(logging.NOTSET)
-    #         self.SigRelay.emit("cexex_all_",["logfilehandler",False])
-    #     else:
-    #         self.logger.setLevel(logging.DEBUG)
-    #         self.SigRelay.emit("cexex_all_",["logfilehandler",True])
-
-
     def updateGUIelements(self):
         """
         dummy method, not really used in the core module but pre-configured for sake of compatibility with the general module structure
@@ -647,6 +638,12 @@ class core_v(QObject):
             self.gui.label_showtime.setText(
                 dt_now.strftime('%H:%M:%S'))
             
+        if self.firsttick:
+            self.firsttick = False
+            print("first tick, initialize GUI")
+            #gui.resize_initialize()
+            self.m["Mainwindowreference"].trigger_resize_event()
+            
         self.SigRelay.emit("cexex_all_",["timertick",0])
         
     def GUI_reset_status(self):
@@ -658,8 +655,6 @@ class core_v(QObject):
         #self.m = {}
         self.m["my_filename"] = ""
         self.m["ext"] = ""
-        #self.m["annotation_prefix"] = 'ANN_' #TODO: not used anywhere; inactivated 19-11-2024, remove later !
-        #self.m["resampling_gain"] = 0
         self.m["emergency_stop"] = False
         self.m["timescaler"] = 0
         self.m["fileopened"] = False
@@ -1123,6 +1118,10 @@ class core_v(QObject):
                 self.reset_GUI()
             if  _value[0].find("updateConfigElements") == 0:
                 self.updateConfigElements()
+            if  _value[0].find("resizeaction") == 0:
+                print("resize action triggered in core")
+                _value[1].resize_initialize()
+                
 
 class SplashScreen(QWidget):
     """This class provides a simple splash screen for the application.
@@ -1369,18 +1368,12 @@ if __name__ == '__main__':
     xcore_v.SigRelay.emit("cexex_all_",["canvasbuild",gui])   # communicate reference to gui instance to all modules which instanciate a canvas with auxi.generate_canvas(self,gridref,gridc,gridt,gui)
     xcore_v.SigRelay.emit("cm_all_",xcore_v.m["rootpath"])
     xcore_v.SigRelay.emit("cm_all_",["Mainwindowreference",gui])
+    xcore_v.SigRelay.emit("cexex_all_",["resizeaction",gui])
     print("COHIWIzard Version 2.1.1, 18-05-2025, (C) Hermann Scharfetter")
-    gui.find_icon_buttons()
-    gui.find_widgets_with_font()
-    time.sleep(0.1)
-    print("gui resize init")
-    gui.resize_actor()
-    time.sleep(0.1)
-    gui.find_icon_buttons()
-    gui.find_widgets_with_font()
-    gui.resize_actor()
-    print("gui resize init")
-
-
+    #gui.resize_initialize()
+    # gui.find_widgets_with_font()
+    # gui.find_icon_buttons()
+    #gui.resize_actor()
+    QTimer.singleShot(0, gui.resize_actor)
     sys.exit(app.exec_())
 

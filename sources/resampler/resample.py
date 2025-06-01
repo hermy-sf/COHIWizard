@@ -2598,7 +2598,9 @@ class resample_v(QObject):
                 self.SigRelay.emit("cexex_all_",["reset_GUI",0])
             if  _value[0].find("canvasbuild") == 0:
                 self.canvasbuild(_value[1])
-
+            if  _value[0].find("resizeaction") == 0:
+                print("resize action triggered in resampler")
+                _value[1].resize_initialize()
 
     def canvasbuild(self,gui):
         """

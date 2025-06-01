@@ -235,6 +235,10 @@ class wavheader_editor_v(QObject):
                 self.reset_GUI()
             if  _value[0].find("overwrite_header") == 0:
                 self.overwrite_header()
+            if  _value[0].find("resizeaction") == 0:
+                print("resize action triggered in wavheader_editor")
+                _value[1].resize_initialize()
+
                 
             #handle method
             # if  _value[0].find("plot_spectrum") == 0: #EXAMPLE
