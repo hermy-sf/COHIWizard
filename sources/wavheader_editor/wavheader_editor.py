@@ -236,7 +236,7 @@ class wavheader_editor_v(QObject):
             if  _value[0].find("overwrite_header") == 0:
                 self.overwrite_header()
             if  _value[0].find("resizeaction") == 0:
-                print("resize action triggered in wavheader_editor")
+                #print("resize action triggered in wavheader_editor")
                 _value[1].resize_initialize()
 
                 

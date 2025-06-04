@@ -196,7 +196,7 @@ class view_spectra_v(QObject):
                 self.logfilehandler(_value[1])
             if  _value[0].find("resizeaction") == 0:
                 self.canvasbuild(_value[1])
-                print("resize action triggered in view_spectra")
+                #print("resize action triggered in view_spectra")
                 _value[1].resize_initialize()
 
             if  _value[0].find("enablescrollbar") == 0:

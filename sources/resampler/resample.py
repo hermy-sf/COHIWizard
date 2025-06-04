@@ -2375,23 +2375,6 @@ class resample_v(QObject):
         self.resample_c.SigResampGUIReset.connect(self.reset_resamp_GUI_elemets)
         self.resample_c.SigUpdateGUIelements.connect(self.updateGUIelements)
         self.gui.pushButton_resample_GainOnly.setEnabled(False)
-        # TODO: OBSOLETE: sox is not used any more dur to ffmpeg
-        #check if sox is installed so as to throw an error message on resampling, if not
-        # self.soxlink = "https://sourceforge.net/projects/sox/files/sox/14.4.2/"
-        # self.soxlink_altern = "https://sourceforge.net/projects/sox"
-        # self.soxnotexist = False
-
-
-
-        # try:
-        #     subproc3 = subprocess.run('sox -h', stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True, check=True)
-        # except subprocess.CalledProcessError as ex:
-        #     #print("sox FAIL")
-        #     self.logger.error("sox FAIL")
-        #     print(ex.stderr, file=sys.stderr, end='', flush=True)
-        #     #print(ex.stdout, file=sys.stdout, end='', flush=True)
-        #     if len(ex.stderr) > 0: 
-        #         self.soxnotexist = True
 
         schedule_objdict = {}
         schedule_objdict["signal"] = {}
@@ -2599,7 +2582,7 @@ class resample_v(QObject):
             if  _value[0].find("canvasbuild") == 0:
                 self.canvasbuild(_value[1])
             if  _value[0].find("resizeaction") == 0:
-                print("resize action triggered in resampler")
+                #print("resize action triggered in resampler")
                 _value[1].resize_initialize()
 
     def canvasbuild(self,gui):

@@ -1,4 +1,4 @@
-#Version 2.1.1
+#Version 2.1.2
 # -*- coding: utf-8 -*-logfile
 # for redirecting all print messages to logfile : activate sys.stdout = self.logfile at the end of __init__
 #install Windows exe with: pyinstaller --icon=COHIWizard_ico4.ico –F COHIWizard.py
@@ -35,7 +35,7 @@ import yaml
 import importlib
 from PyQt5.QtWidgets import *
 import logging
-
+import platform
 from icons import Logos
 
 
@@ -126,7 +126,7 @@ class starter(QMainWindow):
         :return: none
         :rtype: none
         """
-        print("initial window resizing")
+        #print("initial window resizing")
         # QTimer.singleShot(100,self.find_widgets_with_font)
         # QTimer.singleShot(100,self.find_icon_buttons)
         # QTimer.singleShot(100,self.resize_actor)
@@ -355,7 +355,7 @@ class core_c(QObject):
         self.m["recording_path"] = self.m["metadata"]["recording_path"] #TODO: check ? obsolete ?
         self.logger.debug("playrec recording button recording path: %s", self.m["recording_path"])
         #print("core_c send recordingpath to all")
-        self.SigRelay.emit("cm_all_",["recording_path",self.m["recording_path"]])   #does not work !!!!   
+        self.SigRelay.emit("cm_all_",["recording_path",self.m["recording_path"]])   #does not work !!!!   because all other modules are not yet instantiated !
         self.SigRelay.emit("cexex_xcore",["updateConfigElements",0])
 
 class core_v(QObject):
@@ -410,7 +410,8 @@ class core_v(QObject):
         self.gui.lineEdit_IPAddress.returnPressed.connect(self.set_IP)
         self.gui.pushButton_IP.setText("set IP Address")
         self.gui.pushButton_IP.adjustSize()
-
+        no_ffmpeg_path = False
+        
         try:
             stream = open("config_wizard.yaml", "r")
             self.m["metadata"] = yaml.safe_load(stream)
@@ -423,26 +424,38 @@ class core_v(QObject):
             if "startup_tab" in self.m["metadata"]:
                 self.m["startup_tab"] = int(self.m["metadata"]["startup_tab"])
             if "rootpath" in self.m["metadata"]:
-                self.m["rootpath"] = self.m["metadata"]["recording_path"]
+                self.m["rootpath"] = self.m["metadata"]["rootpath"]
             else:
                 self.m["rootpath"] = os.getcwd()
                 self.m["metadata"]["recording_path"] = self.m["rootpath"]
+            if not "ffmpeg_path" in list(self.m["metadata"].keys()):
+                no_ffmpeg_path = True
         except:
             print("cannot get config_wizard.yaml metadata, write a new initial config file")
             self.m["metadata"] = {"last_path": self.standardpath}
             self.m["metadata"]["rootpath"] = os.getcwd()
             self.m["metadata"]["STM_IP_address"] = "000.000.000.000"
-            #TODO TODO TODO: this is not a general approach for the case this version is deprecated
-            self.m["metadata"]["ffmpeg_path"] = os.path.join(self.m["rootpath"],"ffmpeg-master-latest-win64-gpl-shared/bin")
+            auxi.standard_infobox("configuration file does not yet exist, a basic file will be generated. Please configure the STEMLAB IP address before using the Player")
+            self.m["metadata"]["recording_path"] = os.path.join(self.m["metadata"]["rootpath"], "out")
+            self.m["metadata"]["skinindex"] = 1
+            no_ffmpeg_path = True
             if not os.path.exists(default_recordingpath):
                 os.makedirs(default_recordingpath)
             default_recordingpath = os.path.join(self.m["rootpath"],"out")
-            self.m["metadata"]["recording_path"] = os.path.join(self.m["metadata"]["rootpath"], "out")
-            self.m["metadata"]["skinindex"] = 1
-            auxi.standard_infobox("configuration file does not yet exist, a basic file will be generated. Please configure the STEMLAB IP address before using the Player")
+
+        if no_ffmpeg_path:
+            system = platform.system().lower()
+            if system == "linux":
+                self.m["metadata"]["ffmpeg_path"] = ""
+            elif system == "windows":    
+                self.m["metadata"]["ffmpeg_path"] = os.path.join(self.m["rootpath"],"ffmpeg-master-latest-win64-gpl-shared/bin")
+            else:
+                self.m["metadata"]["ffmpeg_path"] = ""
+                auxi.standard_infobox("Your OS is neither linux nor windows. Therefore COHIWizard or at least some of its features may not work properly. The ffmpeg path has not been set. Please make sure that ffmpeg is installed and set the path to the ffmpeg binary it in the configuration file config_wizard.yaml. Otherwise e.g. resampler and synthesizer will not work at all.")
             stream = open("config_wizard.yaml", "w")
             yaml.dump(self.m["metadata"], stream)
             stream.close()
+            no_ffmpeg_path = False
 
         ###TODO: re-organize, there should be no access to gui elements of other modules
         self.m["HostAddress"] = self.gui.lineEdit_IPAddress.text() #TODO: Remove after transfer of playrec
@@ -604,7 +617,7 @@ class core_v(QObject):
         :rtype: Boolean
         """
         try:
-            self.gui.playrec_lineEdit_recordingpath.setText(self.m["recording_path"])    #should be part of the playrec module ?
+            self.gui.playrec_lineEdit_recordingpath.setText(self.m["recording_path"])    #TODO TODO TODO should be part of the playrec module ?
             self.SigRelay.emit("cm_all_",["recording_path",self.m["recording_path"]])
             #self.SigRelay.emit("cm_all_",["QTMAINWINDOWparent",self.m["QTMAINWINDOWparent"]])
         except:
@@ -1119,7 +1132,7 @@ class core_v(QObject):
             if  _value[0].find("updateConfigElements") == 0:
                 self.updateConfigElements()
             if  _value[0].find("resizeaction") == 0:
-                print("resize action triggered in core")
+                #print("resize action triggered in core")
                 _value[1].resize_initialize()
                 
 
@@ -1369,7 +1382,6 @@ if __name__ == '__main__':
     xcore_v.SigRelay.emit("cm_all_",xcore_v.m["rootpath"])
     xcore_v.SigRelay.emit("cm_all_",["Mainwindowreference",gui])
     xcore_v.SigRelay.emit("cexex_all_",["resizeaction",gui])
-    print("COHIWIzard Version 2.1.1, 18-05-2025, (C) Hermann Scharfetter")
     #gui.resize_initialize()
     # gui.find_widgets_with_font()
     # gui.find_icon_buttons()
@@ -1384,5 +1396,6 @@ if __name__ == '__main__':
     except:
         xcore_v.logger.debug("startup Tab not defined in configuration file config_wizard.yaml")
         xcore_v.gui.tabWidget.setCurrentIndex(0)
+    print("COHIWIzard Version 2.1.2, 01-06-2025, (C) Hermann Scharfetter")
     sys.exit(app.exec_())
 

@@ -3621,7 +3621,7 @@ class synthesizer_v(QObject):
                     #self.checkffmpeg_install()
                     pass
             if  _value[0].find("resizeaction") == 0:
-                print("resize action triggered in resampler")
+                #print("resize action triggered in resampler")
                 _value[1].resize_initialize()
 
 

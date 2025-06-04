@@ -1170,7 +1170,7 @@ class annotate_v(QObject):
             if  _value[0].find("ann_upd_GUI") == 0:
                 self.ann_upd_GUI()
             if  _value[0].find("resizeaction") == 0:
-                print("resize action triggered in annotator")
+                #print("resize action triggered in annotator")
                 _value[1].resize_initialize()
 
             #handle method

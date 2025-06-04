@@ -120,14 +120,17 @@ class playrec_c(QObject):
             self.m["rootpath"] = self.m["metadata"]["rootpath"]
         except:
             self.m["rootpath"] = os.getcwd()
-        try:
-            #search for ffmpeg path in metadata; if not found the install checker will be called
-            #TODO This is a weak point: in case the ffmpeg path is not in the config yaml, the auto-install procedure will be called
-            #TODO: this should be changed to a more general solution
-            self.m["ffmpeg_path"] = self.m["metadata"]["ffmpeg_path"]
-        except:
-            self.m["ffmpeg_path"] = os.path.join(os.getcwd(),"ffmpeg-master-latest-win64-gpl-shared","bin")
-
+        #TODO: the following was removed, CHECK after tests 04-06-2025
+        # try:
+        #     #search for ffmpeg path in metadata; if not found the install checker will be called
+        #     #TODO This is a weak point: in case the ffmpeg path is not in the config yaml, the auto-install procedure will be called
+        #     #TODO: this should be changed to a more general solution
+        #     self.m["ffmpeg_path"] = self.m["metadata"]["ffmpeg_path"]
+        #     print(f">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> playrec_c.__init__: searching for ffmpeg path in metadata: {self.m['metadata']}")
+        # except:
+        #     self.m["ffmpeg_path"] = os.path.join(os.getcwd(),"ffmpeg-master-latest-win64-gpl-shared","bin")
+        #     print(f">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> playrec_c.__init__: ffmpeg path not found, generating: {self.m['metadata']}")
+        self.m["ffmpeg_path"] = self.m["metadata"]["ffmpeg_path"]
         self.m["ffmpeg_autocheck"] = False
         #self.checkffmpeg_install()
         
@@ -162,6 +165,7 @@ class playrec_c(QObject):
         errorstatus = False
         value = None
         errorstatus, value = ffinst.is_ffmpeg_installed(self.m["ffmpeg_path"]) 
+        print(f">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> ffmpeg path check in rxhandler of playrec: {value}")
         if not errorstatus:
             #returns new installpath for ffmpeg
             self.m["ffmpeg_path"] = value
@@ -191,7 +195,7 @@ class playrec_c(QObject):
             #ffmpeg_link = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
             #TODO TODO TODO: place this URL in a more general place like config_wizard.yaml for easy exchange
             #pathinfo = os.path.join(os.getcwd(), "ffmpeg-master-latest-win64-gpl")
-            infotext = "<font size = 8> Synthesizer and resampler require ffmpeg to be installed on your computer; <br> Please install ffmpeg manually in folder  <br> ~rootpath/ffmpeg-master-latest-win64-gpl-shared/ <br> Download from: <a href='%s'>ffmpeg </a> <br> <br> Synthesizer will be inactivated until ffmpeg is available. </font>" % ffmpeg_link
+            infotext = "<font size = 8> Synthesizer and resampler require ffmpeg to be installed on your computer; <br> Please install ffmpeg manually as follows: <br> (1) Download from: <a href='%s'>ffmpeg </a> <br> (2) unpack the zip/tar file to a target folder <br> (3) set the path to the ffmpeg executable (ffmpeg.exe in Windows, ffmpeg in LINUX) <br> (4) delete the config_wizard.yaml file and restart the COHIWizard. <br> <br>Synthesizer , resampler and probably some other applications will be inactivated until ffmpeg is available. </font>" % ffmpeg_link
             self.logger.error(infotext)
             #self.logger.error(pathinfo)
             auxi.standard_errorbox(infotext)
