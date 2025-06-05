@@ -10,19 +10,19 @@ Appropriate recordings can be played back on historic Radio receivers with exter
 
 1) download the respective installation package from the [COHIRADIA webpage](https://www.radiomuseum.org/dsp_cohiradia.cfm) (zip file)
 2) unpack the zip file to a local directory of your PC, say `cohihome`
-3) start the exe File SDR_COHIWizard_v26.exe
+3) start the exe File COHIWizard1.2.x.exe, x denoting the respective sub-version (e.g. 9)
 
-## Method B (most recent version) for execution under Python (also running under LUNIX but not yet excessively tested. The main functions have been successfully executed under DEBIAN 10): 
+## Method B (most recent version) for execution under Python (also running under LINUX but not yet excessively tested. The main functions have been successfully executed under DEBIAN 12): 
 
 1) install Python v3.9.7 on your PC; the COHIWIzard may fail with other versions, though they may work (not yet tested)
-2) clone the repository from GITHUB to your PC to a folder, say cohihome
+2) clone the repository from GITHUB to your PC to a folder, say `cohihome`
 3) change to this folder
 4) create a virtual environment with `python –m venv venv`
 5) activate the venv by `venv/Scripts/activate`
-6) install the required packages from the requirements.txt (in cohihome) file by typing `pip install -r requirements.txt`
-7) change dir to cohifolder/sources
-8) run the main script: `python SDR_COHIWizard.py`
+6) install the required packages from the requirements.txt (in `cohihome') file by typing `pip install -r requirements.txt`
+7) change dir to `cohihome`/sources
+8) run the main script: `python COHIWizard.py`
 
 SDR_COHIWizard.py starts up a GUI with a recorder/player and various utilities for e.g. visualization of the spectra, resampling, annotation (beta version) and editing of wav-headers.
 
-When using a local git you can also access the branch 1.3 which is currently experimental and contains the version currently under development.
+When using a local git you can also access the branches 1.3 (current stable version) and 2.1, which is experimental and contains the version currently under development.
