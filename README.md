@@ -10,7 +10,7 @@ Appropriate recordings can be played back on historic Radio receivers with exter
 
 1) download the respective installation package from the [COHIRADIA webpage](https://www.radiomuseum.org/dsp_cohiradia.cfm) (zip file)
 2) unpack the zip file to a local directory of your PC, say `cohihome`
-3) start the exe File COHIWizard.exe
+3) start the exe File COHIWizard_v1.3.x.exe, x being the last sub-version
 
 ## Method B (most recent version) for execution under Python (also running under LINUX but not yet excessively tested. The main functions have been successfully executed under DEBIAN 12): 
 
@@ -23,6 +23,6 @@ Appropriate recordings can be played back on historic Radio receivers with exter
 7) change dir to `cohihome`/sources
 8) run the main script: `python COHIWizard.py`
 
-SDR_COHIWizard.py starts up a GUI with a recorder/player and various utilities for e.g. visualization of the spectra, resampling, annotation (beta version) and editing of wav-headers.
+COHIWizard.py starts up a GUI with a recorder/player and various utilities for e.g. visualization of the spectra, resampling, annotation (beta version) and editing of wav-headers.
 
-When using a local git you can also access the branches 1.2 (old, but well-tested) and 2.0 which is experimental and contains the version currently under development. The last version 2.1.x is not excessively tested, but contains the newest features, especially in the synthesizer.
+the main branch is currently up to date with branch 1.3.
