@@ -39,7 +39,6 @@ import platform
 from icons import Logos
 
 
-
 class starter(QMainWindow):
     """instantiates the MainWindow, instantiates a auxiliary gui object for the
     core GUI and calls its setupUI method; The latter contains all derived structures such as centralwidget, Scrollarea, TabWidget etc.
@@ -131,7 +130,7 @@ class starter(QMainWindow):
         # QTimer.singleShot(100,self.find_icon_buttons)
         # QTimer.singleShot(100,self.resize_actor)
         self.find_widgets_with_font()
-        #self.find_icon_buttons()
+        self.find_icon_buttons()
         self.resize_actor()
 
     def trigger_resize_event(self):
@@ -143,12 +142,14 @@ class starter(QMainWindow):
     def resize_actor(self):
         if self.INACTIVATE_RESIZE:
             return
-        # for button in self.iconButtons:
-        #     w = button.width()
-        #     h = button.height()
-        #     icon_size = QSize(int(w * 0.8), int(h * 0.8))
-        #     button.setIconSize(icon_size)
-        #   print("resize actor called")
+        for button in self.iconButtons:
+            w = button.width()
+            h = button.height()
+            icon_size = QSize(int(w * 0.8), int(h * 0.8))
+            button.setIconSize(icon_size)
+            #print("resize icon in button called")
+
+        
         for widget in self.widgets_with_font:
             # Schriftgröße als Anteil der Widget-Höhe
             # h = widget.height()
@@ -194,14 +195,14 @@ class starter(QMainWindow):
             font.setPixelSize(best_size)
         widget.setFont(font)
 
-    # def find_icon_buttons(self):
-    #     if self.INACTIVATE_RESIZE:
-    #         return
-    #     """Suche rekursiv nach allen QPushButtons mit Icon"""
-    #     self.iconButtons.clear()
-    #     for button in self.findChildren(QPushButton):
-    #         if not button.icon().isNull():
-    #             self.iconButtons.append(button)
+    def find_icon_buttons(self):
+        if self.INACTIVATE_RESIZE:
+            return
+        """Suche rekursiv nach allen QPushButtons mit Icon"""
+        self.iconButtons.clear()
+        for button in self.findChildren(QPushButton):
+            if not button.icon().isNull():
+                self.iconButtons.append(button)
 
 
     def find_widgets_with_font(self):

@@ -17,7 +17,7 @@ from scipy import signal as sig
 import subprocess
 
 class SDR_control(QObject):
-    """     Class for general SDR ssh connection, server start and stop,
+    """  Class for SDR identification and , if required, general SDR ssh connection, server start and stop,
     data stream socket control and shutdown of the SDR
     some methods emit a pyqtSignal(str) named SigMessage(messagestring) with argument messagestring 
     two settings are called via methods, i.e. set_play() and set_rec() for selecting play or rec
@@ -61,17 +61,17 @@ class SDR_control(QObject):
         : return: device_ID_dict
         : rtype: dict
         """
-        device_ID_dict = {"rates": {1000:0, 5000000:1},
+        device_ID_dict = {"rates": {0:0, 3500000:1},
                           "rate_type": "continuous",
                           "RX": False,
                           "TX": True,
-                          "device_name": "fl2k_stream",
-                          "device_ID": 1,
-                          "max_IFREQ": 100000000,
+                          "device_name": "adalm_2000",
+                          "device_ID": 0,
+                          "max_IFREQ": 3500000,
                           "min_IFREQ": 0,
                           "resolutions": [16, 24, 32],
                           "connection_type": "USB"}
-        #connection type USB_Vethernet is virtual, as the device in reality is USB but communication occurs via TCP to IP 127.0.0.1
+                #connection type USB_Vethernet is virtual, as the device in reality is USB but communication occurs via TCP to IP 127.0.0.1
         return(device_ID_dict)
 
     def set_play(self):
@@ -103,50 +103,27 @@ class SDR_control(QObject):
             True if socket can be configures, False in case of error
             requires self.modality to have been set by set_play() or set_rec()
         '''
-        errorstate = False
-        value = ""
+        errorstate = True
+        value = "sdrserver and socket communication not available for ADALM2000"
         return(errorstate,value)
-        # print(f'configparams ifreq: {configparams["ifreq"]} , HostAddress: {configparams["HostAddress"]}')
-        # print(f'configparams irate: {configparams["irate"]} , icorr: {configparams["icorr"]}')
-        # print(f'configparams rates: {configparams["rates"]} , LO_offset: {configparams["LO_offset"]}')
-        # ifreq = configparams["ifreq"]
-        # irate = configparams["irate"]
-        # rates = configparams["rates"]
-        # icorr = configparams["icorr"]
-        # LO_offset = configparams["LO_offset"]
-        # value = [ifreq, irate, rates, icorr, LO_offset]
-        # self.data_sock = socket(AF_INET, SOCK_STREAM)
-        # self.data_sock.settimeout(5)
-        # try:
-        #     self.data_sock.connect((configparams["HostAddress"], 25000))
-        #     value = self.data_sock
-        # except:  #TODO: replace errormessages by parameterized signals connected to errorbox-calls, par = errormessage
-        #     self.SigError.emit("Cannot establish socket connection for streaming to the STEMLAB")
-        #     return False
 
-        # if (self.modality != "play") and (self.modality != "rec"):
-        #     errormessage = "Error , self.modality must be rec or play"
-        #     self.SigError.emit(errormessage)
-        #     errorstate = True
-        #     value = errormessage
-        #     return(errorstate, value)
-        # self.SigMessage.emit("socket started")
-        # return (errorstate, value)
 
     def startssh(self,configparams):
         '''
-        DUMMY, not used in fl2k    
+        DUMMY, not used in ADALM2000   
         '''
-        errorstate = False
-        value = ""
+        errorstate = True
+        value = "sdrserver and ssh commands not available for ADALM2000"
         # start SDR server here (e.g. fl2k_tcp)
         return(errorstate, value)
 
     def sshsendcommandseq(self, shcomm):
         '''
-        DUMMY, not used in fl2k
+        DUMMY, not used in ADALM2000
         '''
-        return
+        errorstate = True
+        value = "sdrserver and ssh commands not available for ADALM2000"
+        return(errorstate,value)
     
     def sdrserverstart(self,configparams):
         '''
@@ -155,53 +132,18 @@ class SDR_control(QObject):
         undefined communication
         '''
         errorstate = False
-        value = ["",None]
+        value = "sdrserver not available for ADALM2000"
         return(errorstate,value)
-        # fl2kpath = os.path.join(os.getcwd(), "dev_drivers", "fl2k", "osmo-fl2k-64bit-20250105")
-        # #testpath = os.path.join(os.getcwd(), "dev_drivers", "fl2k", "osmo-fl2k-64bit-20250105")
-        # #fl2kpath = os.path.join(os.getcwd(), "dev_drivers/fl2k/osmo-fl2k-64bit-20250105/fl2k_tcp")
 
-        # #fl2k_command = [os.path.join(fl2kpath, "fl2k_tcp"), "-h"] # for TEST only
-
-        # fl2k_command = [os.path.join(fl2kpath, "fl2k_tcp"), " -a 127.0.0.1 -p 1234 -s 10000000"]
-        # #fl2k_command = [os.path.join(fl2kpath, "fl2k_tcp"), "-a 127.0.0.1 -p 1234 -s " , str(configparams["irate"])]
-        # self.process = subprocess.Popen(fl2k_command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, shell = True)
-        # if not self.process.poll() == None:
-        #     errorstate = True
-        #     value[0] = "fl2k_tcp cannot be started, please check if device is connected !"
-        #     self.SigError.emit(value[0])
-        #     return(errorstate, value)
-        # # stdout, stderr = self.process.communicate()
-        # # stderr.decode() # enthält alle Infos
-        # #process.terminate
-        # value[0] = "__process"
-        # value[1] = self.process
-
-        # #match1 = re.search(r"Failed to resolve", stderr.decode())
-        # #match2 = re.search(r"Error opening input file", stderr.decode())
-
-        # return(errorstate, value)
 
     def sdrserverstop(self):
         '''
         Purpose: stop server on the SDR.
         '''
         errorstate = False
-        value = ""
+        value = "sdrserver not available for ADALM2000"
         return(errorstate,value)
-        # try:
-        #     self.process.terminate
-        # except:
-        #     errorstate = True
-        #     value = "no process to be terminated"
-        #     return(errorstate, value)
-        # while self.process.poll() == None:
-        #     print("waiting for fl2k_tcp to terminate")
-        #     time.sleep(1)
-        # stdout, stderr = self.process.communicate()
-        # print(stderr.decode()) # print exit info
-        # # start SDR server here (e.g. fl2k_tcp)
-        # return(errorstate, value)
+
         
 
     def RPShutdown(self,configparams):

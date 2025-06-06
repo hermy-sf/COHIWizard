@@ -95,9 +95,9 @@ class playrec_worker(QObject):
         return(self.__slots__[7])
     def set_formattag(self,_value):
         self.__slots__[7] = _value
-    def get_datablocksize(self):
+    def get_datablocksize(self): #never used here !
         return(self.__slots__[8])
-    def set_datablocksize(self,_value):
+    def set_datablocksize(self,_value): #never used here !
         self.__slots__[8] = _value
     def get_fileclose(self):
         return(self.__slots__[9])
@@ -107,71 +107,6 @@ class playrec_worker(QObject):
         return(self.__slots__[10])
     def set_configparameters(self,_value):
         self.__slots__[10] = _value
-
-# ChatGPT-Vorschlag:
-
-
-# # ==== Parameter ====
-# fs = 1000000  # Sample rate (Hz)
-# block_size = 4096  # Anzahl Samples pro Push
-# channel = 0  # DAC-Kanal für Ausgabe
-
-# # ==== ffmpeg-Subprozess vorbereiten ====
-# ffmpeg_cmd = [
-#     "ffmpeg",
-#     "-i", "pipe:0",              # Eingabe z. B. über stdin (kannst du anpassen)
-#     "-f", "f32le",               # Rohes float32 PCM Output
-#     "-acodec", "pcm_f32le",
-#     "-ac", "1",                  # Mono
-#     "-ar", str(fs),
-#     "pipe:1"
-# ]
-
-# proc = subprocess.Popen(
-#     ffmpeg_cmd,
-#     stdin=subprocess.PIPE,   # falls du etwas reinschreiben willst
-#     stdout=subprocess.PIPE,
-#     stderr=subprocess.DEVNULL,  # oder subprocess.STDOUT, wenn du Logs willst
-#     bufsize=block_size * 4  # 4 Byte pro float32
-# )
-
-# # ==== ADALM2000 vorbereiten ====
-# ctx = libm2k.m2kOpen()
-# ctx.calibrateDAC()
-# ao = ctx.getAnalogOut()
-# ao.setSampleRate(channel, fs)
-# ao.enableChannel(channel, True)
-
-# # ==== Haupt-Loop: Lesen & Senden ====
-# try:
-#     while True:
-#         # Lies einen Block float32-Daten von ffmpeg stdout
-#         raw = proc.stdout.read(block_size * 4)  # 4 bytes pro float32 sample
-
-#         if not raw:
-#             print("EOF oder keine Daten mehr.")
-#             break
-
-#         samples = np.frombuffer(raw, dtype=np.float32)
-
-#         if samples.size == 0:
-#             continue
-
-#         # Optional: Clipping/Normierung oder DC-Offset-Korrektur
-#         samples = np.clip(samples, -1.0, 1.0)
-
-#         ao.push([samples])  # Mono-Ausgabe
-
-# except KeyboardInterrupt:
-#     print("Abbruch durch Benutzer.")
-
-# finally:
-#     ao.enableChannel(channel, False)
-#     libm2k.context.m2kClose(ctx)
-#     proc.terminate()
-#     print("Beendet.")
-
-
 
 
     def play_loop_filelist(self):
@@ -206,14 +141,36 @@ class playrec_worker(QObject):
         configuration = self.get_configparameters() # = {"ifreq":self.m["ifreq"], "irate":self.m["irate"],"rates": self.m["rates"], "icorr":self.m["icorr"],"HostAddress":self.m["HostAddress"], "LO_offset":self.m["LO_offset"]}
         sampling_rate = configuration["irate"]
         lo_shift = configuration["ifreq"]# - configuration["LO_offset"]
-        #TODO TODO TODO ADALM: adapt tSR to ADALM needs
-        tSR = 10000000*(1 + np.floor((lo_shift+sampling_rate/2)*2/10000000)) #TODO: investigate more thoroughly and optimize !
-        tSR = min(100000000,tSR)
+        #TODO TODO TODO ADALM: adapt to ADALM needs: check if 75MS/s is appropriate for data transfer over USB - maybe too fast
+        SRDAC = 7500000 #maximum DAC SR of Adalm
+        OSR = np.floor(SRDAC/(np.floor((lo_shift+sampling_rate/2)*3))) #TODO: factor 3 is 2*1.5, 1.5 has 50% margin above Nyquist; investigate more thoroughly and optimize !
+        tSR = SRDAC
+        # ==== try to initialize ADALM2000 / check for readyness ====
+        print("checking for ADALM2000")
+        self.mutex.lock()
+        errorstate, value = self.check_ready_ADALM()
+        #print("MUTEX")
+        if errorstate:
+            print("no ADALM2000 present")
+            self.SigError.emit(value)
+            self.SigFinished.emit()
+            return()
+        self.mutex.unlock()
+        #print("past MUTEX")
+        # =============== complete ADALM2000 initialization =================
+        ctx = value
+        ao = ctx.getAnalogOut()
+        ao.setSampleRate(channel, SRDAC)
+        print(f"ADALM2000: type of OSR: {type(OSR)}")
+        ao.setOversamplingRatio(channel, int(OSR)) ### TODO: set oversampling ratio according band requirements; 
+        #For MW we could live with a value between 15 and 20 
+        ao.enableChannel(channel, True)
+
         format = self.get_formattag()
         a = (np.tan(np.pi * lo_shift / tSR) - 1) / (np.tan(np.pi * lo_shift / tSR) + 1)
-        ###TODO TODO TODO ADALM: adapt fl2k_file_path to ADALM needs
-        fl2k_file_path = os.path.join(os.getcwd(),"dev_drivers/fl2k/osmo-fl2k-64bit-20250105", "fl2k_file.exe")
         system = platform.system().lower()
+
+        ################# TODO TODO TODO: adapt to central ffmpegpath info !
         if system == "linux":
             ffmpeg_file_path = ""
         elif system == "windows":
@@ -224,44 +181,24 @@ class playrec_worker(QObject):
             value = "This OS is not being supported"
             return(errorstatus, value)
 
-        #TODO TODO TODO ADALM: adapt tSR to ADALM needs
-        stability_criterion = (np.mod(np.log2(tSR/sampling_rate),1) == 0) or sampling_rate < 500001
-        print(f"stability criterion: {stability_criterion}")
-        if not stability_criterion:
-            self.SigInfomessage.emit(f"""The ratio between target sampling rate and
-                                     source sampling rate ({tSR/sampling_rate}) is not a power of 2: 
-                                     This may cause issues with playback quality and stability. 
-                                     In case the sampling rate is > 500kS/s the playback may 
-                                     not work at all in such cases and the program may crash. 
-                                     To be on the safe side re-sample the recording to an appropriate SR so that 
-                                     The ratio between target sampling rate and 
-                                     source sampling rate ({tSR/sampling_rate}) is something like 2, 4, 8, 16, ...""")
-        # else:
-        #     self.SigInfomessage.emit("Teststring from SigInfoMessage, SR criterion is fullfilled")
-        
-        print("checking for ADALM2000")
-        #self.mutex.lock()
-        #TODO TODO TODO ADALM: adapt check ready method to ADALM needs
-        errorstate, value = self.check_ready_ADALM()
-        #print("MUTEX")
-        # if errorstate:
-        #     print("no fl2k present")
-        #     self.SigError.emit(value)
-        #     self.SigFinished.emit()
-        #     return()
-        #self.mutex.unlock()
-        #print("past MUTEX")
+        # ======================= set formatstring and preset volume ========================
         if format[0] == 1:  #PCM
             if format[2] == 16:
                 formatstring = "s16le"
                 preset_volume = 2
+                self.DATABLOCKSIZE = self.DATABLOCKSIZE_BASIC
+                data = np.empty(self.DATABLOCKSIZE, dtype=np.int16)
             elif format[2] == 24:   #24 bit PCM
-                formatstring = "f32le"
+                #formatstring = "f32le"
                 formatstring = "s24le"
                 preset_volume = 20
+                self.DATABLOCKSIZE = 1024*48
+                data = np.empty(self.DATABLOCKSIZE, dtype=np.float32)
             elif format[2] == 32:
                 formatstring = "s32le"  #32 bit PCM 
                 preset_volume = 2
+                self.DATABLOCKSIZE = self.DATABLOCKSIZE_BASIC
+                data = np.empty(self.DATABLOCKSIZE, dtype=np.float32)
             else:
                 self.SigError.emit(f"Format not supported: {format[2]}")
                 self.SigFinished.emit()
@@ -270,42 +207,52 @@ class playrec_worker(QObject):
             if format[2] == 32:
                 formatstring = "f32le"
                 preset_volume = 2
+                self.DATABLOCKSIZE = self.DATABLOCKSIZE_BASIC
+                data = np.empty(self.DATABLOCKSIZE, dtype=np.float32) #TODO: check if true for 32-bit wavs wie Gianni's
             elif format[2] == 16:   #16 bit float
                 formatstring = "f16le"
                 preset_volume = 2
+                self.DATABLOCKSIZE = self.DATABLOCKSIZE_BASIC
+                data = np.empty(self.DATABLOCKSIZE, dtype=np.float16)
             else:
                 self.SigError.emit(f"Format not supported: {format[2]}")
                 self.SigFinished.emit()
                 return()
+        ADALM_blocksize = self.DATABLOCKSIZE #4096  # Anzahl Samples pro Push TODO: maybe datablocksize as push-blocksize ?
+
+        print(f"ADALM2000 <<<<<<<<<<<<< oooooo >>>>>>>>>>>> format: {format}")
+        # if format[0] == 1: #PCM              
+        #     if format[2] == 16:
+        #         self.DATABLOCKSIZE = self.DATABLOCKSIZE_BASIC
+        #         data = np.empty(self.DATABLOCKSIZE, dtype=np.int16)
+        #     elif format[2] == 32:
+        #         self.DATABLOCKSIZE = self.DATABLOCKSIZE_BASIC
+        #         data = np.empty(self.DATABLOCKSIZE, dtype=np.float32)
+        #     elif format[2] == 24:
+        #         self.DATABLOCKSIZE = 1024*48
+        #         data = np.empty(self.DATABLOCKSIZE, dtype=np.float32)
+        # else:
+            # if format[2] == 16:
+            #     self.DATABLOCKSIZE = self.DATABLOCKSIZE_BASIC
+            #     data = np.empty(self.DATABLOCKSIZE, dtype=np.float16)
+            # elif format[2] == 32:
+            #     self.DATABLOCKSIZE = self.DATABLOCKSIZE_BASIC
+            #     data = np.empty(self.DATABLOCKSIZE, dtype=np.float32) #TODO: check if true for 32-bit wavs wie Gianni's
+            # elif format[2] == 24:
+            #     self.DATABLOCKSIZE = 1024*48
+            #     data = np.empty(self.DATABLOCKSIZE, dtype=np.float32)
+        print(f"playloop: BitspSample: {format[2]}; wFormatTag: {format[0]}; Align: {format[1]}")
+        self.JUNKSIZE = self.DATABLOCKSIZE/2
+
 
         if not TEST:
-            #Start ffmpeg Process:
-            #preset_volume = 2
-
-            # # ==== ffmpeg-Subprozess vorbereiten ====
-            # ffmpeg_cmd = [
-            #     "ffmpeg",
-            #     "-i", "pipe:0",              # Eingabe z. B. über stdin (kannst du anpassen)
-            #     "-f", "f32le",               # Rohes float32 PCM Output
-            #     "-acodec", "pcm_f32le",
-            #     "-ac", "1",                  # Mono
-            #     "-ar", str(fs),
-            #     "pipe:1"
-            # ]
-
-            # proc = subprocess.Popen(
-            #     ffmpeg_cmd,
-            #     stdin=subprocess.PIPE,   # falls du etwas reinschreiben willst
-            #     stdout=subprocess.PIPE,
-            #     stderr=subprocess.DEVNULL,  # oder subprocess.STDOUT, wenn du Logs willst
-            #     bufsize=block_size * 4  # 4 Byte pro float32
-            # )
+            # ======================= ffmpeg command generation ========================
             try:
                 #TODO: simplify this part
                 if os.name.find("posix") >= 0:
                     ffmpeg_cmd = [
                     "ffmpeg", "-y", "-loglevel", "error", "-hide_banner",  
-                    "-f", formatstring, "-ar", str(sampling_rate), "-ac", "2", "-i", "-",  # Lese von stdin
+                    "-f", formatstring, "-ar", str(sampling_rate), "-ac", "2", "-i", "-",  # read from stdin
                     "-filter_complex",
                     "[0:a]aresample=osr=" + str(tSR) + ",channelsplit=channel_layout=stereo [re][im];"
                     "sine=frequency=" + str(lo_shift) + ":sample_rate="  + str(tSR) + "[sine_base];"
@@ -316,7 +263,8 @@ class playrec_worker(QObject):
                     "[mod_im]volume=volume=" + str(preset_volume) + "[part_im];"
                     "[mod_re]volume=volume=" + str(preset_volume) + "[part_re];"
                     "[part_re][part_im]amix=inputs=2:duration=shortest[out]",
-                    "-map", "[out]", "-c:a", "pcm_s8", "-f", "caf", "-"
+                    #ORIGINAL: "-map", "[out]", "-c:a", "pcm_f32le", "-f", "caf", "-" # write to stdout --> ADALM
+                    "-map", "[out]", "-acodec", "pcm_f32le", "-ac", "1", "-ar", str(tSR), "-" # write to stdout --> ADALM
                     ]
                 else:
                     ffmpeg_cmd = [
@@ -332,15 +280,16 @@ class playrec_worker(QObject):
                     "[mod_im]volume=volume=" + str(preset_volume) + "[part_im];"
                     "[mod_re]volume=volume=" + str(preset_volume) + "[part_re];"
                     "[part_re][part_im]amix=inputs=2:duration=shortest[out]",
-                    "-map", "[out]", "-c:a", "pcm_s8", "-f", "caf", "-"
+                    "-map", "[out]", "-c:a", "pcm_f32le", "-f", "caf", "-"
+                    #"-map", "[out]", "-acodec", "pcm_f32le", "-ac", "1", "-ar", str(tSR), "-" # write to stdout --> ADALM
                     ]
                 # Prozess starten
                 ffmpeg_process = subprocess.Popen(ffmpeg_cmd, 
                     stdin=subprocess.PIPE, 
                     stdout=subprocess.PIPE, 
-                    stderr=subprocess.PIPE,
-                    bufsize=10**8)
-                print(f"ffmpeg_command: {ffmpeg_cmd}")
+                    stderr=subprocess.STDOUT,  # or subprocess.STDOUT if you want to see logs
+                    bufsize=ADALM_blocksize*32)  # 4 bytes per float32 sample
+                print(f"<<<<<<<<<<<<<<< ADALM 2000: ffmpeg_command: {ffmpeg_cmd}")
             except FileNotFoundError:
                 print(f"Input file not found, probably ffmpeg path is wrong")
                 return()
@@ -357,82 +306,6 @@ class playrec_worker(QObject):
                 psutil.Process(ffmpeg_process.pid).nice(psutil.HIGH_PRIORITY_CLASS)
                 pass
 
-        #TODO TODO TODO ADALM: adapt process to ADALM needs
-            if os.name.find("posix") >= 0:
-                try:
-                    ADALM_process = subprocess.Popen(
-                        #TODO TODO adapt to ADALM: ["fl2k_file", "-s", str(tSR), "-r", "0", "-"],
-                        stdin=ffmpeg_process.stdout,  # Hier kommt der FFmpeg-Stream an
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        bufsize=10**8
-                    )
-                    
-                except FileNotFoundError:
-                    self.SigError.emit(f"Input file not found")
-                    self.SigFinished.emit()
-                    return()
-                except subprocess.SubprocessError as e:
-                    self.SigError.emit(f"Error when executing ADALM2000 driver: {e}")
-                    self.SigFinished.emit()
-                    return()
-                except Exception as e:
-                    self.SigError.emit(f"Unexpected error: {e}")
-                    print("unexpected error in play_loop_filelist for ADALM2000")
-                    self.SigFinished.emit()
-                    return()
-            else:
-
-                # Starten von fl2k_file mit den entsprechenden Parametern
-                try:
-                    ADALM_process = subprocess.Popen(
-                        #TODO TODO adapt to ADALM: [fl2k_file_path, "-s", str(tSR), "-r", "0", "-"],
-                        stdin=ffmpeg_process.stdout,  # Hier kommt der FFmpeg-Stream an
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        bufsize=10**8
-                    )
-
-                except FileNotFoundError:
-                    self.SigError.emit(f"Input file not found")
-                    self.SigFinished.emit()
-                    return()
-                except subprocess.SubprocessError as e:
-                    self.SigError.emit(f"Error when executing ADALM_file: {e}")
-                    self.SigFinished.emit()
-                    return()
-                except Exception as e:
-                    self.SigError.emit(f"Unexpected error: {e}")
-                    self.SigFinished.emit()
-                    return()
-                psutil.Process(ADALM_process.pid).nice(psutil.HIGH_PRIORITY_CLASS)
-
-        else:
-            print("ADALM worker TEST condition , no ADALM_file process started <<<<<<<<<<<<<<<<")
-
-        print(f"<<<<<<<<<<<<< oooooo >>>>>>>>>>>> format: {format}")
-        if format[0] == 1: #PCM              
-            if format[2] == 16:
-                self.DATABLOCKSIZE = self.DATABLOCKSIZE_BASIC
-                data = np.empty(self.DATABLOCKSIZE, dtype=np.int16)
-            elif format[2] == 32:
-                self.DATABLOCKSIZE = self.DATABLOCKSIZE_BASIC
-                data = np.empty(self.DATABLOCKSIZE, dtype=np.float32)
-            elif format[2] == 24:
-                self.DATABLOCKSIZE = 1024*48
-                data = np.empty(self.DATABLOCKSIZE, dtype=np.float32)
-        else:
-            if format[2] == 16:
-                self.DATABLOCKSIZE = self.DATABLOCKSIZE_BASIC
-                data = np.empty(self.DATABLOCKSIZE, dtype=np.float16)
-            elif format[2] == 32:
-                self.DATABLOCKSIZE = self.DATABLOCKSIZE_BASIC
-                data = np.empty(self.DATABLOCKSIZE, dtype=np.float32) #TODO: check if true for 32-bit wavs wie Gianni's
-            elif format[2] == 24:
-                self.DATABLOCKSIZE = 1024*48
-                data = np.empty(self.DATABLOCKSIZE, dtype=np.float32)
-        print(f"playloop: BitspSample: {format[2]}; wFormatTag: {format[0]}; Align: {format[1]}")
-        self.JUNKSIZE = self.DATABLOCKSIZE/2
         for ix,filename in enumerate(filenames):
             fileHandle = open(filename, 'rb')
             if format[2] == 24:
@@ -479,15 +352,16 @@ class playrec_worker(QObject):
 
             while size > 0 and not self.stopix:
                 if not TEST:
+                    print(f"iteration loop entered play_loop_filelist: size: {size} junkspersecond: {junkspersecond} count: {count}")
                     self.mutex.lock()
                     if ffmpeg_process.poll() != None:
                         self.SigError.emit(f"ffmpeg process terminated unexpectedly, pipe broken")
                         print("Error: ffmpeg process terminated")
                         break
-                    if ADALM_process.poll() != None:
-                        self.SigError.emit(f"ADALM process terminated unexpectedly, pipe broken; Please check if the USB-VGA dongle is connected")
-                        print("Error: ADALM process terminated")
-                        break
+                    # if ADALM_process.poll() != None:
+                    #     self.SigError.emit(f"ADALM process terminated unexpectedly, pipe broken; Please check if the USB-VGA dongle is connected")
+                    #     print("Error: ADALM process terminated")
+                    #     break
                     self.mutex.unlock()
                     if not self.get_pause():
                         try:
@@ -507,6 +381,16 @@ class playrec_worker(QObject):
                             else :   #16 bit float	
                                 aux1 = gain*data[0:size]
                                 ffmpeg_process.stdin.write(aux1.astype(np.float16))
+                            
+                            #write data from ffmpeg stdout to ADALM2000
+                            print(f"ffmpeg_process.stdout.read(ADALM_blocksize* 4) {ADALM_blocksize* 4}")
+                            raw = ffmpeg_process.stdout.read(ADALM_blocksize)
+                            samples = np.frombuffer(raw, dtype=np.float32)
+                            print(f"ffmpeg_process.stdout.read(ADALM_blocksize* 4) samples: {samples}, len(samples): {len(samples)}")
+                            if samples.size == 0:
+                                continue
+                            print("ADALM push command reached")
+                            ao.push([samples])  # Mono-Ausgabe auf ADALM2000
 
                             ffmpeg_process.stdin.flush()
                         except BlockingIOError:
@@ -524,7 +408,7 @@ class playrec_worker(QObject):
                             time.sleep(0.1)
                             return
                         except Exception as e:
-                            print("Class e type error  data socket error in playloop worker")
+                            print("Class e type error data transfer error in playloop worker")
                             print(e)
                             time.sleep(0.1)
                             self.SigError.emit(f"Diagnostic Message: Error in playloop worker: {str(e)}")
@@ -533,10 +417,10 @@ class playrec_worker(QObject):
                             return
                         except BrokenPipeError:
                             time.sleep(0.1)
-                            self.SigError.emit(f"Broken Pipe: FFMPEG-Prozess beendet oder Pipe geschlossen. Neustart erforderlich.")
+                            self.SigError.emit(f"Broken Pipe: FFMPEG-Prozess terminated or pipe closed. Please restart procedure.")
                             self.SigFinished.emit()
                             time.sleep(0.1)
-                            print("FFMPEG-Prozess beendet oder Pipe geschlossen. Neustart erforderlich.")
+                            print(" FFMPEG-Prozess terminated or pipe closed. Please restart procedure.")
                             return
 
                         QThread.usleep(1) #sleep 5 us for keeping main GUI responsive
@@ -610,13 +494,12 @@ class playrec_worker(QObject):
             ffmpeg_process.stdout.close()  # close stdout
             ffmpeg_process.terminate()  # stop process gently
             ffmpeg_process.wait()  # wait for process termination
-            stdout, stderr = ADALM_process.communicate()  # wait for the end of ADALM_file
-            # report result
-            print("ADALM output:")
-            print(stdout.decode())
-            if stderr:
-                print("ADALM_file errors:")
-                print(stderr.decode())
+            try:
+                ao.enableChannel(channel, False)
+                ao.setSampleRate(channel, 0)  # set sample rate to 0 to disable channel
+                libm2k.context.m2kClose(ctx)
+            except:
+                self.logger.error("Error when closing ADALM2000 context")
 
         self.SigFinished.emit()
         return()
@@ -627,78 +510,19 @@ class playrec_worker(QObject):
         """
         errorstate = False
         value = ""
-        tSR = 10000000
-        if os.name.find("posix") >= 0:#["fl2k_file", "-s", str(tSR), "-r", "0", "-"],
-            try:
-                ADALM_process = subprocess.Popen(
-                    #TODO TODO TODO: adapt to ADALM["fl2k_file", "-s", str(tSR), "-r", "0", "-"],
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    preexec_fn=os.setsid
-                )
-                
-            except FileNotFoundError:
-                value = (f"Input file not found")
-                errorstate = True
-                return(errorstate, value)
-            except subprocess.SubprocessError as e:
-                value = (f"Error when executing ADALM_file: {e}")
-                errorstate = True
-                return(errorstate, value)
-            except Exception as e:
-                value = (f"unexpected error in play_loop_filelist for ADALM {e}")
-                errorstate = True
-                return(errorstate, value)    
-        else:
-            print("check_ready_ADALM: WINDOWS: try popen ADALM")
-            try:
-                #TODO TODO TODO: adapt to ADALMfl2k_file_path = os.path.join(os.getcwd(),"dev_drivers/fl2k/osmo-fl2k-64bit-20250105", "fl2k_file.exe")
-                ADALM_process = subprocess.Popen(
-                    #TODO TODO TODO: adapt to ADALM[fl2k_file_path, "-s", str(tSR), "-r", "0", "-"],
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
-                )
-
-            except FileNotFoundError:
-                value = (f"Input file not found")
-                errorstate = True
-                return(errorstate, value)
-            except subprocess.SubprocessError as e:
-                value = (f"Error when executing ADALM_file: {e}")
-                errorstate = True
-                return(errorstate, value)
-            except Exception as e:
-                value = (f"unexpected error in play_loop_filelist for ADALM {e}")
-                errorstate = True
-                return(errorstate, value)
-        time.sleep(0.2)
-        print(f"check_ready_ADALM: poll: {ADALM_process.poll()}")
-        if ADALM_process.poll() != None:
+        try:
+            ctx = libm2k.m2kOpen()
+            ctx.calibrateDAC()
+            value = ctx
+        except FileNotFoundError:
+            value = (f"Input file not found")
             errorstate = True
-            value = "check_ready_ADALM: ADALM device not ready"
-        else:
-            print("ADALM_file is ready, terminate test process")
-            value = "check_ready_ADALM: ADALM device ready"
-
-            ADALM_process.terminate()
-            try:
-                ADALM_process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                print("Process did not terminate, forcefully killing it")
-                if os.name == "posix":
-                    os.killpg(os.getpgid(ADALM_process.pid), signal.SIGKILL)  # Linux/macOS
-                else:
-                    ADALM_process.kill()  # Windows
-
-            # Ensure the process is reaped properly
-            try:
-                ADALM_process.wait()
-            except Exception as e:
-                print(f"Error during wait(): {e}")
-
+            return(errorstate, value)
+        except Exception as e:
+            value = (f"unexpected error in play_loop_filelist for ADALM , please checl if the system is connected and ready {e}")
+            errorstate = True
+            return(errorstate, value)    
+ 
         print("leave check_ready_ADALM")
         return(errorstate, value)
 
