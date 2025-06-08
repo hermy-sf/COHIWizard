@@ -905,6 +905,7 @@ class modulate_worker_ffmpeg(QObject):
         """
         errorstate = False
         value = ""
+        percent = 0
         # process = subprocess.Popen(
         #     ffmpeg_cmd,
         #     stderr=subprocess.PIPE,
@@ -993,7 +994,7 @@ class modulate_worker_ffmpeg(QObject):
     def process_multiple_carriers_ffmpeg(self, carrier_frequencies, playlists, sample_rate, cutoff_freq, modulation_depth, output_base_name, exp_num_samples, silence_duration):
         """_summary_
         Process audio from multiple playlists blockwise, each corresponding to a different carrier frequency.
-        Write the combined output to multiple WAV files if the 2 GB limit is exceeded.
+        Write the combined output to  WAV file
 
         :param carrier_frequencies: list of carrier frequencise
         :type carrier_frequencies: list of float
@@ -1099,7 +1100,7 @@ class modulate_worker_ffmpeg(QObject):
             ]
 
             if not firstround:
-                mixterm = "[outre][outim]amerge=inputs=2[merged];[1:a]highpass=f=1000[filtered_input1];[filtered_input1][merged]amix=inputs=2:duration=shortest:dropout_transition=0:normalize=0[udated_iq_out]"
+                mixterm = "[outre][outim]amerge=inputs=2[merged];[1:a]highpass=f=1000[filtered_input1];[filtered_input1][merged]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[udated_iq_out]"
                 #mixterm = "[outre][outim]amerge=inputs=2[merged];[1:a][merged]amix=inputs=2:duration=shortest:dropout_transition=0:normalize=0[udated_iq_out]"
             else:
                 mixterm = "[outre][outim]amerge=inputs=2[merged];[merged]pan=stereo|c0=0.5*c0|c1=0.5*c1[iq_out]"
@@ -1161,7 +1162,8 @@ class modulate_worker_ffmpeg(QObject):
                 #print(ffmpeg_cmd)
             else:
                 ffmpeg_inta = ["-f", "s16le", "-ar",  str(sample_rate), "-ac",  "2", "-i", temp_outfile_copy] #TODO: make this line dependent on run; this is not for run 0
-                ffmpeg_intb = ["-shortest", "-map", "[udated_iq_out]"
+                #ffmpeg_intb = ["-shortest", "-map", "[udated_iq_out]"
+                ffmpeg_intb = ["-map", "[udated_iq_out]"
                 ]
                 ffmpeg_cmd = ffmpeg_cmd1+ ffmpeg_inta + ffmpeg_cmd2 + ffmpeg_intb + ffmpeg_cmd3
 
@@ -1653,7 +1655,8 @@ class synthesizer_v(QObject):
         self.m["SR_currindex"] = 5
         self.gui.comboBox_targetSR.setCurrentIndex(self.m["SR_currindex"])
         self.gui.lineEdit_LO.setText("1125")
-        preset_time = QTime(00, 30, 00) 
+        preset_time = QTime(00, 30, 00)
+        self.create_duration = preset_time
         self.gui.timeEdit_reclength.setTime(preset_time)
         self.gui.lineEdit_fc_low.setText("783")
 
@@ -1749,7 +1752,8 @@ class synthesizer_v(QObject):
         self.m["SR_currindex"] = 5
         self.gui.comboBox_targetSR.setCurrentIndex(self.m["SR_currindex"])
         self.gui.lineEdit_LO.setText("1125")
-        preset_time = QTime(00, 30, 00) 
+        preset_time = QTime(00, 30, 00)
+        self.create_duration = preset_time
         self.gui.timeEdit_reclength.setTime(preset_time)
         self.gui.lineEdit_fc_low.setText("783")
         self.gui.listWidget_playlist.clear()
@@ -1989,15 +1993,16 @@ class synthesizer_v(QObject):
         """
         self.gui.synthesizer_pushbutton_preview.clicked.disconnect(self.preview)
         preset_time = QTime(0,0,20) 
-
+        self.create_duration = self.gui.timeEdit_reclength.time()
+        self.gui.timeEdit_reclength.setTime(preset_time)
         #self.preset_gain()
         if self.FIRSTPREVIEW:
-            self.create_duration = self.gui.timeEdit_reclength.time()
-            self.gui.timeEdit_reclength.setTime(preset_time)
+
             self.preset_gain()  #gain is set indirectly by setting the gain slider position
             self.FIRSTPREVIEW = False
         self.m["preview"] = True
         self.create_band_thread()
+        
         
         #self.m["preview"] = False
 
@@ -2010,8 +2015,11 @@ class synthesizer_v(QObject):
         self.gui.synthesizer_pushbutton_create.clicked.disconnect(self.create_slot)
         time.sleep(0.5)
         self.activate_control_elements(False)
-        if self.m["preview"]:
-            self.gui.timeEdit_reclength.setTime(self.create_duration)
+        # if self.m["preview"]:
+        #     self.gui.timeEdit_reclength.setTime(self.create_duration)
+        #     self.m["preview"] = False
+
+        
         palette = self.gui.synthesizer_pushbutton_create.palette()
         self.cancel_background_color = palette.color(self.gui.synthesizer_pushbutton_create.backgroundRole())
         if self.FIRSTPREVIEW:
@@ -2221,7 +2229,7 @@ class synthesizer_v(QObject):
         time.sleep(0.5) # wait state for worker to start up
         self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_slot)
         self.gui.synthesizer_pushbutton_preview.clicked.connect(self.preview)
-
+        
         return(True)
 
     def query(self,query):
@@ -2358,6 +2366,7 @@ class synthesizer_v(QObject):
         self.gui.synthesizer_pushbutton_create.setStyleSheet("background-color: lightgray; color: black;")
         self.remove_temp_audiofiles()
         self.display_worker_message('Job finished, ready for new job')
+        self.gui.timeEdit_reclength.setTime(self.create_duration)
 
     def remove_temp_audiofiles(self):
         """delete all temporary *.wav files
