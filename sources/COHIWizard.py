@@ -1,18 +1,18 @@
-#Version 1.3.0
+#Version 2.1.2
 # -*- coding: utf-8 -*-logfile
 # for redirecting all print messages to logfile : activate sys.stdout = self.logfile at the end of __init__
 #install Windows exe with: pyinstaller --icon=COHIWizard_ico4.ico –F COHIWizard.py
 # For reducing to RFCorder: disable all modules except resample in the config_modules.yaml file
 #
 #Important: When re-translating the Core-UI from QTdesigner to py-File, run the method 'core/autocorrect_ui_file.py'.
-    #otherwise there will be a line 'from file import File' which cannot be found by Python. As a consequence
-    #the line self.menubar = QtWidgets.QMenuBar(File) must be replaced by self.menubar = QtWidgets.QMenuBar(MainWindow)
-    #In addition the icons for the buttons cannot be found unless their paths are set correctly in teh widget file.
+#otherwise there will be a line 'from file import File' which cannot be found by Python. As a consequence
+#the line self.menubar = QtWidgets.QMenuBar(File) must be replaced by self.menubar = QtWidgets.QMenuBar(MainWindow)
+#In addition the icons for the buttons cannot be found unless their paths are set correctly in the widget file.
 
 
 """
-Created on 20-1-2024
-#@author: scharfetter_admin
+#@author: Hermann Scharfetter
+
 
 Core code with the purpose to 
 - instantiate all GUI widgets and modules
@@ -21,27 +21,34 @@ Core code with the purpose to
 """
 import sys
 import os
-import subprocess
 import datetime as ndatetime
 from datetime import datetime
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtWidgets import QMainWindow, QWidget, QApplication, QHBoxLayout, QLabel
-from PyQt5.QtCore import QTimer, QObject, QThread, pyqtSignal
+from PyQt5.QtWidgets import QMainWindow, QWidget, QApplication, QHBoxLayout, QLabel, QSizePolicy, QDesktopWidget
+# from PyQt5.QtGui import QFont, QFontMetrics
+
+from PyQt5.QtCore import QTimer, QObject, QThread, pyqtSignal, QSize, Qt
+from PyQt5.QtGui import QFont, QIcon, QFont, QFontMetrics
 import time
 import yaml
 import importlib
 from PyQt5.QtWidgets import *
 import logging
-
+import platform
 from icons import Logos
 
+
 class starter(QMainWindow):
-    """instantiates the central GUI object and calls its setupUI method; type QMainwindow
+    """instantiates the MainWindow, instantiates a auxiliary gui object for the
+    core GUI and calls its setupUI method; The latter contains all derived structures such as centralwidget, Scrollarea, TabWidget etc.
+    :type : QMainwindow
 
     :param: none
     """
-    def __init__(self):
+    SigResize = pyqtSignal(str,object)
+
+    def __init__(self,skinindex):
         """instantiates SplashScreen object and then instantiates the central GUI as self.gui. 
         Then setupUi of the central GUI is called which sets up the Mainwindow and the central 
         widget of the player Tab.
@@ -55,13 +62,161 @@ class starter(QMainWindow):
         self.splash = SplashScreen()
         self.splash.setFocus()
         self.splash.show()
+        self.INACTIVATE_RESIZE = False
         #from core import COHIWizard_GUI_v10_reduced #alternative main GUI without scrollbars
         #self.gui = COHIWizard_GUI_v10_reduced.Ui_MainWindow()
         #from core import COHIWizard_GUI_v10_scroll #alternative main GUI with only vertical scrollbar
         #self.gui = COHIWizard_GUI_v10_scroll.Ui_MainWindow()
-        from core import COHIWizard_GUI_v10_scrollhv
-        self.gui = COHIWizard_GUI_v10_scrollhv.Ui_MainWindow()
+        #from core import COHIWizard_GUI_v10_scrollhv
+        #self.gui = COHIWizard_GUI_v10_scrollhv.Ui_MainWindow()
+        #TODO: import correct skin, use dynamic import
+        if skinindex == 0:
+            from core import COHIWizard_GUI_v10_scrollhv_skin_0
+            self.gui = COHIWizard_GUI_v10_scrollhv_skin_0.Ui_MainWindow()
+        else:
+            from core import COHIWizard_GUI_v10_scrollhv_skin_1
+            self.gui = COHIWizard_GUI_v10_scrollhv_skin_1.Ui_MainWindow()
+            
         self.gui.setupUi(self)
+        self.iconButtons = []
+        self.widgets_with_font = []
+        self.find_widgets_with_font()
+        screen = QDesktopWidget().availableGeometry()
+        aspectratio_opt =1024/857
+        screen_aspr =  int(screen.width())/int(screen.height())
+        if screen_aspr >= 1:
+            hnew = int(screen.height() * 0.9)
+            wnew = int(hnew * aspectratio_opt)
+        else:
+            wnew = int(screen.width() * 0.9)
+            hnew = int(wnew / aspectratio_opt)
+
+        self.resize(wnew, hnew)
+
+    def resizeEvent(self, event):
+        """resize event handler for the main window, handles resizing widgets based on size of MainWindow
+        Sends a Signal SigResize (label,size) while size is the size of the MainWindow
+        label is a MainWindow ID as information for the receiver of the signal
+        Signal is intended to be received by all 'view_' methods of alls tab modules and 'size' to be handled by their 
+        resizehandler method. 
+        :param: event
+        :type: object  
+        :raises: none
+        :return: none
+        :rtype: none
+        """
+        width = self.width()
+        size = self.size()
+        # font_size = max(10, width // 25)  # Mindestgröße von 10 pt
+        # font = QFont("Arial", font_size)
+        #elf.button.setFont(font)
+        # Standardverhalten beibehalten
+        super().resizeEvent(event)
+        self.SigResize.emit("cenralwidget",size)
+        #print(f"resize event caught, Signal sent, size: {size}")
+        QTimer.singleShot(0, self.resize_actor)
+        #self.resize_actor()
+
+    def resize_initialize(self):
+        """initialize resize actor, finds all icon buttons and widgets with font and sets their size
+        :param: none
+        :type: none
+        :raises: none
+        :return: none
+        :rtype: none
+        """
+        #print("initial window resizing")
+        # QTimer.singleShot(100,self.find_widgets_with_font)
+        # QTimer.singleShot(100,self.find_icon_buttons)
+        # QTimer.singleShot(100,self.resize_actor)
+        self.find_widgets_with_font()
+        self.find_icon_buttons()
+        self.resize_actor()
+
+    def trigger_resize_event(self):
+        #print("################>>>>>>>>>>>>>>>trigger resize<<<<<<<<<<<<<<<####################")
+        old_size = self.size()
+        self.resize(old_size.width() + 1, old_size.height())
+        self.resize(old_size)
+
+    def resize_actor(self):
+        if self.INACTIVATE_RESIZE:
+            return
+        for button in self.iconButtons:
+            w = button.width()
+            h = button.height()
+            icon_size = QSize(int(w * 0.8), int(h * 0.8))
+            button.setIconSize(icon_size)
+            #print("resize icon in button called")
+
+        
+        for widget in self.widgets_with_font:
+            # Schriftgröße als Anteil der Widget-Höhe
+            # h = widget.height()
+            # font_size = max(10, int(h * 0.55))  # Mindestgröße 10px
+
+            # font = widget.font()
+            # font.setPixelSize(font_size)
+            # widget.setFont(font)
+            min_size=11
+            max_size=20
+            self.fit_font_to_widget(widget, min_size, max_size)
+
+    def fit_font_to_widget(self, widget, min_size=8, max_size=100):
+        if self.INACTIVATE_RESIZE:
+            return
+        text = getattr(widget, "text", lambda: "")()
+        if not text:
+            return
+
+        best_size = min_size
+        low, high = min_size, max_size
+
+        while low <= high:
+            mid = (low + high) // 2
+            font = widget.font()
+            font.setPixelSize(mid)
+            fm = QFontMetrics(font)
+            rect = fm.boundingRect(widget.rect(), Qt.TextWordWrap, text)
+
+            if rect.width() <= widget.width() and rect.height() <= widget.height():
+                best_size = mid
+                low = mid + 1
+            else:
+                high = mid - 1
+
+        # Final anwenden
+        font = widget.font()
+        if widget.objectName().find("playrec_lineEdit_recordingpath") >= 0:
+            h = widget.height()
+            font_size = max(min_size, int(h * 0.5))
+            font.setPixelSize(font_size)
+        else:
+            font.setPixelSize(best_size)
+        widget.setFont(font)
+
+    def find_icon_buttons(self):
+        if self.INACTIVATE_RESIZE:
+            return
+        """Suche rekursiv nach allen QPushButtons mit Icon"""
+        self.iconButtons.clear()
+        for button in self.findChildren(QPushButton):
+            if not button.icon().isNull():
+                self.iconButtons.append(button)
+
+
+    def find_widgets_with_font(self):
+        if self.INACTIVATE_RESIZE:
+            return
+        """Finde alle Widgets, die einen Font haben und Text anzeigen"""
+        # Optional: nur bestimmte Klassen einbeziehen
+        font_classes = (QPushButton, QLabel, QLineEdit, QCheckBox, QComboBox, QRadioButton,QTimeEdit, QTableWidgetItem, QProgressBar)
+
+        self.widgets_with_font = [
+            w for w in self.findChildren(QWidget)
+            if isinstance(w, font_classes) and hasattr(w, "font")
+        ]
+
 
 
 class core_m(QObject):
@@ -118,7 +273,7 @@ class core_c(QObject):
     :type: object 
     """
 
-    def __init__(self, core_m): #TODO: remove gui
+    def __init__(self, core_m):
         """establishes a reference to core_m.mdl as self.m and to core_m.logger as self.logger
 
         :param core_m: reference to instance of model object core_m
@@ -201,7 +356,7 @@ class core_c(QObject):
         self.m["recording_path"] = self.m["metadata"]["recording_path"] #TODO: check ? obsolete ?
         self.logger.debug("playrec recording button recording path: %s", self.m["recording_path"])
         #print("core_c send recordingpath to all")
-        self.SigRelay.emit("cm_all_",["recording_path",self.m["recording_path"]])   #does not work !!!!   
+        self.SigRelay.emit("cm_all_",["recording_path",self.m["recording_path"]])   #does not work !!!!   because all other modules are not yet instantiated !
         self.SigRelay.emit("cexex_xcore",["updateConfigElements",0])
 
 class core_v(QObject):
@@ -211,19 +366,13 @@ class core_v(QObject):
     :param: none
     :type: QObject
     """
-    #SigGUIReset = pyqtSignal()
-    SigUpdateOtherGUIs = pyqtSignal()
-    """
-    :TODO: check if this signal is ever used !
-    """
+    SigUpdateOtherGUIs = pyqtSignal()     #TODO: check if this signal is ever used ! is connected but never emitted
     SigRelay = pyqtSignal(str,object)
-    """signal for relaying data and messages to other module's rxhandler method; emitted as SigRelay(_key,_value)
-
-    :param: _key
-    :type: str
-    :param: _value
-    :type: object 
-    """
+    #signal for relaying data and messages to other module's rxhandler method; emitted as SigRelay(_key,_value)
+    #:param: _key
+    #:type: str
+    #:param: _value
+    #:type: object 
 
     def __init__(self, gui, core_c, core_m):
         super().__init__()
@@ -231,12 +380,10 @@ class core_v(QObject):
         self.m = core_m.mdl
         self.core_c = core_c
         self.bps = ['16', '24', '32'] #TODO:future system state
-        self.standardLO = 1100 #TODO:future system state
+        self.standardLO = 1125 #TODO:future system state
         self.annotationdir_prefix = 'ANN_' #TODO:future system state
-        #self.m["recording_path"] =""
         default_recordingpath = os.path.join(self.m["rootpath"], "out")
         if not os.path.exists(default_recordingpath):
-            # Verzeichnis erstellen
             os.makedirs(default_recordingpath)
         self.m["recording_path"] = default_recordingpath
         print(f"initialize recording path to {default_recordingpath}")
@@ -244,10 +391,12 @@ class core_v(QObject):
         # create method which inactivates all tabs except the one which is passed as keyword
         self.GUI_reset_status()
         self.gui = gui.gui
-
+        self.gui.Mainwindowreference = gui
         self.gui.actionFile_open.triggered.connect(self.cb_open_file)
         self.gui.actionOverwrite_header.triggered.connect(self.send_overwrite_header)
 
+        #
+        self.gui.Mainwindowreference.SigResize.connect(self.resizehandler)
         ###TODO: re-organize, there should be no access to gui elements of other modules
         self.gui.tabWidget.setCurrentIndex(0) #is being overridden later from config file core_v.__init__
         self.gui.playrec_comboBox_startuptab.setCurrentIndex(0)
@@ -262,7 +411,8 @@ class core_v(QObject):
         self.gui.lineEdit_IPAddress.returnPressed.connect(self.set_IP)
         self.gui.pushButton_IP.setText("set IP Address")
         self.gui.pushButton_IP.adjustSize()
-
+        no_ffmpeg_path = False
+        
         try:
             stream = open("config_wizard.yaml", "r")
             self.m["metadata"] = yaml.safe_load(stream)
@@ -275,29 +425,38 @@ class core_v(QObject):
             if "startup_tab" in self.m["metadata"]:
                 self.m["startup_tab"] = int(self.m["metadata"]["startup_tab"])
             if "rootpath" in self.m["metadata"]:
-                self.m["rootpath"] = self.m["metadata"]["recording_path"]
+                self.m["rootpath"] = self.m["metadata"]["rootpath"]
             else:
                 self.m["rootpath"] = os.getcwd()
                 self.m["metadata"]["recording_path"] = self.m["rootpath"]
+            if not "ffmpeg_path" in list(self.m["metadata"].keys()):
+                no_ffmpeg_path = True
         except:
             print("cannot get config_wizard.yaml metadata, write a new initial config file")
             self.m["metadata"] = {"last_path": self.standardpath}
             self.m["metadata"]["rootpath"] = os.getcwd()
             self.m["metadata"]["STM_IP_address"] = "000.000.000.000"
-            self.m["metadata"]["ffmpeg_path"] = os.path.join(self.m["rootpath"],"ffmpeg-7.1-essentials_build")
+            auxi.standard_infobox("configuration file does not yet exist, a basic file will be generated. Please configure the STEMLAB IP address before using the Player")
+            self.m["metadata"]["recording_path"] = os.path.join(self.m["metadata"]["rootpath"], "out")
+            self.m["metadata"]["skinindex"] = 1
+            no_ffmpeg_path = True
             if not os.path.exists(default_recordingpath):
-                # Verzeichnis erstellen
                 os.makedirs(default_recordingpath)
             default_recordingpath = os.path.join(self.m["rootpath"],"out")
-            self.m["metadata"]["recording_path"] = os.path.join(self.m["metadata"]["rootpath"], "out")
 
-            auxi.standard_infobox("configuration file does not yet exist, a basic file will be generated. Please configure the STEMLAB IP address before using the Player")
-
-            
-            #self.m["metadata"]["recording_path"] = self.m["recording_path"]
+        if no_ffmpeg_path:
+            system = platform.system().lower()
+            if system == "linux":
+                self.m["metadata"]["ffmpeg_path"] = ""
+            elif system == "windows":    
+                self.m["metadata"]["ffmpeg_path"] = os.path.join(self.m["rootpath"],"ffmpeg-master-latest-win64-gpl-shared/bin")
+            else:
+                self.m["metadata"]["ffmpeg_path"] = ""
+                auxi.standard_infobox("Your OS is neither linux nor windows. Therefore COHIWizard or at least some of its features may not work properly. The ffmpeg path has not been set. Please make sure that ffmpeg is installed and set the path to the ffmpeg binary it in the configuration file config_wizard.yaml. Otherwise e.g. resampler and synthesizer will not work at all.")
             stream = open("config_wizard.yaml", "w")
             yaml.dump(self.m["metadata"], stream)
             stream.close()
+            no_ffmpeg_path = False
 
         ###TODO: re-organize, there should be no access to gui elements of other modules
         self.m["HostAddress"] = self.gui.lineEdit_IPAddress.text() #TODO: Remove after transfer of playrec
@@ -310,7 +469,6 @@ class core_v(QObject):
         # Create a custom logger
         # set level of Root-Logger to DEBUG
         logging.getLogger().setLevel(logging.DEBUG)
-        # Erstelle einen Logger mit dem Modul- oder Skriptnamen
         self.logger = logging.getLogger(__name__)
         # Create handlers
         warning_handler = logging.StreamHandler()
@@ -325,28 +483,12 @@ class core_v(QObject):
         # Add handlers to the logger
         self.logger.addHandler(warning_handler)
         self.logger.addHandler(debug_handler)
-        #check if sox is installed so as to throw an error message on resampling, if not
-        self.soxlink = "https://sourceforge.net/projects/sox/files/sox/14.4.2/"
-        self.soxlink_altern = "https://sourceforge.net/projects/sox"
-        self.soxnotexist = False
-        try:
-            subproc3 = subprocess.run('sox -h', stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, shell=True, check=True)
-        except subprocess.CalledProcessError as ex:
-            #print("sox FAIL")
-            self.logger.error("sox FAIL")
-            print(ex.stderr, file=sys.stderr, end='', flush=True)
-            print(ex.stdout, file=sys.stdout, end='', flush=True)
-            if len(ex.stderr) > 0: 
-                self.soxnotexist = True
         self.logger.info("core_v Init logger in core reached")
-        #self.core_c.SigRelay.connect(self.SigRelay.emit)        
         self.core_c.SigRelay.connect(self.rxhandler)
-        #self.core_c.recording_path_checker()
         ###TODO: re-organize, there should be no access to gui elements of other modules
-        self.gui.playrec_radioButtonpushButton_write_logfile.clicked.connect(self.togglelogfilehandler)
-        self.gui.playrec_radioButtonpushButton_write_logfile.setChecked(True)
         self.gui.playrec_pushButton_recordingpath.clicked.connect(self.core_c.recording_path_setter)
         self.updateConfigElements()
+        self.firsttick = True
         self.timethread = QThread()
         self.timertick = tw()
         self.timertick.moveToThread(self.timethread)
@@ -369,6 +511,19 @@ class core_v(QObject):
     #             self.gui.lineEdit_IPAddress.setCursorPosition(cursor + 1)  # Move cursor to the next field
     #             return True  # Ignore default Tab key behavior
     #     return super().eventFilter(source, event)
+
+    def resizehandler(self, label, size):
+        """resize handler for the main window, handles resizing widgets based on size of MainWindow
+        :param: label
+        :type: str
+        :param: size
+        :type: object
+        :raises: none
+        :return: none
+        :rtype: none
+        """
+        #print(f"###### RECEIVED BY playrec: resizehandler called, label {label}, size {size}")
+
 
     def send_overwrite_header(self):
         self.SigRelay.emit("cexex_waveditor",["overwrite_header",0])
@@ -441,16 +596,6 @@ class core_v(QObject):
         self.SigRelay.emit("cm_all_",self.m["rootpath"])
         pass
 
-
-    def togglelogfilehandler(self):
-        if self.gui.playrec_radioButtonpushButton_write_logfile.isChecked():  #TODO TODO: should be task of the playrec module ??
-            self.logger.setLevel(logging.NOTSET)
-            self.SigRelay.emit("cexex_all_",["logfilehandler",False])
-        else:
-            self.logger.setLevel(logging.DEBUG)
-            self.SigRelay.emit("cexex_all_",["logfilehandler",True])
-
-
     def updateGUIelements(self):
         """
         dummy method, not really used in the core module but pre-configured for sake of compatibility with the general module structure
@@ -473,7 +618,7 @@ class core_v(QObject):
         :rtype: Boolean
         """
         try:
-            self.gui.playrec_lineEdit_recordingpath.setText(self.m["recording_path"])    #should be part of the playrec module ?
+            self.gui.playrec_lineEdit_recordingpath.setText(self.m["recording_path"])    #TODO TODO TODO should be part of the playrec module ?
             self.SigRelay.emit("cm_all_",["recording_path",self.m["recording_path"]])
             #self.SigRelay.emit("cm_all_",["QTMAINWINDOWparent",self.m["QTMAINWINDOWparent"]])
         except:
@@ -507,6 +652,12 @@ class core_v(QObject):
             self.gui.label_showtime.setText(
                 dt_now.strftime('%H:%M:%S'))
             
+        if self.firsttick:
+            self.firsttick = False
+            print("first tick, initialize GUI")
+            #gui.resize_initialize()
+            self.m["Mainwindowreference"].trigger_resize_event()
+            
         self.SigRelay.emit("cexex_all_",["timertick",0])
         
     def GUI_reset_status(self):
@@ -518,8 +669,6 @@ class core_v(QObject):
         #self.m = {}
         self.m["my_filename"] = ""
         self.m["ext"] = ""
-        #self.m["annotation_prefix"] = 'ANN_' #TODO: not used anywhere; inactivated 19-11-2024, remove later !
-        #self.m["resampling_gain"] = 0
         self.m["emergency_stop"] = False
         self.m["timescaler"] = 0
         self.m["fileopened"] = False
@@ -686,7 +835,7 @@ class core_v(QObject):
         curix = self.gui.playrec_comboBox_startuptab.currentIndex()
         print(f"startuptab set: {curix}")
         #write to yaml
-        self.m["metadata"]["startup_tab"] = str(curix)
+        self.m["metadata"]["startup_tab"] = str(curix) 
         stream = open("config_wizard.yaml", "w")
         yaml.dump(self.m["metadata"], stream)
         stream.close()
@@ -797,7 +946,6 @@ class core_v(QObject):
             auxi.standard_infobox("dat file cannot be resampled. If you wish to resample, please convert to wav file first (Tab WAV Header)")
         else:
             self.wavheader = WAVheader_tools.get_sdruno_header(self,self.m["f1"])
-            
             if self.wavheader != False:
                 pass
             else:
@@ -878,10 +1026,9 @@ class core_v(QObject):
         #TODO TODO TODO: track multiple calls of plot_spectrum: is that really necessary on each fileopen ? 
         return True
 
-    def dat_extractinfo4wavheader(self): #TODO: muss in den controller !
+    def dat_extractinfo4wavheader(self): #TODO: should be shifted to the controller !
         #TODO: erkennt COHIRADIA Namenskonvention nicht, wenn vor den _lo_r_c literalen noch andere _# Felder existieren.  shift to controller module
         """ 
-        CONTROLLER !!!!!!!!!!!!!!!!
         extract control parameters from dat and raw files if existent (COHIRADIA nameconvention)
         and generates standard wavheader
         check for consistency with COHIRADIA file name convention
@@ -985,6 +1132,10 @@ class core_v(QObject):
                 self.reset_GUI()
             if  _value[0].find("updateConfigElements") == 0:
                 self.updateConfigElements()
+            if  _value[0].find("resizeaction") == 0:
+                #print("resize action triggered in core")
+                _value[1].resize_initialize()
+                
 
 class SplashScreen(QWidget):
     """This class provides a simple splash screen for the application.
@@ -1016,11 +1167,16 @@ class SplashScreen(QWidget):
 
 def load_config_from_yaml(file_path):
     """load module configuration from yaml file"""
-    with open(file_path, 'r') as file:
-        return yaml.safe_load(file)
+    try:
+        with open(file_path, 'r') as file:
+            return yaml.safe_load(file)
+    except:
+        return (None)
+
 
 def dynamic_import_from_config(config,sub_module,logger):
     """Dynamic import of modules based on module configuration"""
+    #DUMMY LINE
     imported_modules = {}
     for directory, module in config[sub_module].items():
         try:
@@ -1056,7 +1212,13 @@ if __name__ == '__main__':
         QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
     #print("v13")
     app = QApplication([])
-    gui = starter()
+    wiz_config = load_config_from_yaml("config_wizard.yaml")
+    
+    if wiz_config == None:
+        skinindex = 1
+    else:    
+        skinindex = wiz_config["skinindex"] ##########TODO CHECK
+    gui = starter(skinindex)
     #print(f"__main__: gui = {gui} gui.gui = {gui.gui}")
     from auxiliaries import WAVheader_tools
     from auxiliaries import auxiliaries as auxi
@@ -1068,6 +1230,8 @@ if __name__ == '__main__':
     xcore_v = core_v(gui,xcore_c,xcore_m) # self.gui wird in xcore_v gestartet 
 
     config = load_config_from_yaml("config_modules.yaml")
+    #TODO TODO TODO: generalize: get from config !
+
     sub_module = "modules"
     mod_base = {'player':'playrec'}
     config['modules'] = {**mod_base, **config['modules']}
@@ -1085,12 +1249,14 @@ if __name__ == '__main__':
     #add dict of widget modules to config
     aux_dict = {}
     for ix in range(len(list_mvct_directories)):
-        aux_dict[list_mvct_directories[ix]] = list_mvct_directories[ix] + "_widget"
+
+        aux_dict[list_mvct_directories[ix]] = list_mvct_directories[ix] + "_widget_skin_" + str(skinindex)
     config["widget"] = aux_dict
     #print(f"__main__ 2nd if NEW: config, aux_dict: {config['widget']}")
     
     #get list of corresponding widget modules
     list_widget_modules = list(config['widget'].values())
+
     loaded_widget_modules = dynamic_import_from_config(config,"widget",xcore_v.logger)
     #print(loaded_widget_modules)
 
@@ -1108,7 +1274,7 @@ if __name__ == '__main__':
             else:
                 #generate new Widget, name it, label it , carry out its setupUi method, except for player,
                 #  whose UI already exists in form of xcore.gui and whose Tab also already exists
-                tabui.append(getattr(loaded_widget_modules[list_widget_modules[ix]], "Ui_" + list_widget_modules[ix])())
+                tabui.append(getattr(loaded_widget_modules[list_widget_modules[ix]], "Ui_" + list_widget_modules[ix].replace("_skin_" + str(skinindex),""))())
                 tab_widget.append(QtWidgets.QWidget())
                 tab_widget[ix].setWindowTitle(mod_name)
                 tab_widget[ix].setObjectName("tab_" + mod_name)
@@ -1182,7 +1348,7 @@ if __name__ == '__main__':
     # set startup Tab
     xcore_v.gui.playrec_comboBox_startuptab.addItems(tabselector)
     xcore_v.gui.playrec_comboBox_startuptab.setEnabled(True)
-    try:
+    try: ###TODO TODO TODO: check if this call can be removed because it is repeated at the end of __main__
         xcore_v.gui.playrec_comboBox_startuptab.setCurrentIndex(int(xcore_v.m["metadata"]["startup_tab"]))
         xcore_v.gui.tabWidget.setCurrentIndex(int(xcore_v.m["metadata"]["startup_tab"]))
     except:
@@ -1201,6 +1367,7 @@ if __name__ == '__main__':
 
         for ix2 in range(len(tab_dict["list"])-1):
             tab_v[ix1].SigRelay.connect(tab_v[ix2].rxhandler)
+            
             #tab_c[ix].SigActivateOtherTabs.connect(xcore_v.setactivity_tabs)
             xcore_v.logger.debug(f' {tab_dict["list"][ix1+1] + "_v.SigRelay.connect(" + tab_dict["list"][ix2+1] + "_v.rxhandler)"}')
 
@@ -1214,6 +1381,22 @@ if __name__ == '__main__':
     xcore_v.updateConfigElements() 
     xcore_v.SigRelay.emit("cexex_all_",["canvasbuild",gui])   # communicate reference to gui instance to all modules which instanciate a canvas with auxi.generate_canvas(self,gridref,gridc,gridt,gui)
     xcore_v.SigRelay.emit("cm_all_",xcore_v.m["rootpath"])
-
+    xcore_v.SigRelay.emit("cm_all_",["Mainwindowreference",gui])
+    xcore_v.SigRelay.emit("cexex_all_",["resizeaction",gui])
+    #gui.resize_initialize()
+    # gui.find_widgets_with_font()
+    # gui.find_icon_buttons()
+    #gui.resize_actor()
+    QTimer.singleShot(0, gui.resize_actor)
+    for ix, value in enumerate(tab_dict["tabname"]):
+        xcore_v.gui.tabWidget.setCurrentIndex(ix)
+        QTimer.singleShot(0, gui.trigger_resize_event)  # trigger resize event for each tab
+    try: ###TODO TODO TODO: check if the first previous call can be removed above !
+        xcore_v.gui.playrec_comboBox_startuptab.setCurrentIndex(int(xcore_v.m["metadata"]["startup_tab"]))
+        xcore_v.gui.tabWidget.setCurrentIndex(int(xcore_v.m["metadata"]["startup_tab"]))
+    except:
+        xcore_v.logger.debug("startup Tab not defined in configuration file config_wizard.yaml")
+        xcore_v.gui.tabWidget.setCurrentIndex(0)
+    print("COHIWIzard Version 2.1.2, 01-06-2025, (C) Hermann Scharfetter")
     sys.exit(app.exec_())
 

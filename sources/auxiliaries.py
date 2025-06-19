@@ -73,7 +73,8 @@ class ffmpeg_installtools():
         errorstatus = False
         value = ""
         os.makedirs(destination, exist_ok=True)
-        ffmpeg_url = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+
+        ffmpeg_url = "https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-amd64-static.tar.xz"
         archive_path = os.path.join(destination, "ffmpeg.tar.xz")
         try:
             self.download_ffmpeg(ffmpeg_url, archive_path)
@@ -90,7 +91,7 @@ class ffmpeg_installtools():
             ffmpeg_path = os.path.join(destination, ffmpeg_dir)
             #self.logger.debug(f"ffmpeg unzipped successfully to {ffmpeg_path} .")
             print(f"ffmpeg unzipped successfully to {ffmpeg_path} .")
-            value = [os.path.join(ffmpeg_path, "bin", "ffmpeg.exe"), os.path.join(ffmpeg_path, "bin")]
+            value = [os.path.join(ffmpeg_path, "bin", "ffmpeg"), os.path.join(ffmpeg_path, "bin")]
         else:
             errorstatus = True
             value = "Error when unzipping ffmpeg."
@@ -105,7 +106,8 @@ class ffmpeg_installtools():
         errorstatus = False
         value = ""
         os.makedirs(destination, exist_ok=True)
-        ffmpeg_url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+        ffmpeg_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip"
+        #ffmpeg_url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
         archive_path = os.path.join(destination, "ffmpeg.zip")
         #TODO TODO TODO: make progress bar
         try:
@@ -398,9 +400,15 @@ class auxiliaries():
         gridref.addWidget(canvas,gridc[0],gridc[1],gridc[2],gridc[3])
         ax = figure.add_subplot(111)
         if gridt[0] >= 0:
-            toolbar = NavigationToolbar(canvas, gui)  
+            #toolbar = NavigationToolbar(canvas, gui)  
             ##TODO TODO TODO: in case of transfer to auxi: gui must be reference to the instance of the gui in the class starter
-            gridref.addWidget(toolbar,gridt[0],gridt[1],gridt[2],gridt[3])
+            #gridref.addWidget(toolbar,gridt[0],gridt[1],gridt[2],gridt[3])
+            toolbar = NavigationToolbar(canvas, gui)
+            # toolbar.setFixedHeight(30)
+            toolbar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            gridref.addWidget(toolbar, gridt[0], gridt[1], gridt[2], gridt[3])
+            #gridref.setColumnStretch(gridt[1], 1)
+
         cref["ax"] = ax
         cref["canvas"] = canvas
         cref["ax"].plot([], [])

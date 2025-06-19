@@ -46,9 +46,15 @@ class StemlabControl(QObject):
 
     def set_play(self):
         self.modality = "play"
+        errorstate = False
+        value = ""
+        return(errorstate, value)  
 
     def set_rec(self):
         self.modality = "rec"
+        errorstate = False
+        value = ""
+        return(errorstate, value)   
 
     def monitor(self):
         # print(f"Stemlabcontrol modality: {self.modality}")

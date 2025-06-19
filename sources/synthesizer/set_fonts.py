@@ -29,3 +29,21 @@ file_path = "./synthesizer/synthesizer_widget.py"
 text = "font.setPointSize(10)"
 subs = "font.setPointSize(11)"
 replace(file_path, text, subs)
+
+text = "../"
+subs = ""
+replace(file_path, text, subs)
+text = "icons/"
+subs = ""
+replace(file_path, text, subs)
+text = "self.menubar = File(MainWindow)"
+subs = "self.menubar = QtWidgets.QMenuBar(MainWindow)"
+replace(file_path, text, subs)
+text = "from file import File"
+subs = "#from file import File"
+replace(file_path, text, subs)
+text = 'QPixmap("'
+subs = 'QPixmap("./synthesizer/ressources/icons/'
+replace(file_path, text, subs)
+
+print("autocorrect widget file done")

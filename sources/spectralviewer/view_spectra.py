@@ -35,6 +35,7 @@ class view_spectra_m(QObject):
         self.mdl["filterkernel"] = 15
         self.mdl["baselineoffset"] = 0
         self.mdl["position"] = 0
+        self.mdl["Mainwindowreference"] = None
 
         # Create a custom logger
         logging.getLogger().setLevel(logging.DEBUG)
@@ -140,6 +141,19 @@ class view_spectra_v(QObject):
         self.minPeakDistanceupdate()
         self.minSNRupdate_ScannerTab()
 
+
+    def resizehandler(self, label, size):
+        """resize handler for the main window, handles resizing widgets based on size of MainWindow
+        :param: label
+        :type: str
+        :param: size
+        :type: object
+        :raises: none
+        :return: none
+        :rtype: none
+        """
+        #print(f"###### RECEIVED BY playrec: resizehandler called, label {label}, size {size}")
+
         
     # def connector(self):
     #     self.SigSyncGUIUpdatelist.emit(self.updateGUIelements)
@@ -160,6 +174,10 @@ class view_spectra_v(QObject):
         if _key.find("cm_view_spectra") == 0 or _key.find("cm_all_") == 0:
             #set mdl-value
             self.m[_value[0]] = _value[1]
+            if _value[0].find("Mainwindowreference") >= 0: #These commands are not yet used, just for testing. Usually the Mainwindowreference is not used inside the Tab-widgets
+                         self.m["Mainwindowreference"].SigResize.connect(self.resizehandler)
+                         #print(f"spectralviewer: Mainwindowreference: {self.m["Mainwindowreference"]}")
+
         if _key.find("cui_view_spectra") == 0:
             _value[0](_value[1])    #TODO TODO: still unclear implementation
         if _key.find("cexex_view_spectra") == 0:
@@ -176,8 +194,11 @@ class view_spectra_v(QObject):
                 self.reset_GUI()
             if  _value[0].find("logfilehandler") == 0:
                 self.logfilehandler(_value[1])
-            if  _value[0].find("canvasbuild") == 0:
+            if  _value[0].find("resizeaction") == 0:
                 self.canvasbuild(_value[1])
+                #print("resize action triggered in view_spectra")
+                _value[1].resize_initialize()
+
             if  _value[0].find("enablescrollbar") == 0:
                 self.gui.horizontalScrollBar_view_spectra.setEnabled(_value[1])
 
@@ -196,13 +217,12 @@ class view_spectra_v(QObject):
         :rtype: none
         """
 
-        self.cref = auxi.generate_canvas(self,self.gui.gridLayout_4,[4,0,1,5],[2,2,2,1],gui)
+        self.cref = auxi.generate_canvas(self,self.gui.gridLayout_4,[4,0,1,5],[3,1,1,2],gui)
 
     def logfilehandler(self,_value):
         if _value is False:
             self.logger.debug("view spectra: INACTIVATE LOGGING")
             self.logger.setLevel(logging.ERROR)
-            self.logger.debug("view spectra: INACTIVATE LOGGING after NOTSET")
         else:
             self.logger.debug("view spectra: REACTIVATE LOGGING")
             self.logger.setLevel(logging.DEBUG)
@@ -343,9 +363,8 @@ class view_spectra_v(QObject):
             print(f'Clicked at x={x}, y={y}')
 
     #@njit
-    def ann_spectrum(self,dummy,data):      #TODO: This is a controller method, should be transferred to an annotation module
+    def ann_spectrum(self,dummy,data,displaymode = "complex"):      #TODO: This is a controller method, should be transferred to an annotation module
         """
-        CONTROLLER
         generate a single spectrum from complex data
         scale x-axis as frequencies in the recorded AM band
         scale y-axis in dB
@@ -370,19 +389,27 @@ class view_spectra_v(QObject):
                 - databasel: The baseline data used in the filtering process.type: float32
         :rtype: dict
         """
+        #print(f">>>>>>>>> @@@@@@@@@@@@ displaymode = : {displaymode}")
         self.logger.debug("view_spectra ann_spectum reached")
         st = time.time()
+        if self.m["wavheader"]["nChannels"] == 1:
+            print(f"display real spectrum")
+            spr = np.abs(np.fft.fft(data))
+            N = len(spr)
+            spr = np.fft.fftshift(spr)/N
+            freq = np.linspace(-self.m["wavheader"]['nSamplesPerSec']/2,self.m["wavheader"]['nSamplesPerSec']/2,N)
+        else:
         # extract imaginary and real parts from complex data 
-        realindex = np.arange(0,self.DATABLOCKSIZE,2)
-        imagindex = np.arange(1,self.DATABLOCKSIZE,2)
-        #calculate spectrum and shift/rescale appropriately
-        spr = np.abs(np.fft.fft((data[realindex]+1j*data[imagindex])))
-        N = len(spr)
-        spr = np.fft.fftshift(spr)/N
-        flo = self.m["wavheader"]['centerfreq'] - self.m["wavheader"]['nSamplesPerSec']/2
-        fup = self.m["wavheader"]['centerfreq'] + self.m["wavheader"]['nSamplesPerSec']/2
-        freq0 = np.linspace(0,self.m["wavheader"]['nSamplesPerSec'],N)
-        freq = freq0 + flo
+            realindex = np.arange(0,self.DATABLOCKSIZE,2)
+            imagindex = np.arange(1,self.DATABLOCKSIZE,2)
+            #calculate spectrum and shift/rescale appropriately
+            spr = np.abs(np.fft.fft((data[realindex]+1j*data[imagindex])))
+            N = len(spr)
+            spr = np.fft.fftshift(spr)/N
+            flo = self.m["wavheader"]['centerfreq'] - self.m["wavheader"]['nSamplesPerSec']/2
+            fup = self.m["wavheader"]['centerfreq'] + self.m["wavheader"]['nSamplesPerSec']/2
+            freq0 = np.linspace(0,self.m["wavheader"]['nSamplesPerSec'],N)
+            freq = freq0 + flo
         datax = freq
         datay = 20*np.log10(spr)
         # filter out all data below the baseline; baseline = moving median

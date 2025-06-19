@@ -116,6 +116,10 @@ class  yaml_editor_v(QObject):
                 self.logger.debug("call updateGUIelements")
             if  _value[0].find("setWriteyamlButton") == 0:
                 self.gui.pushButton_Writeyamlheader.setEnabled(_value[1])
+            if  _value[0].find("resizeaction") == 0:
+                #print("resize action triggered in yaml_editor")
+                _value[1].resize_initialize()
+
 
     def updateGUIelements(self):
         """

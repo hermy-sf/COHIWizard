@@ -1,0 +1,399 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>yaml_editor_widget</class>
+ <widget class="QWidget" name="yaml_editor_widget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1020</width>
+    <height>758</height>
+   </rect>
+  </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
+  <property name="windowTitle">
+   <string>Form</string>
+  </property>
+  <layout class="QGridLayout" name="gridLayout">
+   <item row="0" column="0">
+    <layout class="QGridLayout" name="gridLayout_6" rowstretch="1,1,10" columnstretch="5,1">
+     <item row="2" column="0">
+      <widget class="QTableWidget" name="tableWidget_YAMLHEADER">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+         <horstretch>1</horstretch>
+         <verstretch>1</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>600</width>
+         <height>300</height>
+        </size>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>10</pointsize>
+        </font>
+       </property>
+       <property name="alternatingRowColors">
+        <bool>true</bool>
+       </property>
+       <property name="textElideMode">
+        <enum>Qt::ElideLeft</enum>
+       </property>
+       <attribute name="horizontalHeaderDefaultSectionSize">
+        <number>700</number>
+       </attribute>
+       <row>
+        <property name="text">
+         <string>Content</string>
+        </property>
+        <property name="font">
+         <font>
+          <pointsize>10</pointsize>
+         </font>
+        </property>
+       </row>
+       <row>
+        <property name="text">
+         <string>remarks</string>
+        </property>
+       </row>
+       <row>
+        <property name="text">
+         <string>Band</string>
+        </property>
+       </row>
+       <row>
+        <property name="text">
+         <string>Antenna</string>
+        </property>
+       </row>
+       <row>
+        <property name="text">
+         <string>recorder</string>
+        </property>
+       </row>
+       <row>
+        <property name="text">
+         <string>filters</string>
+        </property>
+       </row>
+       <row>
+        <property name="text">
+         <string>preamp settings</string>
+        </property>
+       </row>
+       <row>
+        <property name="text">
+         <string>RX Longitude</string>
+        </property>
+       </row>
+       <row>
+        <property name="text">
+         <string>RX Latitude</string>
+        </property>
+       </row>
+       <row>
+        <property name="text">
+         <string>QTH locator</string>
+        </property>
+       </row>
+       <row>
+        <property name="text">
+         <string>Country</string>
+        </property>
+       </row>
+       <row>
+        <property name="text">
+         <string>City of RX</string>
+        </property>
+       </row>
+       <row>
+        <property name="text">
+         <string>Member ID</string>
+        </property>
+       </row>
+       <row>
+        <property name="text">
+         <string>Repository Prefix</string>
+        </property>
+       </row>
+       <column>
+        <property name="text">
+         <string>please enter wanted text</string>
+        </property>
+        <property name="font">
+         <font>
+          <pointsize>10</pointsize>
+         </font>
+        </property>
+       </column>
+       <item row="0" column="0">
+        <property name="text">
+         <string>### Title of the recording as it appears in the COHIRADIA list</string>
+        </property>
+        <property name="font">
+         <font>
+          <pointsize>10</pointsize>
+         </font>
+        </property>
+       </item>
+       <item row="1" column="0">
+        <property name="text">
+         <string>### Notable details in the spectrum </string>
+        </property>
+       </item>
+       <item row="2" column="0">
+        <property name="text">
+         <string>### LW - MW - SW - others</string>
+        </property>
+       </item>
+       <item row="3" column="0">
+        <property name="text">
+         <string>### brand/type of antenna</string>
+        </property>
+       </item>
+       <item row="4" column="0">
+        <property name="text">
+         <string>### SDR type or other devices</string>
+        </property>
+       </item>
+       <item row="5" column="0">
+        <property name="text">
+         <string>### used filters between antenna and recorder</string>
+        </property>
+       </item>
+       <item row="6" column="0">
+        <property name="text">
+         <string>### preamplifiers: type and settings</string>
+        </property>
+       </item>
+       <item row="7" column="0">
+        <property name="text">
+         <string>### RX coordinate</string>
+        </property>
+       </item>
+       <item row="8" column="0">
+        <property name="text">
+         <string>## RX coordinate</string>
+        </property>
+       </item>
+       <item row="9" column="0">
+        <property name="text">
+         <string>### alternative to RX coordinates</string>
+        </property>
+       </item>
+       <item row="10" column="0">
+        <property name="text">
+         <string>### RX Country</string>
+        </property>
+       </item>
+       <item row="11" column="0">
+        <property name="text">
+         <string>### RX CITY</string>
+        </property>
+       </item>
+       <item row="12" column="0">
+        <property name="text">
+         <string>### RM ID if any</string>
+        </property>
+       </item>
+       <item row="13" column="0">
+        <property name="text">
+         <string>### Folder name in data directory of COHIRADIA server</string>
+        </property>
+       </item>
+      </widget>
+     </item>
+     <item row="0" column="0" colspan="2">
+      <widget class="QLabel" name="label_20">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+         <horstretch>1</horstretch>
+         <verstretch>1</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>10000</width>
+         <height>60</height>
+        </size>
+       </property>
+       <property name="sizeIncrement">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="palette">
+        <palette>
+         <active>
+          <colorrole role="Button">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>254</green>
+             <blue>210</blue>
+            </color>
+           </brush>
+          </colorrole>
+          <colorrole role="Midlight">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>254</green>
+             <blue>210</blue>
+            </color>
+           </brush>
+          </colorrole>
+          <colorrole role="Window">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>254</green>
+             <blue>210</blue>
+            </color>
+           </brush>
+          </colorrole>
+          <colorrole role="AlternateBase">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>254</green>
+             <blue>210</blue>
+            </color>
+           </brush>
+          </colorrole>
+         </active>
+         <inactive>
+          <colorrole role="Button">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>254</green>
+             <blue>210</blue>
+            </color>
+           </brush>
+          </colorrole>
+          <colorrole role="Midlight">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>254</green>
+             <blue>210</blue>
+            </color>
+           </brush>
+          </colorrole>
+          <colorrole role="Window">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>254</green>
+             <blue>210</blue>
+            </color>
+           </brush>
+          </colorrole>
+          <colorrole role="AlternateBase">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>254</green>
+             <blue>210</blue>
+            </color>
+           </brush>
+          </colorrole>
+         </inactive>
+         <disabled>
+          <colorrole role="Button">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>254</green>
+             <blue>210</blue>
+            </color>
+           </brush>
+          </colorrole>
+          <colorrole role="Midlight">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>254</green>
+             <blue>210</blue>
+            </color>
+           </brush>
+          </colorrole>
+          <colorrole role="Window">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>254</green>
+             <blue>210</blue>
+            </color>
+           </brush>
+          </colorrole>
+          <colorrole role="AlternateBase">
+           <brush brushstyle="SolidPattern">
+            <color alpha="255">
+             <red>255</red>
+             <green>254</green>
+             <blue>210</blue>
+            </color>
+           </brush>
+          </colorrole>
+         </disabled>
+        </palette>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>10</pointsize>
+        </font>
+       </property>
+       <property name="autoFillBackground">
+        <bool>true</bool>
+       </property>
+       <property name="text">
+        <string>Edit and generate general metadata fields for the COHIRADIA yaml-file</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="1">
+      <widget class="QPushButton" name="pushButton_Writeyamlheader">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+         <horstretch>1</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>10</pointsize>
+        </font>
+       </property>
+       <property name="text">
+        <string>Write YAML</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
