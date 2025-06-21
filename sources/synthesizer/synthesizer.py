@@ -3629,13 +3629,6 @@ class synthesizer_v(QObject):
                     #self.m["ffmpeg_autocheck"] = True
                     #self.checkffmpeg_install()
                     pass
-<<<<<<< HEAD
-=======
-            if  _value[0].find("resizeaction") == 0:
-                #print("resize action triggered in resampler")
-                _value[1].resize_initialize()
-
->>>>>>> b20af23e7c8bce856c7bced8a85f6faabe118299
 
                 #print(f"timertick: value of self.m['ffmpeg_autocheck'] {self.m["ffmpeg_autocheck"]}")
                 if self.syntesisrunning:

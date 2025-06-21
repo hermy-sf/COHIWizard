@@ -1,7 +1,5 @@
-#Version 2.1.2
+#Version 2.1.3
 # -*- coding: utf-8 -*-logfile
-# for redirecting all print messages to logfile : activate sys.stdout = self.logfile at the end of __init__
-#install Windows exe with: pyinstaller --icon=COHIWizard_ico4.ico –F COHIWizard.py
 # For reducing to RFCorder: disable all modules except resample in the config_modules.yaml file
 #
 #Important: When re-translating the Core-UI from QTdesigner to py-File, run the method 'core/autocorrect_ui_file.py'.
@@ -1397,6 +1395,6 @@ if __name__ == '__main__':
     except:
         xcore_v.logger.debug("startup Tab not defined in configuration file config_wizard.yaml")
         xcore_v.gui.tabWidget.setCurrentIndex(0)
-    print("COHIWIzard Version 2.1.2, 01-06-2025, (C) Hermann Scharfetter")
+    print("COHIWIzard Version 2.1.3, 21-06-2025, (C) Hermann Scharfetter")
     sys.exit(app.exec_())
 

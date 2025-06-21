@@ -1278,11 +1278,12 @@ class playrec_v(QObject):
             return(errorstate, value)   
 
         try:
+            print(f'SDRINDEX:{self.m["currentSDRindex"]}')
             self.playrec_c.instantiate_SDRcontrol(self.m["currentSDRindex"])
             self.m["device_ID_dict"] = self.playrec_c.stemlabcontrol.identify()
             errorstate = False
             value = self.m["device_ID_dict"]
-
+            print(f'SDR metadata:{self.m["device_ID_dict"]}')
             if not self.m["device_ID_dict"]["TX"]:
                 self.playgroup_activate(False)
             else:

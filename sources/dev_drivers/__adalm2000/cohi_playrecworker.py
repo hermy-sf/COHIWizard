@@ -15,15 +15,10 @@ import psutil
 import subprocess
 import platform
 import libm2k
-import threading
-import queue
-import yaml
 
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
-
-#from dev_drivers.fl2k_stream.test_fl2kstreaming_from_file_tofl2k_file_outputfile import gen_ffmpeg_cmd
 
 
 class playrec_worker(QObject):
@@ -62,23 +57,11 @@ class playrec_worker(QObject):
 
         super().__init__(*args, **kwargs)
         self.stopix = False
-        self.DATABLOCKSIZE_BASIC = 4096*256#4096*256*32
+        self.DATABLOCKSIZE_BASIC = 1024*64
         self.DATASHOWSIZE = 1024
         
         self.mutex = QMutex()
         self.stemlabcontrol = stemlabcontrolinst
-        self.output_chunks = []
-        self.chunk_queue = queue.Queue(maxsize=10)  # Buffer size = 10 blocks
-        configpath = os.path.join(os.getcwd(), "config_wizard.yaml")
-        try:
-            stream = open(configpath, "r")
-            metadata = yaml.safe_load(stream)
-            stream.close()
-            self.ffmpeg_path = metadata["ffmpeg_path"]
-        except FileNotFoundError:
-            print(f"cohi_playrecworker for ADALM initialization failed: Configuration file {configpath} not found, using default ffmpeg path")
-            self.ffmpeg_path = "ffmpeg"
-
 
     def set_filename(self,_value):
         self.__slots__[0] = _value
@@ -126,106 +109,9 @@ class playrec_worker(QObject):
         self.__slots__[10] = _value
 
 
-    def pipe_reader_thread(self, stdout_pipe, buffer_size):
-        try:
-            while True:
-                chunk = stdout_pipe.read(buffer_size)
-                if not chunk:
-                    break
-                self.chunk_queue.put(chunk)  # non-blocking push into queue
-        except Exception as e:
-            print(f"Reader thread cannot read further data, probably EOF: {e}")
-        finally:
-            self.chunk_queue.put(None)  # Signal: EOF
-
-    def pusher_thread(self, ao):
-        try:
-            while True:
-                chunk = self.chunk_queue.get()
-                if chunk is None:
-                    break  # EOF
-                samples = np.frombuffer(chunk, dtype=np.float32).tolist()
-                if ao == None:
-                    #TODO TODO TODO: throw error and return to caller
-                    print(f"pusher thread chunk begin: {chunk[:10]}... end: {chunk[-10:]}")
-                else:
-                    ao.push(0, samples)
-        except Exception as e:
-            print(f"Pusher thread error: {e}")
-
-
-    def gen_ffmpeg_cmd(self, ffmpeg_path, SRAdalm = 2500000, sampling_rate = 1250000 , lo_shift = 1125000, preset_volume = 1):
-        """generates ffmpeg command for reading from stdin, complex modulation to target RF band
-        and writing to stdout.
-
-        :param ffmpeg_path: path to the ffmpeg executable
-        :type ffmpeg_path: str
-        :param SRAdalm: effective Sampling rate of transfer to the ADALM2000
-        :type SRDdalm: int
-        :param sampling_rate: sampling rate of the IQ file to be processed
-        :type sampling_rate: int
-        :param lo_shift: local oscillator shift
-        :type lo_shift: int
-        :param preset_volume: preset volume level
-        :type preset_volume: int        
-        :return: ffmpeg command as a list of strings
-        :rtype: list[str]
-        """
-        formatstring = "s16le"
-        #SRAdalm = 7500000 #maximum DAC SR of Adalm
-    
-        a = (np.tan(np.pi * lo_shift / SRAdalm) - 1) / (np.tan(np.pi * lo_shift / SRAdalm) + 1)
-
-        ffmpeg_cmd = [
-            os.path.join(str(ffmpeg_path),"ffmpeg"), "-y", "-loglevel", "error", "-hide_banner",
-            "-f", formatstring, "-ar", str(sampling_rate), "-ac", "2", "-i", "-",  # Lese von stdin
-            "-filter_complex",
-            "[0:a]aresample=osr=" + str(SRAdalm) + ",channelsplit=channel_layout=stereo [re][im];"
-            "sine=frequency=" + str(lo_shift) + ":sample_rate="  + str(SRAdalm) + "[sine_base];"
-            "[sine_base] asplit=2[sine_sin1][sine_sin2];"
-            "[sine_sin2]biquad=b0=" + str(a) + ":b1=1:b2=0:a0=1:a1=" + str(a) + ":a2=0[sine_cos];"
-            "[re][sine_cos]amultiply[mod_re];"
-            "[im][sine_sin1]amultiply[mod_im];"
-            "[mod_im]volume=volume="  + str(preset_volume) + "[part_im];"
-            "[mod_re]volume=volume="  + str(preset_volume) + "[part_re];"
-            "[part_re][part_im]amix=inputs=2:duration=shortest[out]",
-            #"-map", "[out]", "-c:a", "pcm_s8", "-f", "caf", "-"
-            #"-map", "[out]", "-c:a", "pcm_f32le", "-f", "caf", str(outfile)
-            "-map", "[out]", "-c:a", "pcm_f32le", "-f", "f32le", "pipe:1"  # Schreibe in die Standardausgabe (stdout)
-            ]
-
-        return ffmpeg_cmd
-
-    def maximize_OSR(self, SRDAC, lo_shift, sampling_rate):
-        """Calculate oversampling OSR from SRDAC and required Nyquist frequency
-        f_nyquist = (lo_shift+sampling_rate/2))
-        OSR is tha value which divides SRDAC such that 
-        (1) SRDAC/OSR >= 2 * f_nyquist
-        (2) r = SRDAC/OSR is integer, ideally r is an integer multiple of sampling_rate 
-
-        :param SRDAC: sampling rate of the ADALM DAC (clock)
-        :type SRDAC: int
-        :param lo_shift: central frequency f the band plus offset (LO frequency)
-        :type lo_shift: int
-        :param sampling_rate: bandwidth of the complex IQ signal == sampling rate of IQ file
-        :type sampling_rate: int
-        
-        :return: oversampling rate OSR
-
-        """
-        f_nyquist = lo_shift+sampling_rate/2
-        r_max = SRDAC / (2 *f_nyquist) # maximum allowable OSR
-        for OSR in np.arange(int(np.floor(r_max)),1,-1):
-            r = SRDAC / OSR
-            if SRDAC % r == 0:
-                break
-            print(f"lo_shift: {lo_shift}, sampling_rate: {sampling_rate}, f_nyquist: {f_nyquist}")
-        return OSR
-
-
     def play_loop_filelist(self):
         """
-        worker loop for sending data to ADALM2000
+        worker loop for sending data to STEMLAB server
         data format i16; 2xi16 complex; FormatTag 1
         sends signals:     
             SigFinished = pyqtSignal()
@@ -245,9 +131,8 @@ class playrec_worker(QObject):
         __slots__[9]: file_close
         __slots__[10]: sampling_parameters
         """
-
-        # =============== get parameters from slots ================
         #print("reached playloopthread")
+        channel = 0  # DAC-Kanal für Ausgabe
         filenames = self.get_filename()
         TEST = self.get_TEST()
         gain = self.get_gain()
@@ -256,132 +141,170 @@ class playrec_worker(QObject):
         configuration = self.get_configparameters() # = {"ifreq":self.m["ifreq"], "irate":self.m["irate"],"rates": self.m["rates"], "icorr":self.m["icorr"],"HostAddress":self.m["HostAddress"], "LO_offset":self.m["LO_offset"]}
         sampling_rate = configuration["irate"]
         lo_shift = configuration["ifreq"]# - configuration["LO_offset"]
-
-        # ==== initialize ADALM2000 / check for readyness ====
         #TODO TODO TODO ADALM: adapt to ADALM needs: check if 75MS/s is appropriate for data transfer over USB - maybe too fast
-        SRDAC = 75000000 # max DAC SR of Adalm for max oversampling
-        ################TODO TODO TODO: test/check calculated OSR
-        #OSR must be such that SRDAC/highestfreq = nearest integer
-        #OSR = 30
-        OSR = self.maximize_OSR(SRDAC, lo_shift, sampling_rate)
-        print(f"checking for ADALM2000")
+        SRDAC = 7500000 #maximum DAC SR of Adalm
+        OSR = np.floor(SRDAC/(np.floor((lo_shift+sampling_rate/2)*3))) #TODO: factor 3 is 2*1.5, 1.5 has 50% margin above Nyquist; investigate more thoroughly and optimize !
+        tSR = SRDAC
+        # ==== try to initialize ADALM2000 / check for readyness ====
+        print("checking for ADALM2000")
         self.mutex.lock()
-        errorstate = False
         errorstate, value = self.check_ready_ADALM()
-        ctx = value
-        print(f"playrecworker init called, ctx: {ctx}")
-        self.mutex.unlock()
-        ao = None
-        if not errorstate and not TEST:
-            print(f"plyercworker: ctx: {ctx}")
-            channel = 0  # DAC-Kanal für Ausgabe
-            ao = ctx.getAnalogOut()
-            ao.setSampleRate(channel, SRDAC)
-            print(f" >>>>>> ADALM2000 OSR: {OSR}")
-            ao.setOversamplingRatio(channel, int(OSR)) ### TODO: set oversampling ratio according band requirements; 
-            #For MW we could live with a value between 15 and 20 
-            ao.enableChannel(channel, True)
-            ao.setKernelBuffersCount(0, 32)
-            ao.setCyclic(False)
-
-        elif not TEST:
+        #print("MUTEX")
+        if errorstate:
             print("no ADALM2000 present")
             self.SigError.emit(value)
             self.SigFinished.emit()
             return()
+        self.mutex.unlock()
+        #print("past MUTEX")
+        # =============== complete ADALM2000 initialization =================
+        ctx = value
+        ao = ctx.getAnalogOut()
+        ao.setSampleRate(channel, SRDAC)
+        print(f"ADALM2000: type of OSR: {type(OSR)}")
+        ao.setOversamplingRatio(channel, int(OSR)) ### TODO: set oversampling ratio according band requirements; 
+        #For MW we could live with a value between 15 and 20 
+        ao.enableChannel(channel, True)
 
-
-        # ======================= get formatstring and preset volume ========================
         format = self.get_formattag()
-        #system = platform.system().lower()
+        a = (np.tan(np.pi * lo_shift / tSR) - 1) / (np.tan(np.pi * lo_shift / tSR) + 1)
+        system = platform.system().lower()
 
-        ffmpeg_path = self.ffmpeg_path
+        ################# TODO TODO TODO: adapt to central ffmpegpath info !
+        if system == "linux":
+            ffmpeg_file_path = ""
+        elif system == "windows":
+            ffmpeg_file_path = os.path.join(os.getcwd(),"ffmpeg-master-latest-win64-gpl-shared/bin", "ffmpeg.exe")
+        else:
+            print("This OS is not being supported")
+            errorstatus = True
+            value = "This OS is not being supported"
+            return(errorstatus, value)
 
-        # ======================= set formatstring, DATABLOCKSIZE and preset volume ========================
-        #TODO TODO TODO: correct preset_volume
+        # ======================= set formatstring and preset volume ========================
         if format[0] == 1:  #PCM
             if format[2] == 16:
                 formatstring = "s16le"
-                preset_volume = 10
+                preset_volume = 2
                 self.DATABLOCKSIZE = self.DATABLOCKSIZE_BASIC
                 data = np.empty(self.DATABLOCKSIZE, dtype=np.int16)
             elif format[2] == 24:   #24 bit PCM
                 #formatstring = "f32le"
                 formatstring = "s24le"
-                preset_volume = 200
-                self.DATABLOCKSIZE = 4096*256*24 #former 1024*48
+                preset_volume = 20
+                self.DATABLOCKSIZE = 1024*48
                 data = np.empty(self.DATABLOCKSIZE, dtype=np.float32)
             elif format[2] == 32:
                 formatstring = "s32le"  #32 bit PCM 
-                preset_volume = 1
+                preset_volume = 2
                 self.DATABLOCKSIZE = self.DATABLOCKSIZE_BASIC
                 data = np.empty(self.DATABLOCKSIZE, dtype=np.float32)
             else:
                 self.SigError.emit(f"Format not supported: {format[2]}")
                 self.SigFinished.emit()
-                libm2k.contextClose(ctx)
                 return()
         else: #IEEE float   
             if format[2] == 32:
                 formatstring = "f32le"
-                preset_volume = 1
+                preset_volume = 2
                 self.DATABLOCKSIZE = self.DATABLOCKSIZE_BASIC
                 data = np.empty(self.DATABLOCKSIZE, dtype=np.float32) #TODO: check if true for 32-bit wavs wie Gianni's
             elif format[2] == 16:   #16 bit float
                 formatstring = "f16le"
-                preset_volume = 200
+                preset_volume = 2
                 self.DATABLOCKSIZE = self.DATABLOCKSIZE_BASIC
                 data = np.empty(self.DATABLOCKSIZE, dtype=np.float16)
             else:
                 self.SigError.emit(f"Format not supported: {format[2]}")
                 self.SigFinished.emit()
-                libm2k.contextClose(ctx)
                 return()
-        #ADALM_blocksize = self.DATABLOCKSIZE 
+        ADALM_blocksize = self.DATABLOCKSIZE #4096  # Anzahl Samples pro Push TODO: maybe datablocksize as push-blocksize ?
 
         print(f"ADALM2000 <<<<<<<<<<<<< oooooo >>>>>>>>>>>> format: {format}")
+        # if format[0] == 1: #PCM              
+        #     if format[2] == 16:
+        #         self.DATABLOCKSIZE = self.DATABLOCKSIZE_BASIC
+        #         data = np.empty(self.DATABLOCKSIZE, dtype=np.int16)
+        #     elif format[2] == 32:
+        #         self.DATABLOCKSIZE = self.DATABLOCKSIZE_BASIC
+        #         data = np.empty(self.DATABLOCKSIZE, dtype=np.float32)
+        #     elif format[2] == 24:
+        #         self.DATABLOCKSIZE = 1024*48
+        #         data = np.empty(self.DATABLOCKSIZE, dtype=np.float32)
+        # else:
+            # if format[2] == 16:
+            #     self.DATABLOCKSIZE = self.DATABLOCKSIZE_BASIC
+            #     data = np.empty(self.DATABLOCKSIZE, dtype=np.float16)
+            # elif format[2] == 32:
+            #     self.DATABLOCKSIZE = self.DATABLOCKSIZE_BASIC
+            #     data = np.empty(self.DATABLOCKSIZE, dtype=np.float32) #TODO: check if true for 32-bit wavs wie Gianni's
+            # elif format[2] == 24:
+            #     self.DATABLOCKSIZE = 1024*48
+            #     data = np.empty(self.DATABLOCKSIZE, dtype=np.float32)
         print(f"playloop: BitspSample: {format[2]}; wFormatTag: {format[0]}; Align: {format[1]}")
         self.JUNKSIZE = self.DATABLOCKSIZE/2
 
-        if True: #not TEST:
-            # ======================= ffmpeg command generation and start ffmpeg process ========================
-            try:
-                ffmpeg_cmd = self.gen_ffmpeg_cmd(ffmpeg_path, SRDAC/OSR, sampling_rate , lo_shift , preset_volume )
 
-                # start ffmpeg Process
+        if not TEST:
+            # ======================= ffmpeg command generation ========================
+            try:
+                #TODO: simplify this part
+                if os.name.find("posix") >= 0:
+                    ffmpeg_cmd = [
+                    "ffmpeg", "-y", "-loglevel", "error", "-hide_banner",  
+                    "-f", formatstring, "-ar", str(sampling_rate), "-ac", "2", "-i", "-",  # read from stdin
+                    "-filter_complex",
+                    "[0:a]aresample=osr=" + str(tSR) + ",channelsplit=channel_layout=stereo [re][im];"
+                    "sine=frequency=" + str(lo_shift) + ":sample_rate="  + str(tSR) + "[sine_base];"
+                    "[sine_base] asplit=2[sine_sin1][sine_sin2];"
+                    "[sine_sin2]biquad=b0=" + str(a) + ":b1=1:b2=0:a0=1:a1=" + str(a) + ":a2=0[sine_cos];"
+                    "[re][sine_cos]amultiply[mod_re];"
+                    "[im][sine_sin1]amultiply[mod_im];"
+                    "[mod_im]volume=volume=" + str(preset_volume) + "[part_im];"
+                    "[mod_re]volume=volume=" + str(preset_volume) + "[part_re];"
+                    "[part_re][part_im]amix=inputs=2:duration=shortest[out]",
+                    #ORIGINAL: "-map", "[out]", "-c:a", "pcm_f32le", "-f", "caf", "-" # write to stdout --> ADALM
+                    "-map", "[out]", "-acodec", "pcm_f32le", "-ac", "1", "-ar", str(tSR), "-" # write to stdout --> ADALM
+                    ]
+                else:
+                    ffmpeg_cmd = [
+                    ffmpeg_file_path, "-y", "-loglevel", "error", "-hide_banner",  
+                    "-f", formatstring, "-ar", str(sampling_rate), "-ac", "2", "-i", "-",  # Lese von stdin
+                    "-filter_complex",
+                    "[0:a]aresample=osr=" + str(tSR) + ",channelsplit=channel_layout=stereo [re][im];"
+                    "sine=frequency=" + str(lo_shift) + ":sample_rate="  + str(tSR) + "[sine_base];"
+                    "[sine_base] asplit=2[sine_sin1][sine_sin2];"
+                    "[sine_sin2]biquad=b0=" + str(a) + ":b1=1:b2=0:a0=1:a1=" + str(a) + ":a2=0[sine_cos];"
+                    "[re][sine_cos]amultiply[mod_re];"
+                    "[im][sine_sin1]amultiply[mod_im];"
+                    "[mod_im]volume=volume=" + str(preset_volume) + "[part_im];"
+                    "[mod_re]volume=volume=" + str(preset_volume) + "[part_re];"
+                    "[part_re][part_im]amix=inputs=2:duration=shortest[out]",
+                    "-map", "[out]", "-c:a", "pcm_f32le", "-f", "caf", "-"
+                    #"-map", "[out]", "-acodec", "pcm_f32le", "-ac", "1", "-ar", str(tSR), "-" # write to stdout --> ADALM
+                    ]
+                # Prozess starten
                 ffmpeg_process = subprocess.Popen(ffmpeg_cmd, 
                     stdin=subprocess.PIPE, 
                     stdout=subprocess.PIPE, 
-                    stderr=subprocess.STDOUT
-                )  
+                    stderr=subprocess.STDOUT,  # or subprocess.STDOUT if you want to see logs
+                    bufsize=ADALM_blocksize*32)  # 4 bytes per float32 sample
                 print(f"<<<<<<<<<<<<<<< ADALM 2000: ffmpeg_command: {ffmpeg_cmd}")
             except FileNotFoundError:
                 print(f"Input file not found, probably ffmpeg path is wrong")
-                libm2k.contextClose(ctx)
                 return()
             except subprocess.SubprocessError as e:
-                print(f"Error when executing ADALM ffmpeg: {e}")
-                libm2k.contextClose(ctx)
+                print(f"Error when executing ADALM_file: {e}")
                 return()    
             except Exception as e:
                 print(f"Unexpected error: {e}")
-                libm2k.contextClose(ctx)
                 return()    
             
-            # if os.name.find("posix") >= 0:
-            #     pass
-            # else:
-            #     #psutil.Process(ffmpeg_process.pid).nice(psutil.HIGH_PRIORITY_CLASS)
-            #     pass
-
-        #================================ start reader and pusher threads ================
-        print(f"datablocksize: {self.DATABLOCKSIZE} formatstring: {formatstring} gain: {gain}")
-        reader = threading.Thread(target=self.pipe_reader_thread, args=(ffmpeg_process.stdout, self.DATABLOCKSIZE))
-        reader.start()
-        pusher = threading.Thread(target=self.pusher_thread, args=(ao,))
-        pusher.start()
-
-        # ======================= read files blockwise and send data to ffmpeg | reader | pusher | ADALM2000 ctx ========================
+            if os.name.find("posix") >= 0:
+                pass
+            else:
+                psutil.Process(ffmpeg_process.pid).nice(psutil.HIGH_PRIORITY_CLASS)
+                pass
 
         for ix,filename in enumerate(filenames):
             fileHandle = open(filename, 'rb')
@@ -417,7 +340,6 @@ class playrec_worker(QObject):
                 else:
                     self.set_data(data[0:self.DATASHOWSIZE])
             #self.set_data(data)
-
             junkspersecond = sampling_rate / self.JUNKSIZE
             self.SigNextfile.emit(filename)
             true_filesize = os.stat(filename).st_size
@@ -429,13 +351,17 @@ class playrec_worker(QObject):
             self.set_datablocksize(data_blocksize)
 
             while size > 0 and not self.stopix:
-                if True: #not TEST:
-                    #print(f"iteration loop entered play_loop_filelist: size: {size} junkspersecond: {junkspersecond} count: {count}")
+                if not TEST:
+                    print(f"iteration loop entered play_loop_filelist: size: {size} junkspersecond: {junkspersecond} count: {count}")
                     self.mutex.lock()
                     if ffmpeg_process.poll() != None:
                         self.SigError.emit(f"ffmpeg process terminated unexpectedly, pipe broken")
                         print("Error: ffmpeg process terminated")
                         break
+                    # if ADALM_process.poll() != None:
+                    #     self.SigError.emit(f"ADALM process terminated unexpectedly, pipe broken; Please check if the USB-VGA dongle is connected")
+                    #     print("Error: ADALM process terminated")
+                    #     break
                     self.mutex.unlock()
                     if not self.get_pause():
                         try:
@@ -455,16 +381,24 @@ class playrec_worker(QObject):
                             else :   #16 bit float	
                                 aux1 = gain*data[0:size]
                                 ffmpeg_process.stdin.write(aux1.astype(np.float16))
-                            # write block to ffmpeg stdin which processes and sends to further processing pipe via stdout
-                            ffmpeg_process.stdin.flush()
+                            
+                            #write data from ffmpeg stdout to ADALM2000
+                            print(f"ffmpeg_process.stdout.read(ADALM_blocksize* 4) {ADALM_blocksize* 4}")
+                            raw = ffmpeg_process.stdout.read(ADALM_blocksize)
+                            samples = np.frombuffer(raw, dtype=np.float32)
+                            print(f"ffmpeg_process.stdout.read(ADALM_blocksize* 4) samples: {samples}, len(samples): {len(samples)}")
+                            if samples.size == 0:
+                                continue
+                            print("ADALM push command reached")
+                            ao.push([samples])  # Mono-Ausgabe auf ADALM2000
 
+                            ffmpeg_process.stdin.flush()
                         except BlockingIOError:
                             print("Blocking data socket error in playloop worker")
                             time.sleep(0.1)
                             self.SigError.emit("Blocking data socket error in playloop worker")
                             self.SigFinished.emit()
                             time.sleep(0.1)
-                            libm2k.contextClose(ctx)
                             return
                         except ConnectionResetError:
                             print("Diagnostic Message: Connection data socket error in playloop worker")
@@ -472,7 +406,6 @@ class playrec_worker(QObject):
                             self.SigError.emit("Diagnostic Message: Connection data socket error in playloop worker")
                             self.SigFinished.emit()
                             time.sleep(0.1)
-                            libm2k.contextClose(ctx)
                             return
                         except Exception as e:
                             print("Class e type error data transfer error in playloop worker")
@@ -481,7 +414,6 @@ class playrec_worker(QObject):
                             self.SigError.emit(f"Diagnostic Message: Error in playloop worker: {str(e)}")
                             self.SigFinished.emit()
                             time.sleep(0.1)
-                            libm2k.contextClose(ctx)
                             return
                         except BrokenPipeError:
                             time.sleep(0.1)
@@ -489,11 +421,9 @@ class playrec_worker(QObject):
                             self.SigFinished.emit()
                             time.sleep(0.1)
                             print(" FFMPEG-Prozess terminated or pipe closed. Please restart procedure.")
-                            libm2k.contextClose(ctx)
                             return
 
                         QThread.usleep(1) #sleep 5 us for keeping main GUI responsive
-
                         if format[2] == 24:
                             data = fileHandle.read(self.DATABLOCKSIZE * 3)
                             #data = self.read_24bit_block_np(fileHandle, self.DATABLOCKSIZE)
@@ -558,28 +488,22 @@ class playrec_worker(QObject):
         self.set_fileclose(True)
         fileHandle.close()
 
-        if True: #not TEST:
+        if not TEST:
             # terminate ADALM_file process and wait for actual termination
             ffmpeg_process.stdin.close()  # close stdin
             ffmpeg_process.stdout.close()  # close stdout
             ffmpeg_process.terminate()  # stop process gently
             ffmpeg_process.wait()  # wait for process termination
-            reader.join()
-            pusher.join()
-            if ao is not None:
-                try:
-                    print("close ADALM ao object")
-                    ao.push(0, [0.0] * 5000)  # send a final block of zero data
-                    time.sleep(0.01)
-                    ao.enableChannel(0, False)
-                    ao.setSampleRate(0, 0)
-                except Exception as e:
-                    print("Error closing ADALM2000 context or disabling channel:", e)
+            try:
+                ao.enableChannel(channel, False)
+                ao.setSampleRate(channel, 0)  # set sample rate to 0 to disable channel
+                libm2k.context.m2kClose(ctx)
+            except:
+                self.logger.error("Error when closing ADALM2000 context")
 
-            self.SigFinished.emit()
-            print("playrecworker >>>>>>>>>> close ctx")
-            libm2k.contextClose(ctx)
-            return()
+        self.SigFinished.emit()
+        return()
+
 
     def check_ready_ADALM(self):
         """check if ADALM device is connected and ready for use
