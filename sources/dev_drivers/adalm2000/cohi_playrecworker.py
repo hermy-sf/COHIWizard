@@ -319,7 +319,8 @@ class playrec_worker(QObject):
             else:
                 self.SigError.emit(f"Format not supported: {format[2]}")
                 self.SigFinished.emit()
-                libm2k.contextClose(ctx)
+                if not TEST:
+                    libm2k.contextClose(ctx)
                 return()
         else: #IEEE float   
             if format[2] == 32:
@@ -335,7 +336,8 @@ class playrec_worker(QObject):
             else:
                 self.SigError.emit(f"Format not supported: {format[2]}")
                 self.SigFinished.emit()
-                libm2k.contextClose(ctx)
+                if not TEST:
+                    libm2k.contextClose(ctx)
                 return()
         #ADALM_blocksize = self.DATABLOCKSIZE 
 
@@ -357,15 +359,18 @@ class playrec_worker(QObject):
                 print(f"<<<<<<<<<<<<<<< ADALM 2000: ffmpeg_command: {ffmpeg_cmd}")
             except FileNotFoundError:
                 print(f"Input file not found, probably ffmpeg path is wrong")
-                libm2k.contextClose(ctx)
+                if not TEST:
+                    libm2k.contextClose(ctx)
                 return()
             except subprocess.SubprocessError as e:
                 print(f"Error when executing ADALM ffmpeg: {e}")
-                libm2k.contextClose(ctx)
+                if not TEST:
+                    libm2k.contextClose(ctx)
                 return()    
             except Exception as e:
                 print(f"Unexpected error: {e}")
-                libm2k.contextClose(ctx)
+                if not TEST:
+                    libm2k.contextClose(ctx)
                 return()    
             
             # if os.name.find("posix") >= 0:
@@ -429,131 +434,105 @@ class playrec_worker(QObject):
             self.set_datablocksize(data_blocksize)
 
             while size > 0 and not self.stopix:
-                if True: #not TEST:
-                    #print(f"iteration loop entered play_loop_filelist: size: {size} junkspersecond: {junkspersecond} count: {count}")
-                    self.mutex.lock()
-                    if ffmpeg_process.poll() != None:
-                        self.SigError.emit(f"ffmpeg process terminated unexpectedly, pipe broken")
-                        print("Error: ffmpeg process terminated")
-                        break
-                    self.mutex.unlock()
-                    if not self.get_pause():
-                        try:
-                            #TODO: AGC pending
-                            
-                            if formatstring == "s16le":
-                                aux1 = gain*data[0:size]
-                                ffmpeg_process.stdin.write(aux1.astype(np.int16))
-                            elif formatstring == "s32le":
-                                aux1 = gain*data[0:size]
-                                ffmpeg_process.stdin.write(aux1.astype(np.int32))
-                            elif formatstring == "f32le":
-                                aux1 = gain*data[0:size]
-                                ffmpeg_process.stdin.write(aux1.astype(np.float32))
-                            elif formatstring == "s24le":
-                                ffmpeg_process.stdin.write(data)
-                            else :   #16 bit float	
-                                aux1 = gain*data[0:size]
-                                ffmpeg_process.stdin.write(aux1.astype(np.float16))
-                            # write block to ffmpeg stdin which processes and sends to further processing pipe via stdout
-                            ffmpeg_process.stdin.flush()
-
-                        except BlockingIOError:
-                            print("Blocking data socket error in playloop worker")
-                            time.sleep(0.1)
-                            self.SigError.emit("Blocking data socket error in playloop worker")
-                            self.SigFinished.emit()
-                            time.sleep(0.1)
-                            libm2k.contextClose(ctx)
-                            return
-                        except ConnectionResetError:
-                            print("Diagnostic Message: Connection data socket error in playloop worker")
-                            time.sleep(0.1)
-                            self.SigError.emit("Diagnostic Message: Connection data socket error in playloop worker")
-                            self.SigFinished.emit()
-                            time.sleep(0.1)
-                            libm2k.contextClose(ctx)
-                            return
-                        except Exception as e:
-                            print("Class e type error data transfer error in playloop worker")
-                            print(e)
-                            time.sleep(0.1)
-                            self.SigError.emit(f"Diagnostic Message: Error in playloop worker: {str(e)}")
-                            self.SigFinished.emit()
-                            time.sleep(0.1)
-                            libm2k.contextClose(ctx)
-                            return
-                        except BrokenPipeError:
-                            time.sleep(0.1)
-                            self.SigError.emit(f"Broken Pipe: FFMPEG-Prozess terminated or pipe closed. Please restart procedure.")
-                            self.SigFinished.emit()
-                            time.sleep(0.1)
-                            print(" FFMPEG-Prozess terminated or pipe closed. Please restart procedure.")
-                            libm2k.contextClose(ctx)
-                            return
-
-                        QThread.usleep(1) #sleep 5 us for keeping main GUI responsive
-
-                        if format[2] == 24:
-                            data = fileHandle.read(self.DATABLOCKSIZE * 3)
-                            #data = self.read_24bit_block_np(fileHandle, self.DATABLOCKSIZE)
-                            #print(f"datasample read24 200 - 220: {data[200:220]}, type(data: {type(data)})")
-                            size = len(data)
-                        else:
-                            size = fileHandle.readinto(data)
-
-                        count += 1
-                        if count > junkspersecond:
-                            #cv = np.zeros(2*self.DATASHOWSIZE)
-                            #cv[0:2*self.DATASHOWSIZE-1:2] = data[0:self.DATASHOWSIZE] #write only real part
-                            if format[2] == 24:
-                                print(f"++++++ DATASHOWSIZE: {self.DATASHOWSIZE} len(showdata):   {len(data[0:int(6*np.floor(self.DATASHOWSIZE/6))])}")
-                                showdata = self.convert24_32(data[5:int(6*np.floor(self.DATASHOWSIZE/6))+5])
-                                if not np.isnan(showdata).any():
-                                    self.set_data(showdata)
-                                else:
-                                    print("############# NaN NaN NaN NaN in showdata ################")
-                            else:
-                                self.set_data(data[0:self.DATASHOWSIZE])
-                            self.SigIncrementCurTime.emit()
-                            count = 0
-                            gain = self.get_gain()
-                    else:
-                        aux1 = 0*data[0:size]
-                        ffmpeg_process.stdin.write(aux1)
+                #print(f"iteration loop entered play_loop_filelist: size: {size} junkspersecond: {junkspersecond} count: {count}")
+                self.mutex.lock()
+                if ffmpeg_process.poll() != None:
+                    self.SigError.emit(f"ffmpeg process terminated unexpectedly, pipe broken")
+                    print("Error: ffmpeg process terminated")
+                    break
+                self.mutex.unlock()
+                if not self.get_pause():
+                    try:
+                        #TODO: AGC pending
+                        
+                        if formatstring == "s16le":
+                            aux1 = gain*data[0:size]
+                            ffmpeg_process.stdin.write(aux1.astype(np.int16))
+                        elif formatstring == "s32le":
+                            aux1 = gain*data[0:size]
+                            ffmpeg_process.stdin.write(aux1.astype(np.int32))
+                        elif formatstring == "f32le":
+                            aux1 = gain*data[0:size]
+                            ffmpeg_process.stdin.write(aux1.astype(np.float32))
+                        elif formatstring == "s24le":
+                            ffmpeg_process.stdin.write(data)
+                        else :   #16 bit float	
+                            aux1 = gain*data[0:size]
+                            ffmpeg_process.stdin.write(aux1.astype(np.float16))
+                        # write block to ffmpeg stdin which processes and sends to further processing pipe via stdout
                         ffmpeg_process.stdin.flush()
+
+                    except BlockingIOError:
+                        print("Blocking data socket error in playloop worker")
                         time.sleep(0.1)
-                        if self.stopix is True:
-                            break
-                else:
-                    if not self.get_pause():
-                        print(" SDR_control ADALM test reached")
-                        if format[2] == 24:
-                            data = fileHandle.read(self.DATABLOCKSIZE * 3)
-                            #data = self.read_24bit_block_np(fileHandle, self.DATABLOCKSIZE)
-                            #print(f"datasample read24 200 - 220: {data[200:220]}, type(data: {type(data)})")
-                            size = len(data)
-                        else:
-                            size = fileHandle.readinto(data)
-                        time.sleep(self.DATABLOCKSIZE/2/sampling_rate)
-                        count += 1
-                        if count > junkspersecond and size > 0:
-                            if format[2] == 24:
-                                print(f"++++++ DATASHOWSIZE: {self.DATASHOWSIZE} len(showdata):   {len(data[0:int(6*np.ceil(self.DATASHOWSIZE/6))])}")
-                                showdata = self.convert24_32(data[0:int(6*np.ceil(self.DATASHOWSIZE/6))])
-                                if not np.isnan(showdata).any():
-                                    self.set_data(showdata)
-                                else:
-                                    print("############# NaN NaN NaN NaN in showdata ################")
-                            else:
-                                self.set_data(data[0:self.DATASHOWSIZE])
-                            self.SigIncrementCurTime.emit()
-                            gain = self.get_gain()
-                            count = 0
+                        self.SigError.emit("Blocking data socket error in playloop worker")
+                        self.SigFinished.emit()
+                        time.sleep(0.1)
+                        if not TEST:
+                            libm2k.contextClose(ctx)
+                        return
+                    except ConnectionResetError:
+                        print("Diagnostic Message: Connection data socket error in playloop worker")
+                        time.sleep(0.1)
+                        self.SigError.emit("Diagnostic Message: Connection data socket error in playloop worker")
+                        self.SigFinished.emit()
+                        time.sleep(0.1)
+                        if not TEST:
+                            libm2k.contextClose(ctx)
+                        return
+                    except Exception as e:
+                        print("Class e type error data transfer error in playloop worker")
+                        print(e)
+                        time.sleep(0.1)
+                        self.SigError.emit(f"Diagnostic Message: Error in playloop worker: {str(e)}")
+                        self.SigFinished.emit()
+                        time.sleep(0.1)
+                        if not TEST:
+                            libm2k.contextClose(ctx)
+                        return
+                    except BrokenPipeError:
+                        time.sleep(0.1)
+                        self.SigError.emit(f"Broken Pipe: FFMPEG-Prozess terminated or pipe closed. Please restart procedure.")
+                        self.SigFinished.emit()
+                        time.sleep(0.1)
+                        print(" FFMPEG-Prozess terminated or pipe closed. Please restart procedure.")
+                        if not TEST:
+                            libm2k.contextClose(ctx)
+                        return
+
+                    QThread.usleep(1) #sleep 5 us for keeping main GUI responsive
+
+                    if format[2] == 24:
+                        data = fileHandle.read(self.DATABLOCKSIZE * 3)
+                        #data = self.read_24bit_block_np(fileHandle, self.DATABLOCKSIZE)
+                        #print(f"datasample read24 200 - 220: {data[200:220]}, type(data: {type(data)})")
+                        size = len(data)
                     else:
-                        time.sleep(1)
-                        if self.stopix is True:
-                            break
+                        size = fileHandle.readinto(data)
+
+                    count += 1
+                    if count > junkspersecond:
+                        #cv = np.zeros(2*self.DATASHOWSIZE)
+                        #cv[0:2*self.DATASHOWSIZE-1:2] = data[0:self.DATASHOWSIZE] #write only real part
+                        if format[2] == 24:
+                            print(f"++++++ DATASHOWSIZE: {self.DATASHOWSIZE} len(showdata):   {len(data[0:int(6*np.floor(self.DATASHOWSIZE/6))])}")
+                            showdata = self.convert24_32(data[5:int(6*np.floor(self.DATASHOWSIZE/6))+5])
+                            if not np.isnan(showdata).any():
+                                self.set_data(showdata)
+                            else:
+                                print("############# NaN NaN NaN NaN in showdata ################")
+                        else:
+                            self.set_data(data[0:self.DATASHOWSIZE])
+                        self.SigIncrementCurTime.emit()
+                        count = 0
+                        gain = self.get_gain()
+                else:
+                    aux1 = 0*data[0:size]
+                    ffmpeg_process.stdin.write(aux1)
+                    ffmpeg_process.stdin.flush()
+                    time.sleep(0.1)
+                    if self.stopix is True:
+                        break
         print("close file ")
         self.set_fileclose(True)
         fileHandle.close()
@@ -578,7 +557,8 @@ class playrec_worker(QObject):
 
             self.SigFinished.emit()
             print("playrecworker >>>>>>>>>> close ctx")
-            libm2k.contextClose(ctx)
+            if not TEST:
+                libm2k.contextClose(ctx)
             return()
 
     def check_ready_ADALM(self):
@@ -595,7 +575,7 @@ class playrec_worker(QObject):
             errorstate = True
             return(errorstate, value)
         except Exception as e:
-            value = (f"unexpected error in play_loop_filelist for ADALM , please checl if the system is connected and ready {e}")
+            value = (f"unexpected error in play_loop_filelist for ADALM , please check if the system is connected and ready {e}")
             errorstate = True
             return(errorstate, value)    
  
