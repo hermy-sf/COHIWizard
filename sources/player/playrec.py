@@ -165,7 +165,7 @@ class playrec_c(QObject):
         errorstatus = False
         value = None
         errorstatus, value = ffinst.is_ffmpeg_installed(self.m["ffmpeg_path"]) 
-        print(f">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> ffmpeg path check in rxhandler of playrec: {value}")
+        print(f"ffmpeg path check in rxhandler of playrec: {value}")
         if not errorstatus:
             #returns new installpath for ffmpeg
             self.m["ffmpeg_path"] = value
@@ -2206,7 +2206,7 @@ class playrec_v(QObject):
         #print(f">>>>>>>>>>>>> updatecurtime: wavheaderstarttime: {self.m['wavheader']['starttime_dt']} curtime: {self.m['curtime']}")
         true_filesize = os.path.getsize(self.m["f1"]) #TODO: can be calculated outside on file opening in the play thread
         playlength = true_filesize/self.m["wavheader"]['nAvgBytesPerSec']
-        #print(f"updatecurtime playlength: {playlength}, filesize: {true_filesize}, bytespersec: {self.m["wavheader"]['nAvgBytesPerSec']}") #TODO: can be calculated outside on file opening
+        #print(f"updatecurtime playlength: {playlength}, filesize: {true_filesize}, bytespersec: {self.m['wavheader']['nAvgBytesPerSec']}") #TODO: can be calculated outside on file opening
         if self.m["modality"] == 'play' and self.m["pausestate"] is False:
             if self.m["curtime"] > 0 and increment < 0:
                 self.m["curtime"] += increment
