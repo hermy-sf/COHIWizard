@@ -699,3 +699,96 @@ class WAVheader_tools():
         fid.write(pack("<4sl", wavheader['data_ckID'][0:4].encode('ascii'), wavheader['data_nChunkSize']))
         fid.close()
 
+
+
+class TextInputDialog(QDialog):
+    """A dialog for entering text input with multiple fields."""
+
+    __slots__ = ["parameters"]
+
+    SigButtonpressed = pyqtSignal(str)
+    SigSlidergain = pyqtSignal(int)
+
+    def __init__(self, parent=None, *args, **kwargs):
+        super(TextInputDialog, self).__init__(parent)
+
+        self.setWindowTitle("Input dialogue")
+        if len(args) > 0:
+            self.inputfields = args[0]
+
+        layout = QVBoxLayout()
+
+        # Eingabefelder
+        for key, value in self.inputfields.items():
+            setattr(self, f'line_edit_{key}', QLineEdit(self))
+            getattr(self, f'line_edit_{key}').setText(str(value))
+            layout.addWidget(QLabel(f"{key}:"))
+            layout.addWidget(getattr(self, f'line_edit_{key}'))
+        # self.line_edit1 = QLineEdit(self)
+        # self.line_edit2 = QLineEdit(self)
+
+        # Buttons
+        self.test_button = QPushButton("Test", self)
+        self.ok_button = QPushButton("OK", self)
+        self.cancel_button = QPushButton("Cancel", self)
+
+        # Layouts
+#        layout.addWidget(QLabel("carier freqency:"))
+#        layout.addWidget(self.line_edit1)
+
+ #       layout.addWidget(QLabel("Eingabe 2:"))
+ #       layout.addWidget(self.line_edit2)
+
+        button_layout = QHBoxLayout()
+        button_layout.addWidget(self.ok_button)
+        button_layout.addWidget(self.cancel_button)
+        button_layout.addWidget(self.test_button)
+        
+        layout.addLayout(button_layout)
+
+        self.setLayout(layout)
+
+        # Signals
+        # self.ok_button.clicked.connect(self.accept)
+        # self.cancel_button.clicked.connect(self.reject)
+        self.ok_button.clicked.connect(self.OKbutton_handler)
+        self.cancel_button.clicked.connect(self.reject)
+        self.test_button.clicked.connect(self.Testbutton_handler)
+
+        # add slidergain widget
+        self.slider_gain = QSlider(Qt.Horizontal, self)
+        layout.addWidget(QLabel("Gain:"))
+        layout.addWidget(self.slider_gain)
+        self.slider_gain.setRange(-50, 50)  # Set range from -50 to 50
+        self.slider_gain.setTickPosition(QSlider.TicksBelow)
+        self.slider_gain.setValue(0)  # Set default value to 0
+        self.slider_gain.setTickInterval(5)
+        self.slider_gain.valueChanged.connect(self.slider_gain_changed)
+
+    def slider_gain_changed(self, value):
+        """Slot for handling changes to the gain slider."""
+        print(f"Gain slider value changed: {value}")
+        self.SigSlidergain.emit(value)  
+
+
+    def Testbutton_handler(self):
+        """Testbutton handler for debugging purposes."""
+        print("Test button clicked")
+        self.SigButtonpressed.emit("Test")
+
+    def OKbutton_handler(self):
+        """OK button handler to return the input values."""
+        print("OK button clicked")
+        self.SigButtonpressed.emit("OK")
+        # self.accept()  # Close the dialog and return QDialog.Accepted
+        #self.done(QDialog.Accepted)
+
+    def getInputs(self):
+
+        """Returns the text from the input fields."""
+        # return self.line_edit1.text(), self.line_edit2.text()
+        for key in self.inputfields.keys():
+            line_edit = getattr(self, f'line_edit_{key}', None)
+            if line_edit:
+                self.inputfields[key] = line_edit.text()
+        return self.inputfields

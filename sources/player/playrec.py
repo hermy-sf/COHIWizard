@@ -339,6 +339,11 @@ class playrec_c(QObject):
     ######################  TODO: change for general devicedrivers
         self.stemlabcontrol.SigError.connect(self.stemlabcontrol_errorhandler)
         self.stemlabcontrol.SigMessage.connect(self.display_status) #currently not activem activate by re-writing display_status(message)
+        try:
+            self.stemlabcontrol.SigData.connect(self.stemlabcontrol_data_handler) #TODO: check if this is required, maybe not
+        except:
+            pass
+
         errorstate, value = self.stemlabcontrol.set_play()
         if errorstate:
             self.playrec_c.errorhandler(value)
@@ -369,7 +374,9 @@ class playrec_c(QObject):
         self.m["sdr_configparams"] = {"ifreq":self.m["ifreq"], "irate":self.m["irate"],
                 "rates": self.m["rates"], "icorr":self.m["icorr"],
                 "HostAddress":self.m["HostAddress"], "LO_offset":self.m["LO_offset"]}
-        
+        ################## TODO CHECK: was changed for general devicedrivers
+        #self.m["sdr_configparams"]["QMAINWINDOWparent"] = self.m["QTMAINWINDOWparent"]
+        self.m["sdr_configparams"]["QMAINWINDOWparent"] = self.m["QTMAINWINDOWparent"]
     ######################  TODO: change for general devicedrivers
         # call respective driver here:
 
@@ -377,8 +384,9 @@ class playrec_c(QObject):
         # e.g. for fl2k: start fl2k_tcp and then launch connected data_messenger
         # in self.SDR#control.sdrserverstart(self.m["sdr_configparams"])
         # statt stemlabcontrol wird eine generelle Instanz SDRcontrol  gestartet
-
+        
         if self.m["TEST"] is False:
+            self.m["sdr_configparams"]["TEST"] = False
             errorstate, process = self.stemlabcontrol.sdrserverstart(self.m["sdr_configparams"])
             time.sleep(5)
             #stdout, stderr = process.communicate()
@@ -397,6 +405,10 @@ class playrec_c(QObject):
                 errorstate = True  #TODO TODO TODO: better errorhandling and messaging with errorstate, value and errorhandler
                 value = "Cannot configure SDR socket. Please check your STEMLAB connection."
         else:
+            self.m["sdr_configparams"]["TEST"] = True
+            ################TODO TODO TODO: for test only, remove later
+            self.stemlabcontrol.config_socket(self.m["sdr_configparams"])
+            ############################################################
             errorstate,value = self.play_tstarter()
                 #return(errorstate,value)
             # if not self.play_tstarter():
@@ -438,7 +450,17 @@ class playrec_c(QObject):
             self.logger.error(str(value))
             self.cb_Butt_STOP()
 
-        
+    def stemlabcontrol_data_handler(self, data):
+        """handler for data signals from stemlabcontrol class
+        handles data received from the STEMLAB sdr server
+        :param data: data received from the STEMLAB sdr server
+        :type data: dict
+        """
+        print(f"stemlabcontrol_data_handler, content of data: {data}")
+        self.m["sdr_configparams"]["SDR_control_returns"] = data
+        pass
+
+
     def play_tstarter(self):
         """_start playback via data stream to STEMLAB sdr server
         starts thread 'playthread' for data streaming to the STEMLAB
@@ -497,6 +519,9 @@ class playrec_c(QObject):
         #self.playrec_tworker.set_modality(self.m["modality"])
         self.playrec_tworker.set_gain(self.m["gain"])
         ################## TODO CHECK: was changed for general devicedrivers
+        #self.m["sdr_configparams"]["QMAINWINDOWparent"] = self.m["QTMAINWINDOWparent"]
+
+        #self.m["sdr_configparams"].append({"ifreq":self.m["ifreq"], "irate":self.m["irate"],"rates": self.m["rates"], "icorr":self.m["icorr"],"HostAddress":self.m["HostAddress"], "LO_offset":self.m["LO_offset"]})
         self.playrec_tworker.set_configparameters(self.m["sdr_configparams"]) # = {"ifreq":self.m["ifreq"], "irate":self.m["irate"],"rates": self.m["rates"], "icorr":self.m["icorr"],"HostAddress":self.m["HostAddress"], "LO_offset":self.m["LO_offset"]}
         self.logger.debug("set tworker gain to: %f",self.m["gain"])
         #print(f"gain: {self.m['gain']}")
@@ -1127,7 +1152,7 @@ class playrec_v(QObject):
                     self.m["imported_sdr_controllers"].append(importlib.import_module(full_module_path))
                     #text = self.gui.comboBox_playrec_targetSR_2.currentText()
                     #set SDR choice combobox to stemlab 125-14
-                    if cf.find("stemlab_125_14") == 0:
+                    if cf.find("stemlab_125_14") == 0 and cf == "stemlab_125_14":
                         self.m["currentSDRindex"] = boxix
                         self.m["standardSDRindex"] = boxix
                     boxix += 1
@@ -2061,7 +2086,7 @@ class playrec_v(QObject):
         #     return
         self.m["gain"] = self.playrec_c.playrec_tworker.get_gain()
         #print(f"get gain in showRFdata gain: {self.m['gain']}")
-        self.logger.debug("get from tworker gain to showRFdata: %f",self.m["gain"])
+        self.logger.debug("gain from tworker gain to showRFdata: %f",self.m["gain"])
         data = self.playrec_c.playrec_tworker.get_data()
         if len(data) < 256: # skip data monitoring if len(data) < 8, coding for the need of extra fast processing
             #print(f"showRDdata: len(data) = {len(data)} < 256, no data shown")
@@ -2072,12 +2097,12 @@ class playrec_v(QObject):
         #print(f"############### playrec recloop data: {data[0]}")
         nan_ix = [i for i, x in enumerate(data) if np.isnan(x)]
         if np.any(np.isnan(data)):
+            self.logger.error("show RFdata: NaN found in data, length: %i ,maxval: %f , avg: %f" , len(nan_ix),  np.max(data), np.median(data))
             self.m["stopstate"] = True
             #time.sleep(1)
-            data[nan_ix] = np.zeros(len(nan_ix))
-            self.logger.error("show RFdata: NaN found in data, length: %i ,maxval: %f , avg: %f" , len(nan_ix),  np.max(data), np.median(data))
+            data[nan_ix] = 1e-8*np.ones(len(nan_ix))
             #sys_state.set_status(system_state)
-            return(False)
+            #return(False)
         cv = (data[0:s-1:2].astype(np.float32) + 1j * data[1:s:2].astype(np.float32))*self.m["gain"]
         if self.m["wavheader"]['wFormatTag'] == 1:
             normfactor = int(2**int(self.m["wavheader"]['nBitsPerSample']-1))-1
@@ -2100,6 +2125,7 @@ class playrec_v(QObject):
             datax = (np.floor(freq/1000))
             datay = 20*np.log10(spr)
             self.curve.setData(datax, datay)
+            #print(f"playrec in showRFdata: first 20 samples: datay : {datay[0:19]}, spr: {spr[0:19]}, freq: {freq[0:19]}, cv: {cv[0:19]}")
 
         if self.m["TEST"]:
             return

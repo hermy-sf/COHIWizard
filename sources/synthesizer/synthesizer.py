@@ -1037,6 +1037,8 @@ class modulate_worker_ffmpeg(QObject):
         firstround = True
         percent_old = 0
         for ix, carrierf in enumerate(carrier_frequencies):
+        #TODO: for crashrecovery start list from current frequ index i:
+        #for ix, carrierf in enumerate(carrier_frequencies[i:], start=i):
         # loop over all carriers in list carrier_frequencies
             self.logger.debug("################################")
             self.logger.debug(f"modulation round: {ix}")
@@ -1051,7 +1053,6 @@ class modulate_worker_ffmpeg(QObject):
             audio_sample_rate = 41100 #TODO: shift definition to more central location
             self.SigMessage.emit(f"concatenate playlist @ f {str(np.ceil((carrier_frequencies[ix] + self.get_LO_freq()/1000)))}")                
 
-#Rem after tests 11-05            #self.SigMessage.emit(f"concatenating playlist @ f {str(np.ceil((carrier_frequencies[ix])))}")
             if str(output_base_name).find("preview_temp_000") > 0:
                 max_duration = 20
                 self.logger.debug(f"max duration during concat: {max_duration} s")
