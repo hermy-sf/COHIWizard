@@ -759,15 +759,15 @@ class TextInputDialog(QDialog):
         self.slider_gain = QSlider(Qt.Horizontal, self)
         layout.addWidget(QLabel("Gain:"))
         layout.addWidget(self.slider_gain)
-        self.slider_gain.setRange(-50, 50)  # Set range from -50 to 50
+        self.slider_gain.setRange(0, 100)  # Set range from -50 to 50
         self.slider_gain.setTickPosition(QSlider.TicksBelow)
-        self.slider_gain.setValue(0)  # Set default value to 0
+        self.slider_gain.setValue(80)  # Set default value to 100
         self.slider_gain.setTickInterval(5)
         self.slider_gain.valueChanged.connect(self.slider_gain_changed)
 
     def slider_gain_changed(self, value):
         """Slot for handling changes to the gain slider."""
-        print(f"Gain slider value changed: {value}")
+        #print(f"Gain slider value changed: {value}")
         self.SigSlidergain.emit(value)  
 
 

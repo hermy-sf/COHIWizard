@@ -44,6 +44,7 @@ class SDR_control(QObject):
     SigError = pyqtSignal(str)
     SigMessage = pyqtSignal(str)
     SigData = pyqtSignal(object)
+    SigRelay = pyqtSignal(int)  #relay for signalling updating values to the cohi_playrecworker
 
     def __init__(self, *args, **kwargs):
 
@@ -73,7 +74,7 @@ class SDR_control(QObject):
                       500000:4, 1250000:5, 2500000:6},
                           "rate_type": "discrete",
                           "RX": False, #TODO: set true after tests
-                          "TX": False, #TODO: set true after tests
+                          "TX": True, #TODO: set true after tests
                           "device_name": "STEMlab 125-14 stream",
                           "device_ID": 0,
                           "max_IFREQ": 62500000,
@@ -92,13 +93,16 @@ class SDR_control(QObject):
         if buttonstring == "OK":
             self.okvalue = self.dialog.getInputs()
 
-    def dialogslider_handler(self, value):
-        """Handles slider changes in the dialog.
+    def dialog_handler(self, value):
+        """Relays dialog info to the cohi_playrecworker
+         in this special driver: value == slider value in the dialog.
         Emits a signal when the slider value changes.
         :param value: The new value of the slider
         :type value: int
         """
-        print(f"Slider value changed to {value}")
+        print(f"SDRControl: Slider value changed to {value}, relay signal to worker")
+        self.SigRelay.emit(value)
+
 
     def showDialog(self, Mainwindowreference=None, inputfields=None, configparams={}):
         """Shows a dialog to get user input for a number of editable input fields.
@@ -117,7 +121,7 @@ class SDR_control(QObject):
         value = {} #should be type dict
         dialog = TextInputDialog(Mainwindowreference, inputfields)
         dialog.SigButtonpressed.connect(self.dialogbutton_handler)
-        dialog.SigSlidergain.connect(self.dialogslider_handler)
+        dialog.SigSlidergain.connect(self.dialog_handler)
         # Connect the dialog's signal to the error
         dialog.show()
         self.dialog = dialog

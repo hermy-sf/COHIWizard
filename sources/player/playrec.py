@@ -510,6 +510,11 @@ class playrec_c(QObject):
 
         
         self.playrec_tworker = getattr(self.m["imported_device_modules"][self.m["currentSDRindex"]],'playrec_worker')(self.stemlabcontrol)
+        
+        # connect relay signals between SDRcontrol and playrecworker
+        if hasattr(self.stemlabcontrol, 'SigRelay') and callable(getattr(self.playrec_tworker, 'dialog_handler')):
+            self.stemlabcontrol.SigRelay.connect(self.playrec_tworker.dialog_handler) 
+
 ######################  END: change for general devicedrivers
 
         self.playrec_tworker.moveToThread(self.playthread)
