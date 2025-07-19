@@ -181,21 +181,21 @@ class playrec_worker(QObject):
     def set_configparameters(self,_value):
         self.__slots__[10] = _value
 
-    def _read_exact(self, pipe, size): ########FIX CHATGPT 19-07-25
+    # def _read_exact(self, pipe, size): ########FIX CHATGPT 19-07-25
 
-        buffer = bytearray()
-        while len(buffer) < size:
-            part = pipe.read(size - len(buffer))
-            if not part:
-                break
-            buffer.extend(part)
-        return bytes(buffer) if buffer else None
+    #     buffer = bytearray()
+    #     while len(buffer) < size:
+    #         part = pipe.read(size - len(buffer))
+    #         if not part:
+    #             break
+    #         buffer.extend(part)
+    #     return bytes(buffer) if buffer else None
 
     def pipe_reader_thread(self, stdout_pipe, buffer_size):
         try:
             buffer = bytearray()
             while True:
-                chunk = stdout_pipe.read(buffer_size - len(buffer))
+                chunk = stdout_pipe.read(buffer_size - len(buffer)) #TRANSFERRED
                 if not chunk:
                     break  # EOF
                 buffer.extend(chunk)
@@ -247,7 +247,7 @@ class playrec_worker(QObject):
                 while True:
                     chunk = self.chunk_queue.get()
                     #if chunk is None:
-                    if chunk is None or len(chunk) == 0: ########FIX CHATGPT 19-07-25
+                    if chunk is None or len(chunk) == 0: ########FIX CHATGPT 19-07-25 TRANSFERRED
                         break  # EOF
                     #print(f"Received chunk of size: {len(chunk)}") 
                     if len(chunk) % 2 != 0:
@@ -261,7 +261,7 @@ class playrec_worker(QObject):
                     #                         /normfactor)  # send next DATABLOCKSIZE samples
                     try:
                         #self.stemlabcontrol.data_sock.send(self.gain*samples.astype(np.float32)/self.normfactor)  # send next DATABLOCKSIZE samples
-                        packet = (self.gain * samples.astype(np.float32) / self.normfactor).astype(np.float32).tobytes() #########FIX CHATGPT 19-07-25
+                        packet = (self.gain * samples.astype(np.float32) / self.normfactor).astype(np.float32).tobytes() #########FIX CHATGPT 19-07-25 TRANSFERRED
                         self.stemlabcontrol.data_sock.sendall(packet)
 
                     except BlockingIOError:
@@ -362,7 +362,7 @@ class playrec_worker(QObject):
             "-thread_queue_size", "512", "-i", audiosource # TODO: replace by streaming audio source
 
             #########FIX CHATGPT 19-07-25
-            #-thread_queue_size 512 
+            #-thread_queue_size 512 TRANSFERRED
         ]
         #mixterm = "[outre][outim]amerge=inputs=2[merged];[1:a]highpass=f=1000[filtered_input1];[filtered_input1][merged]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[udated_iq_out]"
         # mixterm = "[outre][outim]amerge=inputs=2[merged];[merged]volume=volume=1[merged1];[1:a][merged1]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[udated_iq_out]"
@@ -422,7 +422,7 @@ class playrec_worker(QObject):
             #"-map", "[mod_debug_stereo]", "-c:a", "pcm_s16le", "-f", "wav", "debug_modre_modim.wav"
         ]
    
-        #ffmpeg_inta = ["-f", "s16le", "-ar",  str(sampling_rate), "-ac",  "2", "-i", "pipe:0"] #########FIX CHATGPT 19-07-25
+        #ffmpeg_inta = ["-f", "s16le", "-ar",  str(sampling_rate), "-ac",  "2", "-i", "pipe:0"] #########FIX CHATGPT 19-07-25 TRANSFERRED
         ffmpeg_inta = ["-thread_queue_size", "512", "-analyzeduration", "0", "-probesize", "32", "-f", "s16le", "-ar",  str(sampling_rate), "-ac",  "2", "-i", "pipe:0"]
         #-thread_queue_size 512 -f s16le -ar 1250000 -ac 2 -i pipe:0
         #-analyzeduration 0 -probesize 32 -f s16le -ar 1250000 -ac 2 -i pipe:0
@@ -604,7 +604,7 @@ class playrec_worker(QObject):
                             #ffmpeg_process.stdin.write(data[0:size].astype(np.int16))
 
                             #print("write to ffmpeg")
-                            ffmpeg_process.stdin.write(data[0:size].astype(np.int16).tobytes()) ########FIX CHATGPT 19-07-25
+                            ffmpeg_process.stdin.write(data[0:size].astype(np.int16).tobytes()) ########FIX CHATGPT 19-07-25 TRANSFERRED
 
 
 
