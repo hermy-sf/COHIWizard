@@ -31,6 +31,7 @@ import subprocess
 # import datetime as ndatetime
 # from player import stemlab_control
 import sys
+import platform
 
 class TextInputDialog(QDialog):
     def __init__(self, parent=None, *args, **kwargs):
@@ -124,7 +125,7 @@ class playrec_worker(QObject):
         self.stemlabcontrol = stemlabcontrolinst
 
         self.output_chunks = []
-        self.chunk_queue = queue.Queue(maxsize=50)  # Buffer size = 10 blocks
+        self.chunk_queue = queue.Queue(maxsize=10)  # Buffer size = 10 blocks
         configpath = os.path.join(os.getcwd(), "config_wizard.yaml")
         try:
             stream = open(configpath, "r")
@@ -135,6 +136,7 @@ class playrec_worker(QObject):
             print(f"cohi_playrecworker initialization failed: Configuration file {configpath} not found, using default ffmpeg path")
             self.ffmpeg_path = "ffmpeg"
         self.IQfilegain = int(1) 
+        
 
     def set_filename(self,_value):
         self.__slots__[0] = _value
@@ -181,30 +183,48 @@ class playrec_worker(QObject):
     def set_configparameters(self,_value):
         self.__slots__[10] = _value
 
+# def pipe_reader_thread(self, stdout_pipe, buffer_size):
+#     try:
+#         while True:
+#             chunk = stdout_pipe.read(buffer_size)
+#             if not chunk:
+#                 break  # EOF or pipe closed
+#             self.chunk_queue.put(chunk)
+#     except Exception as e:
+#         print(f"Reader thread exception: {e}")
+#     finally:
+#         self.chunk_queue.put(None)  # Signal pusher to exit
 
     def pipe_reader_thread(self, stdout_pipe, buffer_size):
+        if True:
+            try:
+                buffer = bytearray()
+                while True:# and not self.stopix:
+                    chunk = stdout_pipe.read(buffer_size - len(buffer))
+                    if not chunk:
+                        break  # EOF
+                    buffer.extend(chunk)
+
+                    # While we have enough data, push fixed-size chunks
+                    while len(buffer) >= buffer_size:
+                        self.chunk_queue.put(bytes(buffer[:buffer_size]))  # safe slice
+                        buffer = buffer[buffer_size:]  # remove sent chunk
+
+                # Push remainder if there's still clean partial buffer
+                if len(buffer) > 0 and len(buffer) % 2 == 0:# and not self.stopix:
+                    self.chunk_queue.put(bytes(buffer))
+                print(f"reader thread while loop exited, stopix: {self.stopix}")
+            except Exception as e:
+                print(f"Reader thread error: {e}")
+                return()
+            finally:
+                self.chunk_queue.put(None)
+                print(f"reader thread while loop exited, stopix: {self.stopix}")
         try:
-            buffer = bytearray()
-            while True:
-                chunk = stdout_pipe.read(buffer_size - len(buffer))
-                if not chunk:
-                    break  # EOF
-                buffer.extend(chunk)
-
-                # While we have enough data, push fixed-size chunks
-                while len(buffer) >= buffer_size:
-                    self.chunk_queue.put(bytes(buffer[:buffer_size]))  # safe slice
-                    buffer = buffer[buffer_size:]  # remove sent chunk
-
-            # Push remainder if there's still clean partial buffer
-            if len(buffer) > 0 and len(buffer) % 2 == 0:
-                self.chunk_queue.put(bytes(buffer))
-
-        except Exception as e:
-            print(f"Reader thread error: {e}")
-        finally:
             self.chunk_queue.put(None)
-
+            print("Reader thread exited.")
+        except:
+            pass
     # def pipe_reader_thread(self, stdout_pipe, buffer_size):
     #     """Thread to read data from stdout_pipe and put it into a queue.
     #     :param stdout_pipe: Pipe to read data from
@@ -294,7 +314,7 @@ class playrec_worker(QObject):
         """
         if not self.get_TEST():
             try:
-                while True:
+                while True: #and not self.stopix:
                     chunk = self.chunk_queue.get()
                     #if chunk is None:
                     if chunk is None or len(chunk) == 0: ########FIX CHATGPT 19-07-25
@@ -318,15 +338,15 @@ class playrec_worker(QObject):
                         print("Blocking data socket error in playloop worker")
                         time.sleep(0.1)
                         self.SigError.emit("Blocking data socket error in playloop worker")
-                        self.SigFinished.emit()
+                        #self.SigFinished.emit()
                         time.sleep(0.1)
                         return
                     except ConnectionResetError:
-                        print("Diagnostic Message: Connection data socket error in playloop worker")
-                        time.sleep(0.1)
-                        self.SigError.emit("Diagnostic Message: Connection data socket error in playloop worker")
-                        self.SigFinished.emit()
-                        time.sleep(0.1)
+                        print("Diagnostic Message: Connection data socket error in playloop worker/pusher thread")
+                        time.sleep(0.00001)
+                        self.SigError.emit("Diagnostic Message: Connection data socket error in playloop worker/pusher thread")
+                        #self.SigFinished.emit()
+                        time.sleep(0.00001)
                         return
                     if self.monitoring:
                         #print("send data for monitoring from pusherthread")
@@ -336,9 +356,11 @@ class playrec_worker(QObject):
             except Exception as e:
                 print(f"Pusher thread error: {e}; check if you are in TEST mode; no SDR connected ?")
                 self.SigError.emit(f"Pusher thread error: {e}; check if you are in TEST mode; no SDR connected ?")
+            finally:
+                print(f"pusher thread while loop exited in if, stopix: {self.stopix}")
         else:
             try:
-                while True:
+                while True:# and not self.stopix:
                     chunk = self.chunk_queue.get()
                     if chunk is None:
                         break  # EOF
@@ -353,9 +375,8 @@ class playrec_worker(QObject):
             except:
                 print("Pusher thread error: probably no data received from pipe")
                 #self.SigError.emit("Pusher thread error: probably no data received from pipe")
-            
-
-
+            finally:
+                print(f"pusher thread while loop exited in else, stopix: {self.stopix}")
 
     # def showDialog(self, Mainwindowreference=None, inputfields=None):
     #     """Shows a dialog to get user input for a number of editable input fields.
@@ -565,6 +586,94 @@ class playrec_worker(QObject):
 #         # ]
 
 #         return ffmpeg_cmd
+
+
+    def gen_ffmpeg_cmd_LINUX(self, ffmpeg_path, sampling_rate = 1250000 , target_lo_shift = 10000, preset_volume = 1, audiosource = ""):
+        """generates LINUX variant of ffmpeg command for reading from stdin, complex modulation to target RF band
+        and writing to stdout.
+
+        :param ffmpeg_path: path to the ffmpeg executable
+        :type ffmpeg_path: str
+        :param SRAdalm: effective Sampling rate of transfer to the ADALM2000
+        :type SRDdalm: int
+        :param sampling_rate: sampling rate of the IQ file to be processed
+        :type sampling_rate: int
+        :param target_lo_shift: local oscillator shift for streamingaudio target frequency
+        :type lo_shift: int
+        :param preset_volume: preset volume level
+        :type preset_volume: int        
+        :return: ffmpeg command as a list of strings
+        :rtype: list[str]
+        """
+        formatstring = "s16le"
+        modulation_depth = 0.8 #TODO: Potentially make configurable in future versions
+        a = (np.tan(np.pi * target_lo_shift / sampling_rate) - 1) / (np.tan(np.pi * target_lo_shift / sampling_rate) + 1)
+        sinus_sign = np.sign(target_lo_shift)  
+        pregain = 10 * self.get_gain() #TODO: check if this is still reasonable
+        ########TODO: TEST Nullsetzen Audiosignal
+        pregain = 5
+
+        ffmpeg_cmd1 = [
+            os.path.join(ffmpeg_path, "ffmpeg"), "-y", #"-loglevel", "error", "-hide_banner",
+            "-thread_queue_size", "512", "-i", audiosource # TODO: replace by streaming audio source
+
+        ]
+        #FIX CHATGPT 19-07-25 :::
+        mixterm = "[outre][outim]amerge=inputs=2[merged];[merged]volume=volume=1[merged1];[1:a]afifo[pipe_input];[pipe_input][merged1]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[udated_iq_out]"
+        mixterm = "[outre][outim]amerge=inputs=2[merged];[1:a]afifo[pipe_input];[pipe_input]volume=volume=" + str(10 - pregain) + "[merged1];[merged1][merged]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[udated_iq_out]"
+
+        ffmpeg_cmd2 = [
+            "-filter_complex",
+            # FILTERCHAIN
+            # 1. Downmix zu Mono, Resampling, Normalisierung
+            "[0:a]aformat=sample_fmts=s16:channel_layouts=stereo,aresample=osr=" + str(sampling_rate) + #FIX CHATGPT 19-07-25
+            ",afifo[resampled];" + "[resampled]" + #FIX CHATGPT 19-07-25
+            #",pan=mono|c0=.5*c0+.5*c1" +
+            "pan=mono|c0=.5*c0+.5*c1" + #FIX CHATGPT 19-07-25
+            ",volume=1.0" +
+            "[mono_lp];"
+            # 2. Sinus-Generator, Cosinus über Allpassfilter (biquad)
+            "sine=frequency=" + str(abs(target_lo_shift)) + ":sample_rate=" + str(sampling_rate) + "[sine_base];"
+            "[sine_base]asplit=2[sine_for_sin][sine_for_cos];"
+            "[sine_for_sin]volume=volume=" + str(sinus_sign) + "[sine_sin_raw];"
+            ##DEBUG##"[sine_sin_raw]asplit=3[sine_sin][carrier_sin][carrier_sin_deb];"
+            "[sine_sin_raw]asplit=2[sine_sin][carrier_sin];"
+            "[sine_for_cos]biquad=b0=" + str(a) + ":b1=1:b2=0:a0=1:a1=" + str(a) + ":a2=0[sine_cos_base];"
+            ##DEBUG##"[sine_cos_base]asplit=3[sine_cos][carrier_cos][carrier_cos_deb];"
+            "[sine_cos_base]asplit=2[sine_cos][carrier_cos];"
+            # # 3. Modulation (1 + modulation_factor * Y)
+            # modulation part:
+            "[mono_lp]volume=volume=" + str(modulation_depth) + "[modsig];"
+            "[modsig]asplit=2[modsig1][modsig2];"
+            "[modsig1][sine_cos]amultiply[mod_re_component];"
+            "[modsig2][sine_sin]amultiply[mod_im_component];"
+            # 4. Add carrier part = sin/cos-Anteil (1 * sin(t) bzw. 1 * cos(t))
+
+            "[mod_re_component][carrier_cos]amix=inputs=2:duration=shortest[modre];"
+            "[mod_im_component][carrier_sin]amix=inputs=2:duration=shortest[modim];"
+            ##DEBUG##"[carrier_cos_deb]anullsink;"
+            ##DEBUG##"[carrier_sin_deb]anullsink;"
+            # 5. apply Pregain anwenden
+            "[modre]volume=volume=" + str(pregain) + "[outre];"
+            "[modim]volume=volume=" + str(pregain) + "[outim];" + str(mixterm)
+        ]
+
+        ffmpeg_cmd3 = [       
+            #"-c:a", "pcm_f32le", "-f", "f32le", "pipe:1"
+            "-c:a", "pcm_s16le", "-f", "s16le", "pipe:1"
+            #DEBUG LINES
+            #"-map", "[mod_debug_stereo]", "-c:a", "pcm_s16le", "-f", "wav", "debug_modre_modim.wav"
+        ]
+   
+        #########FIX CHATGPT 19-07-25 TRANSFERRED
+        ffmpeg_inta = ["-thread_queue_size", "512", "-analyzeduration", "0", "-probesize", "32", "-f", "s16le", "-ar",  str(sampling_rate), "-ac",  "2", "-i", "pipe:0"]
+        ffmpeg_intb = ["-map", "[udated_iq_out]"
+        ]
+        ffmpeg_cmd = ffmpeg_cmd1+ ffmpeg_inta + ffmpeg_cmd2 + ffmpeg_intb + ffmpeg_cmd3
+
+        return ffmpeg_cmd
+
+
     
     def gen_ffmpeg_cmd(self, ffmpeg_path, sampling_rate = 1250000 , target_lo_shift = 10000, preset_volume = 1, audiosource = ""):
         """generates ffmpeg command for reading from stdin, complex modulation to target RF band
@@ -602,12 +711,16 @@ class playrec_worker(QObject):
         #mixterm = "[outre][outim]amerge=inputs=2[merged];[1:a]highpass=f=1000[filtered_input1];[filtered_input1][merged]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[udated_iq_out]"
         mixterm = "[outre][outim]amerge=inputs=2[merged];[merged]volume=volume=1[merged1];[1:a][merged1]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[udated_iq_out]"
         mixterm = "[outre][outim]amerge=inputs=2[merged];[1:a]volume=volume=" + str(10 - pregain) + "[merged1];[merged1][merged]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[udated_iq_out]"
+        # #FIX CHATGPT 19-07-25 :::
+        # mixterm = "[outre][outim]amerge=inputs=2[merged];[merged]volume=volume=1[merged1];[1:a]afifo[pipe_input];[pipe_input][merged1]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[udated_iq_out]"
+        # mixterm = "[outre][outim]amerge=inputs=2[merged];[1:a]afifo[pipe_input];[pipe_input]volume=volume=" + str(10 - pregain) + "[merged1];[merged1][merged]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[udated_iq_out]"
 
         ffmpeg_cmd2 = [
             "-filter_complex",
             # FILTERCHAIN
             # 1. Downmix zu Mono, Resampling, Normalisierung
             "[0:a]aformat=sample_fmts=s16:channel_layouts=stereo,aresample=osr=" + str(sampling_rate) +
+#            "[0:a]aformat=sample_fmts=s16:channel_layouts=stereo,aresample=osr=" + str(sampling_rate) +
             ",pan=mono|c0=.5*c0+.5*c1" +
             ",volume=1.0" +
             "[mono_lp];"
@@ -676,7 +789,7 @@ class playrec_worker(QObject):
         print("************+++++++++++++++++++++++++++++++++++++++++**************")
         
         print(f"########>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<############### Dialog slider handler called with value: {value}")
-        self.IQfilegain = int(np.floor(value/100))
+        self.IQfilegain = value/100# int(np.ceil(value))
 
     def play_loop_filelist(self):
         """
@@ -722,66 +835,46 @@ class playrec_worker(QObject):
         #TODO: self.fmtscl = self.__slots__[7] #scaler for data format      ? not used so far  
         self.stopix = False
         self.set_fileclose(False)
-
+        system = platform.system().lower()
         # ======================= get formatstring and preset volume ========================
         format = self.get_formattag()
         #system = platform.system().lower()
         ffmpeg_path = self.ffmpeg_path
         configuration = self.get_configparameters() # = {"ifreq":self.m["ifreq"], "irate":self.m["irate"],"rates": self.m["rates"], "icorr":self.m["icorr"],"HostAddress":self.m["HostAddress"], "LO_offset":self.m["LO_offset"], "QMAINWINDOWparent": self.m["QMAINWINDOWparent"]}
         sampling_rate = configuration["irate"]
-        lo_shift = configuration["ifreq"]# - configuration["LO_offset"]
+        #lo_shift = configuration["ifreq"]# - configuration["LO_offset"]
         #QMAINWINDOWparent = configuration["QMAINWINDOWparent"]
-        filters = "audio files (*.wav, *.mp3);;all files (*)"
-        selected_filter = "audio files (*.wav, *.mp3)"
-        options = QFileDialog.Options()
-        #options |= QFileDialog.DontUseNativeDialog  # Verwende das Qt-eigene Dialogfenster
         standardpath = os.getcwd()  #TODO TODO: take from core module via rxh; on file open core sets that to:
-        ################TODO: Dialogue query for getting target frequency
-        #target_lo_shift = 100000 #TODO: calculate reasonable value from targetfrequency and lo_shift
         ##################### generate dictionary of input fields for dialogue; their values contain the values asked for
-        #self.mutex.lock()
         target_lo_shift = configuration["SDR_control_returns"]["target_lo_shift"]# 200000
         #TODO: validation should be done already in dialogue treatment in SDR_control
         print(f"target_lo_shift from config: {target_lo_shift}, type: {type(target_lo_shift)}")
         target_lo_shift = int(target_lo_shift)  # ensure it is an integer
-        # inputfields = {
-        #     "target_lo_shift": target_lo_shift
-        # }
-        # errorstate, inputvalues = self.showDialog(QMAINWINDOWparent, inputfields)
-        # if not errorstate:
-        #     try:
-        #         target_lo_shift = int(inputvalues["target_lo_shift"])
-        #     except ValueError:
-        #         print(f"Invalid input for target LO shift: {inputvalues['target_lo_shift']}")
-        #         self.SigError.emit(f"Invalid input for target LO shift: {inputvalues['target_lo_shift']}")
-        #         return
-        # print(f"target_lo_shift from inoutdialog: {target_lo_shift}, mutex unlock")
-        # self.mutex.unlock()
         time.sleep(0.5)
-        #self.mutex.lock()
-        #print("mutex lock,query for audio source")
-        file_name = "C:/Users/scharfetter_admin/Eigene Musik/Bosa Nova Singers/01-So tinha de ser com voce.wav"
-        # file_name, _ = QFileDialog.getOpenFileName(QMAINWINDOWparent, 
-        #                                         "Open project File", 
-        #                                         standardpath,
-        #                                         filters,  # Filter für Dateitypen
-        #                                         selected_filter,
-        #                                         #"all files (*)",
-        #                                         options=options)
-        #self.mutex.unlock()
-        print(f"filename from dialogue: {file_name}")
-        audiosource = file_name #TODO: adapt to actual needs
-        preset_volume = 10 #TODO:adapt to actual needs
+
+        audiosource = configuration["SDR_control_returns"]["source"]
+        print(f"Audio filename from dialogue: {audiosource}")
+        #audiosource = file_name #TODO: adapt to actual needs
+        preset_volume = 50 #TODO:adapt to actual needs
         #checkk how to set preset_volume
         #========================== generate ffmpeg command and start ffmpeg subprocess ==========================
         try:
-            ffmpeg_cmd = self.gen_ffmpeg_cmd(ffmpeg_path, sampling_rate , target_lo_shift , preset_volume, audiosource)
+            if system == "linux":
+                ffmpeg_cmd = self.gen_ffmpeg_cmd_LINUX(ffmpeg_path, sampling_rate , target_lo_shift , preset_volume, audiosource)
+            elif system == "windows":
+                ffmpeg_cmd = self.gen_ffmpeg_cmd(ffmpeg_path, sampling_rate , target_lo_shift , preset_volume, audiosource)
+            else:
+                print("This OS is not being supported, playback is being abortet")
+
+                return()
             #print(f"<<<<<<<<<<<<<<< stemlab125 stream: ffmpeg_command: {ffmpeg_cmd}")
             # start ffmpeg Process
             ffmpeg_process = subprocess.Popen(ffmpeg_cmd, 
                 stdin=subprocess.PIPE, 
                 stdout=subprocess.PIPE, 
-                stderr=subprocess.STDOUT
+                stderr=subprocess.STDOUT,
+                creationflags=subprocess.HIGH_PRIORITY_CLASS if system == "windows" else 0,
+                bufsize=0
             )
             self.ffmpeg_process = ffmpeg_process
             #print(f"<<<<<<<<<<<<<<< stemlab125 stream: ffmpeg_command: {ffmpeg_cmd}")
@@ -837,6 +930,8 @@ class playrec_worker(QObject):
             count = 0
             # print(f"Junkspersec:{junkspersecond}")
             self.monitoring = False
+            if self.stopix:
+                print("playrecworker playloop stopix found")
             while size > 0 and not self.stopix:
                 if not TEST:
                     if not self.get_pause():
@@ -845,7 +940,11 @@ class playrec_worker(QObject):
                             self.gain = gain
                             self.normfactor = normfactor
                             #ffmpeg_process.stdin.write(self.IQfilegain*data[0:size].astype(np.int16))
-                            ffmpeg_process.stdin.write(self.IQfilegain*data[0:size].astype(np.int16).tobytes()) ########FIX CHATGPT 19-07-25
+                            data_float = data[0:size].astype(np.float32)
+                            scaled_data = self.IQfilegain * data_float
+                            #ffmpeg_process.stdin.write(self.IQfilegain*data[0:size].astype(np.int16).tobytes())
+                            ffmpeg_process.stdin.write(np.clip(np.rint(scaled_data), -32768, 32767).astype(np.int16).tobytes())
+                            #ffmpeg_process.stdin.write(int(np.ceil(self.IQfilegain/100*data[0:size])).astype(np.int16).tobytes()) ########FIX CHATGPT 19-07-25
 
                             ###TODO: formatanpassung bei f32
                             ########### TODO TODO TODO carry over to pusher thread
@@ -853,13 +952,13 @@ class playrec_worker(QObject):
                             #                         gain*data[0:size].astype(np.float32)
                             #                         /normfactor)  # send next DATABLOCKSIZE samples
                             ######################################
-                            ffmpeg_process.stdin.flush()
+                            #ffmpeg_process.stdin.flush()
                         except Exception as e:
                             print("Class e type error  data socket error in playloop worker")
                             print(e)
                             time.sleep(0.1)
                             self.SigError.emit(f"Diagnostic Message: Error in playloop worker: {str(e)}")
-                            self.SigFinished.emit()
+                            #self.SigFinished.emit() #TODO TODO TODO CHECK
                             time.sleep(0.1)
                             return
                         if format[2] == 16 or format[2] == 32:
@@ -883,6 +982,7 @@ class playrec_worker(QObject):
                         #print("Pause, do not do anything")
                         time.sleep(0.1)
                         if self.stopix is True:
+                            print("play_loop_filelist: stopix is True, break")
                             break
                 else:
                     if not self.get_pause():
@@ -890,13 +990,19 @@ class playrec_worker(QObject):
                             #ffmpeg_process.stdin.write(aux1.astype(np.int16))
                             self.gain = gain
                             self.normfactor = normfactor
-                            ffmpeg_process.stdin.write(self.IQfilegain*data[0:size].astype(np.int16).tobytes())
+                            data_float = data[0:size].astype(np.float32)
+                            scaled_data = self.IQfilegain * data_float
+                            #ffmpeg_process.stdin.write(self.IQfilegain*data[0:size].astype(np.int16).tobytes())
+                            ffmpeg_process.stdin.write(np.clip(np.rint(scaled_data), -32768, 32767).astype(np.int16).tobytes())
+                            #                            #ffmpeg_process.stdin.write(self.IQfilegain*data[0:size].astype(np.float32).tobytes())
+                            #ffmpeg_process.stdin.write(int(np.ceil(self.IQfilegain/100*data[0:size])).astype(np.int16).tobytes()) ########FIX CHATGPT 19-07-25
+
                         except Exception as e:
                             print("Class e type error  data socket error in playloop worker")
                             print(e)
                             time.sleep(0.1)
                             self.SigError.emit(f"Diagnostic Message: Error in playloop worker: {str(e)}")
-                            self.SigFinished.emit()
+                            #self.SigFinished.emit() #TODO TODO TODO CHECK
                             time.sleep(0.1)
                             return
 
@@ -917,7 +1023,7 @@ class playrec_worker(QObject):
                             self.monitoring = True
                             self.SigIncrementCurTime.emit()
                             gain = self.get_gain()
-                            #print(f"diagnostic: gain in worker: {gain}")
+                            #print(f"diagnostic: gain in worker: {gain}, IQgain: {self.IQfilegain}")
                             #print(f"maximum: {np.max(data)}")
                             #self.set_data(gain*data)
                             ############################# TODO TEST: self.set_data(data)
@@ -925,28 +1031,61 @@ class playrec_worker(QObject):
                     else:
                         time.sleep(1)
                         if self.stopix is True:
+                            print("play_loop_filelist: stopix is True, break")
                             break
             print("close filehandle in cohi_playrecworker-->play_loop_filelist")
+            ffmpeg_process.stdin.flush()
             self.set_fileclose(True)
             fileHandle.close()
             #TODO TODO TODO: shift closing of control dialog to playrec loop management via signalling
-        # print("close file list in cohi_playrecworker-->play_loop_filelist, do reader.join(), pusher.join()")
-        # configuration["SDR_control_returns"]["dialog_ref"].SigSlidergain.disconnect(self.dialog_handler)
-        # configuration["SDR_control_returns"]["dialog_ref"].close() # close the input dialogue
+            # print("close file list in cohi_playrecworker-->play_loop_filelist, do reader.join(), pusher.join()")
+            # configuration["SDR_control_returns"]["dialog_ref"].SigSlidergain.disconnect(self.dialog_handler)
+            # configuration["SDR_control_returns"]["dialog_ref"].close() # close the input dialogue
+            # try:
+            #     self.set_fileclose(True)
+            #     fileHandle.close()
+            # except:
+            #     pass
+        print("close all processes in cohi_playrecworker-->play_loop_filelist")
+        #self.mutex.lock()
+        ffmpeg_process.stdin.flush()
+        ffmpeg_process.stdout.flush()
         ffmpeg_process.stdin.close()  # close stdin
         ffmpeg_process.stdout.close()  # close stdout
-        ffmpeg_process.terminate()  # stop process gently
+        print("close reached")
         ffmpeg_process.wait()  # wait for process termination
-
+        print("wait reached")
         reader.join()
+        print("join reader")
         pusher.join()
+        print("join pusher")
+        #ffmpeg_process.stdout.close()  # close stdout
+        print("stdout closed")
+        ffmpeg_process.kill()  # stop process gently
+        print(f"check closing ffmpeg poll: {ffmpeg_process.poll()}")
+        #self.mutex.unlock()
             #self.set_fileclose(True)
+        while ffmpeg_process.poll() is None:
+            print(f"trying to close ffmpeg process, poll: {ffmpeg_process.poll()}")
+            time.sleep(0.5)
         print('worker  thread finished')
+        # try:
+        #     configuration["SDR_control_returns"]["dialog_ref"].SigSlidergain.disconnect(self.dialog_handler)
+        # except:
+        #     print("cannot disconnect Slidergain, dialogref: {configuration['SDR_control_returns']['dialog_ref']}")
+        #     pass
+        # try:
+        #     print(f"closing dialog_ref: {configuration['SDR_control_returns']['dialog_ref']}")
+        #     configuration["SDR_control_returns"]["dialog_ref"].close() # close the input dialogue
+        # except:
+        #     print(f"cannot close dialog_ref: {configuration['SDR_control_returns']['dialog_ref']}")     
+        self.stopix is False
+        print("playrecworker: play_loop_filelist finished, setting fileclose to True")
         self.SigFinished.emit()
         print("SigFinished from playloop emitted")
 
-
     def stop_loop(self):
+        print("playrecworker: stop_loop stopix is being set")
         self.stopix = True
 
     def read24(self,format,data,filehandle):
@@ -1057,3 +1196,4 @@ class playrec_worker(QObject):
                 self.mutex.unlock()
                 time.sleep(0.1)
         self.SigFinished.emit()
+        self.stopix is False

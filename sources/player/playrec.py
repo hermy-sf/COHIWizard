@@ -513,8 +513,11 @@ class playrec_c(QObject):
         
         # connect relay signals between SDRcontrol and playrecworker
         if hasattr(self.stemlabcontrol, 'SigRelay') and callable(getattr(self.playrec_tworker, 'dialog_handler')):
-            self.stemlabcontrol.SigRelay.connect(self.playrec_tworker.dialog_handler) 
-
+            self.stemlabcontrol.SigRelay.connect(self.playrec_tworker.dialog_handler)
+        if callable(getattr(self.stemlabcontrol, 'handle_workerfinished')):
+            self.playrec_tworker.SigFinished.connect(self.stemlabcontrol.handle_workerfinished)
+        else:
+            print("Error in playrec-->play_tstarter: stemlabcontrol: handle_workerfinished not callable, no action taken")
 ######################  END: change for general devicedrivers
 
         self.playrec_tworker.moveToThread(self.playthread)
@@ -2269,7 +2272,7 @@ class playrec_v(QObject):
                     try:
                         self.prfilehandle.seek(int(position), 0) #TODO: Anpassen an andere Fileformate
                     except:
-                        self.logger.error("playrec.updatecurtimer: seek in closed file error")
+                        self.logger.error("playrec.updatecurtimer, try, not successful: seek in closed file error")
         else:
             self.m["curtime"] += increment
             timestr = str(ndatetime.timedelta(seconds=0) + ndatetime.timedelta(seconds=self.m["curtime"]))

@@ -74,7 +74,7 @@ class SDR_control(QObject):
                       500000:4, 1250000:5, 2500000:6},
                           "rate_type": "discrete",
                           "RX": False, #TODO: set true after tests
-                          "TX": True, #TODO: set true after tests
+                          "TX": False, #TODO: set true after tests
                           "device_name": "STEMlab 125-14 stream",
                           "device_ID": 0,
                           "max_IFREQ": 62500000,
@@ -100,9 +100,20 @@ class SDR_control(QObject):
         :param value: The new value of the slider
         :type value: int
         """
+        self.dialog.SigSlidergain.disconnect(self.dialog_handler)
         print(f"SDRControl: Slider value changed to {value}, relay signal to worker")
         self.SigRelay.emit(value)
+        time.sleep(0.1)  # Allow time for the signal to be processed
+        self.dialog.SigSlidergain.connect(self.dialog_handler)
 
+    def handle_workerfinished(self):
+        """Handles the completion of the worker thread.
+        closes dialog window if it is still open.
+        """
+        print("SDRControl: Worker finished, closing dialog if open")
+        if self.dialog:
+            self.dialog.SigSlidergain.disconnect(self.dialog_handler)
+            self.dialog.close()
 
     def showDialog(self, Mainwindowreference=None, inputfields=None, configparams={}):
         """Shows a dialog to get user input for a number of editable input fields.
@@ -119,12 +130,14 @@ class SDR_control(QObject):
         """
         errorstate = False
         value = {} #should be type dict
+        print("SDR control: set up dialog window")
         dialog = TextInputDialog(Mainwindowreference, inputfields)
         dialog.SigButtonpressed.connect(self.dialogbutton_handler)
         dialog.SigSlidergain.connect(self.dialog_handler)
         # Connect the dialog's signal to the error
         dialog.show()
         self.dialog = dialog
+        print("SDR control: dialog window has been set up")
         while self.okvalue is None:
             # Wait for the dialog to be closed or the OK button to be pressed
             QApplication.processEvents()
@@ -157,7 +170,7 @@ class SDR_control(QObject):
         except:
             metadata["last_audio_path"] = os.getcwd()
 
-
+        print("open query for audio file")
         filters = "m3u files (*.m3u);wav files (*.wav);; all files (*.*)"
         selected_filter = "m3u files (*.m3u)"
         audiosource =  QtWidgets.QFileDialog.getOpenFileName(QMAINWINDOWparent,
