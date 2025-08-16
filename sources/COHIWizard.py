@@ -437,6 +437,7 @@ class core_v(QObject):
             auxi.standard_infobox("configuration file does not yet exist, a basic file will be generated. Please configure the STEMLAB IP address before using the Player")
             self.m["metadata"]["recording_path"] = os.path.join(self.m["metadata"]["rootpath"], "out")
             self.m["metadata"]["skinindex"] = 1
+            self.m["metadata"]["HIRES_ffmpeg"] = True 
             no_ffmpeg_path = True
             if not os.path.exists(default_recordingpath):
                 os.makedirs(default_recordingpath)
