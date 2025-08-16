@@ -74,7 +74,7 @@ class SDR_control(QObject):
                       500000:4, 1250000:5, 2500000:6},
                           "rate_type": "discrete",
                           "RX": False, #TODO: set true after tests
-                          "TX": False, #TODO: set true after tests
+                          "TX": True, #TODO: set true after tests
                           "device_name": "STEMlab 125-14 stream",
                           "device_ID": 0,
                           "max_IFREQ": 62500000,
@@ -112,8 +112,11 @@ class SDR_control(QObject):
         """
         print("SDRControl: Worker finished, closing dialog if open")
         if self.dialog:
-            self.dialog.SigSlidergain.disconnect(self.dialog_handler)
-            self.dialog.close()
+            try:
+                self.dialog.SigSlidergain.disconnect(self.dialog_handler)
+                self.dialog.close()
+            except Exception as e:
+                print(f"Error closing dialog: {e}") 
 
     def showDialog(self, Mainwindowreference=None, inputfields=None, configparams={}):
         """Shows a dialog to get user input for a number of editable input fields.

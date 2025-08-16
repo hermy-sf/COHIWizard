@@ -514,8 +514,8 @@ class playrec_c(QObject):
         # connect relay signals between SDRcontrol and playrecworker
         if hasattr(self.stemlabcontrol, 'SigRelay') and callable(getattr(self.playrec_tworker, 'dialog_handler')):
             self.stemlabcontrol.SigRelay.connect(self.playrec_tworker.dialog_handler)
-        if callable(getattr(self.stemlabcontrol, 'handle_workerfinished')):
-            self.playrec_tworker.SigFinished.connect(self.stemlabcontrol.handle_workerfinished)
+            if callable(getattr(self.stemlabcontrol, 'handle_workerfinished')):
+                self.playrec_tworker.SigFinished.connect(self.stemlabcontrol.handle_workerfinished)
         else:
             print("Error in playrec-->play_tstarter: stemlabcontrol: handle_workerfinished not callable, no action taken")
 ######################  END: change for general devicedrivers
