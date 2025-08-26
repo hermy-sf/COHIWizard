@@ -74,7 +74,7 @@ class SDR_control(QObject):
                       500000:4, 1250000:5, 2500000:6},
                           "rate_type": "discrete",
                           "RX": False, #TODO: set true after tests
-                          "TX": True, #TODO: set true after tests
+                          "TX": False, #TODO: set true after tests
                           "device_name": "STEMlab 125-14 stream",
                           "device_ID": 0,
                           "max_IFREQ": 62500000,
