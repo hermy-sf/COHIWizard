@@ -1,4 +1,4 @@
-#Version 2.1.3
+#Version 2.1.3i
 # -*- coding: utf-8 -*-logfile
 # For reducing to RFCorder: disable all modules except resample in the config_modules.yaml file
 #
@@ -1396,6 +1396,6 @@ if __name__ == '__main__':
     except:
         xcore_v.logger.debug("startup Tab not defined in configuration file config_wizard.yaml")
         xcore_v.gui.tabWidget.setCurrentIndex(0)
-    print("COHIWIzard Version 2.1.3, 21-06-2025, (C) Hermann Scharfetter")
+    print("COHIWIzard Version 2.1.3i, 26-08-2025, (C) Hermann Scharfetter")
     sys.exit(app.exec_())
 
