@@ -407,7 +407,7 @@ class playrec_c(QObject):
         else:
             self.m["sdr_configparams"]["TEST"] = True
             ################TODO TODO TODO: for test only, remove later
-            self.stemlabcontrol.config_socket(self.m["sdr_configparams"])
+            #self.stemlabcontrol.config_socket(self.m["sdr_configparams"])
             ############################################################
             errorstate,value = self.play_tstarter()
                 #return(errorstate,value)
@@ -1146,7 +1146,8 @@ class playrec_v(QObject):
         auxl = len(self.m["devicelist"])
         for ix, cf in enumerate(self.m["devicelist"]):
             if not cf.find("__") == 0:
-                self.gui.comboBox_stemlab.addItem(str(cf))
+                #self.gui.comboBox_stemlab.addItem(str(cf))
+                #TODO TODO: check change after 19-10-2025, line above has been shifted to (***)
                 #import playrec_worker classes
                 full_module_path = f"dev_drivers.{cf}.cohi_playrecworker"
                 #module_path = os.path.join("dev_drivers",cf)
@@ -1164,8 +1165,13 @@ class playrec_v(QObject):
                         self.m["currentSDRindex"] = boxix
                         self.m["standardSDRindex"] = boxix
                     boxix += 1
+                    self.gui.comboBox_stemlab.addItem(str(cf)) #shifted from (***)
                 except:
                     print(f"module {cf} not in driver list, will be ignored")
+                    auxi.standard_errorbox(f"Hardware driver {cf} cannot be activated.\n\
+                    Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
+                    COHIWizard will still be operative for all other correctly installed hardware devices")
+
         self.gui.comboBox_stemlab.setCurrentIndex(self.m["currentSDRindex"])
 
         #instantiate stemlab control

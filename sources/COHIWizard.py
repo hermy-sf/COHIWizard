@@ -1396,6 +1396,6 @@ if __name__ == '__main__':
     except:
         xcore_v.logger.debug("startup Tab not defined in configuration file config_wizard.yaml")
         xcore_v.gui.tabWidget.setCurrentIndex(0)
-    print("COHIWIzard Version 2.1.3i, 26-08-2025, (C) Hermann Scharfetter")
+    print("COHIWIzard Version 2.1.3i, 19-10-2025, (C) Hermann Scharfetter")
     sys.exit(app.exec_())
 
