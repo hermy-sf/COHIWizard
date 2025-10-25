@@ -63,6 +63,7 @@ class playrec_m(QObject):
         self.mdl["stopstate"] = False
         self.mdl["timechanged"] = False
         self.mdl["SPECDEBUG"] = True 
+        self.mdl["expected_seconds"] = 0
         # Create a custom logger
         logging.getLogger().setLevel(logging.DEBUG)
         self.logger = logging.getLogger(__name__)
@@ -743,7 +744,7 @@ class playrec_c(QObject):
             #wavheader_old['nextfilename'] = self.m["f1"]
             wavheader_old['nextfilename'] = Path(self.m["f1"]).name
             WAVheader_tools.write_sdruno_header(self,f1old,wavheader_old,self.m["ovwrt_flag"]) ##TODO TODO TODO Linux conf: self.m["f1"],self.m["wavheader"] must be in Windows format
-            errorstate, value = self.recordingsequence()
+            errorstate, value = self.recordingsequence(self.m["expected_seconds"])
             if errorstate:
                 self.errorhandler(value)
 
@@ -1974,6 +1975,7 @@ class playrec_v(QObject):
         minutes = time_from_qtimeedit.minute()
         seconds = time_from_qtimeedit.second()
         expected_seconds = hours * 3600 + minutes * 60 + seconds
+        self.m["expected_seconds"] = expected_seconds
         self.target_datetime = current_datetime.addSecs(expected_seconds)
         self.gui.playrec_label_REC_duration.setStyleSheet("background-color : yellow")
         font = self.gui.playrec_label_REC_duration.font()
@@ -2131,6 +2133,9 @@ class playrec_v(QObject):
       
         if self.m["SPECDEBUG"]:
             spr = np.abs(np.fft.fft(cv))
+            if np.std(cv) == 0:
+                print({f"************std = {np.std(cv)}, substituting by dummy signal"})
+                cv = 1e-10*np.ones(len(cv))
             N = len(spr)
             spr = np.fft.fftshift(spr)/N/normfactor
             flo = self.m["wavheader"]['centerfreq'] - self.m["wavheader"]['nSamplesPerSec']/2
@@ -2152,6 +2157,11 @@ class playrec_v(QObject):
                 span = 80
             refvol = 0.71
             vol = 1.5*np.std(cv)/normfactor/refvol
+            if np.std(cv) == 0:
+                print({f"************std = {np.std(cv)}"})
+            if vol == 0:
+                print({f"************ vol = {vol}"})
+                vol = 1e-10
             dBvol = 20*np.log10(vol)
             rawvol = c + b + dBvol/span*b
             if dBvol > 0:
