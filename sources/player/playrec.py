@@ -515,8 +515,11 @@ class playrec_c(QObject):
         # connect relay signals between SDRcontrol and playrecworker
         if hasattr(self.stemlabcontrol, 'SigRelay') and callable(getattr(self.playrec_tworker, 'dialog_handler')):
             self.stemlabcontrol.SigRelay.connect(self.playrec_tworker.dialog_handler)
-            if callable(getattr(self.stemlabcontrol, 'handle_workerfinished')):
-                self.playrec_tworker.SigFinished.connect(self.stemlabcontrol.handle_workerfinished)
+            try:
+                if callable(getattr(self.stemlabcontrol, 'handle_workerfinished')):
+                    self.playrec_tworker.SigFinished.connect(self.stemlabcontrol.handle_workerfinished)
+            except:
+                print("handle_workerfinished not callable, no action")
         else:
             print("Error in playrec-->play_tstarter: stemlabcontrol: handle_workerfinished not callable, no action taken")
 ######################  END: change for general devicedrivers
@@ -2132,10 +2135,11 @@ class playrec_v(QObject):
         ####TODO: check spectrum for debugging
       
         if self.m["SPECDEBUG"]:
-            spr = np.abs(np.fft.fft(cv))
             if np.std(cv) == 0:
                 print({f"************std = {np.std(cv)}, substituting by dummy signal"})
                 cv = 1e-10*np.ones(len(cv))
+            spr = np.abs(np.fft.fft(cv))
+
             N = len(spr)
             spr = np.fft.fftshift(spr)/N/normfactor
             flo = self.m["wavheader"]['centerfreq'] - self.m["wavheader"]['nSamplesPerSec']/2
