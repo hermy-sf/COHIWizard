@@ -1172,9 +1172,12 @@ class playrec_v(QObject):
                     self.gui.comboBox_stemlab.addItem(str(cf)) #shifted from (***)
                 except:
                     print(f"module {cf} not in driver list, will be ignored")
-                    auxi.standard_errorbox(f"Hardware driver {cf} cannot be activated.\n\
+                    auxi.standard_infobox(f"Hardware driver {cf} cannot be activated.\n\
                     Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
                     COHIWizard will still be operative for all other correctly installed hardware devices")
+                    #auxi.standard_errorbox(f"Hardware driver {cf} cannot be activated.\n\
+                    #Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
+                    #COHIWizard will still be operative for all other correctly installed hardware devices")
 
         self.gui.comboBox_stemlab.setCurrentIndex(self.m["currentSDRindex"])
 
