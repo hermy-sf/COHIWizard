@@ -15,7 +15,12 @@ import platform
 import urllib.request
 import zipfile
 import tarfile
-import shutil
+#import shutil #### Nicht nötig ??
+import sys
+import re
+#import ipaddress  #### Nicht nötig ??
+#import socket
+from zeroconf import Zeroconf, ServiceBrowser
 
 
 
@@ -414,6 +419,127 @@ class auxiliaries():
         cref["ax"].plot([], [])
         cref["canvas"].draw()
         return cref
+
+#     # --- Auxiliary methods for auto-detection of  the Red Pitaya IP address ---
+
+
+#     def trigger_linklocal_arp(self):
+#         """Sending a UDP-Broadcast-Packet, in order to cause ARP-Requests."""
+#         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+#         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+#         try:
+#             sock.sendto(b"ping", ("169.254.255.255", 9))  # Port 9 = discard
+#         finally:
+#             sock.close()
+#         time.sleep(0.2)  # kurze Pause, damit ARP aktualisiert wird
+
+
+
+#     def valid_mac(self,mac):
+#         """Check if MAC is valid and not all zeros."""
+#         mac = mac.lower()
+#         if mac in ("00:00:00:00:00:00", "00-00-00-00-00-00"):
+#             return False
+#         return bool(re.match(r"([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$", mac))
+
+#     def is_linklocal(self, ip):
+#         """Check if IP is in 169.254.x.y (Link-Local)."""
+#         try:
+#             return ipaddress.ip_address(ip).is_link_local
+#         except ValueError:
+#             return False
+
+#     # --- Linux ohne sudo ---
+#     def read_arp_linux(self, filter_oui=None):
+#         results = []
+#         try:
+#             with open("/proc/net/arp") as f:
+#                 next(f)  # skip header
+#                 for line in f:
+#                     parts = line.split()
+#                     ip = parts[0]
+#                     mac = parts[3].lower()
+
+#                     if not self.is_linklocal(ip):
+#                         continue
+#                     if not self.valid_mac(mac):
+#                         continue
+#                     if filter_oui:
+#                         if not any(mac.startswith(prefix.lower()) for prefix in filter_oui):
+#                             continue
+#                     results.append((ip, mac))
+#         except FileNotFoundError:
+#             pass
+#         return results
+
+#     # --- Windows ---
+#     def read_arp_windows(self, filter_oui=None):
+#         results = []
+#         try:
+#             out = subprocess.check_output(["arp", "-a"], text=True, errors="ignore")
+#             # IP und MAC extrahieren (MAC kann '-' oder ':' enthalten)
+#             pattern = r"(\d+\.\d+\.\d+\.\d+)\s+.*?((?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2})"
+#             matches = re.findall(pattern, out, re.IGNORECASE)
+#             for ip, mac in matches:
+#                 mac = mac.lower().replace("-", ":")
+#                 if not self.is_linklocal(ip):
+#                     continue
+#                 if not self.valid_mac(mac):
+#                     continue
+#                 if filter_oui:
+#                     if not any(mac.startswith(prefix.lower()) for prefix in filter_oui):
+#                         continue
+#                 results.append((ip, mac))
+#         except subprocess.SubprocessError:
+#             pass
+#         return results
+
+#     # --- Cross-platform Wrapper ---
+#     def discover_linklocal_devices(self, filter_oui=None):
+#         """
+#         Discover Link-Local devices (169.254.x.y) without root/admin.
+#         Optionally filter by MAC OUI prefixes.
+#         :param : filter, list of expected MAc addresses
+#         :pytpe : list 
+#         :returns : list of identified Red Pitaya IP addresses and MAC address.
+#         :rtype : list
+#         """
+#         system = platform.system()
+#         if system == "Linux":
+#             return self.read_arp_linux(filter_oui)
+#         elif system == "Windows":
+#             return self.read_arp_windows(filter_oui)
+#         else:
+#             # macOS: ähnlich wie Linux, arp -a funktioniert ohne sudo
+#             return self.read_arp_windows(filter_oui)
+
+# # --- Beispielaufruf ---
+# if __name__ == "__main__":
+#     # Beispiel Red Pitaya OUIs
+#     redpitaya_ouis = ["00:26:32", "3c:2c:30", "b8:27:eb"]
+
+#     devices = discover_linklocal_devices(filter_oui=redpitaya_ouis)
+
+#     if devices:
+#         print("Gefundene Red Pitayas:")
+#         for ip, mac in devices:
+#             print(f"{ip}  →  {mac}")
+#     else:
+#         print("Keine Red Pitayas gefunden.")
+
+class RPListener:
+    def __init__(self):
+        self.devices = []
+
+    def remove_service(self, zeroconf, type, name):
+        pass
+
+    def add_service(self, zeroconf, type, name):
+        info = zeroconf.get_service_info(type, name)
+        if info and name.startswith("rp-") and name.endswith(".local."):
+            ip = ".".join(str(b) for b in info.addresses[0])
+            self.devices.append((name.strip("."), ip))
+
 
 
 #methods for wavheader manipulations 

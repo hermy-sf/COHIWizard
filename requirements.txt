@@ -38,3 +38,4 @@ six==1.17.0
 soundfile==0.13.1
 tzdata==2025.2
 urllib3==2.4.0
+zeroconf==0.148.0

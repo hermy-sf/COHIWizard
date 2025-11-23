@@ -35,7 +35,7 @@ from PyQt5.QtWidgets import *
 import logging
 import platform
 from icons import Logos
-
+from zeroconf import Zeroconf, ServiceBrowser
 
 class starter(QMainWindow):
     """instantiates the MainWindow, instantiates a auxiliary gui object for the
@@ -534,9 +534,33 @@ class core_v(QObject):
         activate Host IP address field and enable saving mode
         Returns: nothing
         '''
+        # ## Bevore toggling IP editing, scan for existing STEMLAB, run arp query
+        # redpitaya_ouis = ["00:26:32", "3c:2c:30", "b8:27:eb"]
+
+        # # initialize UDP-Broadcast-Packet, in order to cause ARP-Requests
+        # auxi().trigger_linklocal_arp()
+        # # identify connected STEMLABs
+        # devices = auxi().discover_linklocal_devices(filter_oui=redpitaya_ouis)
+
+        # if devices:
+        #     print("Gefundene Red Pitayas:")
+        #     for ip, mac in devices:
+        #         print(f"{ip}  →  {mac}")
+        # else:
+        #     print("Keine Red Pitayas gefunden.")
+        zeroconf = Zeroconf()
+        listener = RPListener()
+        browser = ServiceBrowser(zeroconf, "_http._tcp.local.", listener)
+
+        time.sleep(2)  # kurze Wartezeit für Antworten
+
+        zeroconf.close()
+
+        print("Gefundene Red Pitayas:", listener.devices)
+        
         self.gui.lineEdit_IPAddress.setEnabled(True)
         self.gui.lineEdit_IPAddress.setReadOnly(False)
-        self.gui.pushButton_IP.clicked.connect(self.set_IP)
+        self.gui.pushButton_IP.clicked.connect(self.set_IP) ####TODO: send identified IP to self.set_IP for auto-preset
         self.gui.pushButton_IP.setText("save IP Address")
         self.gui.pushButton_IP.adjustSize()
         self.IP_address_set = False
@@ -1222,6 +1246,7 @@ if __name__ == '__main__':
     from auxiliaries import WAVheader_tools
     from auxiliaries import auxiliaries as auxi
     from auxiliaries import timer_worker as tw
+    from auxiliaries import RPListener
     
     #instantiate core module
     xcore_m = core_m()
@@ -1398,4 +1423,4 @@ if __name__ == '__main__':
         xcore_v.gui.tabWidget.setCurrentIndex(0)
     print("COHIWIzard Version 2.1.3l , 18-11-2025, (C) Hermann Scharfetter")
     sys.exit(app.exec_())
-
+    ###############TODO: zeroconf muss nun importiert werden !
