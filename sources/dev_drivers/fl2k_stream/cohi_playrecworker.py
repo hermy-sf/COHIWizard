@@ -171,14 +171,14 @@ class playrec_worker(QObject):
         if format[0] == 1:  #PCM
             if format[2] == 16:
                 formatstring = "s16le"
-                preset_volume = 2
+                preset_volume = 2*2*256*1
             elif format[2] == 24:   #24 bit PCM
                 formatstring = "f32le"
                 formatstring = "s24le"
                 preset_volume = 20
             elif format[2] == 32:
                 formatstring = "s32le"  #32 bit PCM 
-                preset_volume = 2
+                preset_volume = 2*2*256
             else:
                 self.SigError.emit(f"Format not supported: {format[2]}")
                 self.SigFinished.emit()
@@ -198,6 +198,7 @@ class playrec_worker(QObject):
         if not TEST:
             #Start ffmpeg Process:
             #preset_volume = 2
+            preset_volume_test = 0.000000001
             try:
                 #TODO: simplify this part
                 if os.name.find("posix") >= 0:
@@ -214,7 +215,7 @@ class playrec_worker(QObject):
                     "[mod_im]volume=volume=" + str(preset_volume) + "[part_im];"
                     "[mod_re]volume=volume=" + str(preset_volume) + "[part_re];"
                     "[part_re][part_im]amix=inputs=2:duration=shortest[out]",
-                    "-map", "[out]", "-c:a", "pcm_s8", "-f", "caf", "-"
+                    "-map", "[out]", "-c:a", "pcm_s8", "-f", "s8", "-"
                     ]
                 else:
                     ffmpeg_cmd = [
@@ -230,7 +231,7 @@ class playrec_worker(QObject):
                     "[mod_im]volume=volume=" + str(preset_volume) + "[part_im];"
                     "[mod_re]volume=volume=" + str(preset_volume) + "[part_re];"
                     "[part_re][part_im]amix=inputs=2:duration=shortest[out]",
-                    "-map", "[out]", "-c:a", "pcm_s8", "-f", "caf", "-"
+                    "-map", "[out]", "-c:a", "pcm_s8", "-f","s8", "-"
                     ]
                 # Prozess starten
                 ffmpeg_process = subprocess.Popen(ffmpeg_cmd, 

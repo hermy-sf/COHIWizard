@@ -293,7 +293,10 @@ class playrec_worker(QObject):
                     print("unexpected error in play_loop_filelist for fl2k")
                     self.SigFinished.emit()
                     return()
-            psutil.Process(process.pid).nice(psutil.IDLE_PRIORITY_CLASS)
+                if os.name.find("posix"):
+                    pass
+                else:
+                    psutil.Process(process.pid).nice(psutil.IDLE_PRIORITY_CLASS)
         else:
             print("fl2k worker TEST condition , no fl2k_file process started <<<<<<<<<<<<<<<<")
 
