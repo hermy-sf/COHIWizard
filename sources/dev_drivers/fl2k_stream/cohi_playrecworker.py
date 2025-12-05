@@ -128,6 +128,7 @@ class playrec_worker(QObject):
         __slots__[10]: sampling_parameters
         """
         #print("reached playloopthread")
+        scalefactor_fl2k = 1 / 32 #empirical scaling factor for adjusting output volume to reasonable level; theoretically 1/2
         filenames = self.get_filename()
         TEST = self.get_TEST()
         gain = self.get_gain()
@@ -171,14 +172,14 @@ class playrec_worker(QObject):
         if format[0] == 1:  #PCM
             if format[2] == 16:
                 formatstring = "s16le"
-                preset_volume = 2*2*256*1
+                preset_volume = 256 *2
             elif format[2] == 24:   #24 bit PCM
                 formatstring = "f32le"
                 formatstring = "s24le"
-                preset_volume = 20
+                preset_volume = 256 *2
             elif format[2] == 32:
                 formatstring = "s32le"  #32 bit PCM 
-                preset_volume = 2*2*256
+                preset_volume = 256 *2
             else:
                 self.SigError.emit(f"Format not supported: {format[2]}")
                 self.SigFinished.emit()
@@ -186,10 +187,10 @@ class playrec_worker(QObject):
         else: #IEEE float   
             if format[2] == 32:
                 formatstring = "f32le"
-                preset_volume = 2
+                preset_volume = 256 *2
             elif format[2] == 16:   #16 bit float
                 formatstring = "f16le"
-                preset_volume = 2
+                preset_volume = 256 *2
             else:
                 self.SigError.emit(f"Format not supported: {format[2]}")
                 self.SigFinished.emit()
@@ -454,11 +455,14 @@ class playrec_worker(QObject):
                                 print(f"++++++ DATASHOWSIZE: {self.DATASHOWSIZE} len(showdata):   {len(data[0:int(6*np.floor(self.DATASHOWSIZE/6))])}")
                                 showdata = self.convert24_32(data[5:int(6*np.floor(self.DATASHOWSIZE/6))+5])
                                 if not np.isnan(showdata).any():
-                                    self.set_data(showdata)
+                                    self.set_data(preset_volume * scalefactor_fl2k * showdata) #######TODO TEST if scaling is correct
                                 else:
                                     print("############# NaN NaN NaN NaN in showdata ################")
                             else:
-                                self.set_data(data[0:self.DATASHOWSIZE])
+                                print(f"REMOVE_playrecworker_fl2k: gain = {gain}, preset_volume = {preset_volume}, std(data: {np.std(np.abs(data[0:2:self.DATASHOWSIZE-1]))})")
+                                #self.set_data( preset_volume * gain * data[0:self.DATASHOWSIZE])
+                                #self.set_data( data[0:self.DATASHOWSIZE])
+                                self.set_data( preset_volume * scalefactor_fl2k * data[0:self.DATASHOWSIZE])
                             self.SigIncrementCurTime.emit()
                             count = 0
                             gain = self.get_gain()
@@ -471,7 +475,7 @@ class playrec_worker(QObject):
                             break
                 else:
                     if not self.get_pause():
-                        print(" SDR_control fl2k test reached")
+                        #print(" SDR_control fl2k test reached")
                         if format[2] == 24:
                             data = fileHandle.read(self.DATABLOCKSIZE * 3)
                             #data = self.read_24bit_block_np(fileHandle, self.DATABLOCKSIZE)
@@ -486,11 +490,13 @@ class playrec_worker(QObject):
                                 print(f"++++++ DATASHOWSIZE: {self.DATASHOWSIZE} len(showdata):   {len(data[0:int(6*np.ceil(self.DATASHOWSIZE/6))])}")
                                 showdata = self.convert24_32(data[0:int(6*np.ceil(self.DATASHOWSIZE/6))])
                                 if not np.isnan(showdata).any():
-                                    self.set_data(showdata)
+                                    self.set_data(preset_volume * scalefactor_fl2k *showdata) #######TODO TEST if scaling is correct
                                 else:
                                     print("############# NaN NaN NaN NaN in showdata ################")
                             else:
-                                self.set_data(data[0:self.DATASHOWSIZE])
+                                #self.set_data(data[0:self.DATASHOWSIZE])
+                                self.set_data( preset_volume * scalefactor_fl2k * data[0:self.DATASHOWSIZE])
+                                print(f"REMOVE_playrecworker_fl2k: gain = {gain}, preset_volume = {preset_volume}, std(data: {np.std(np.abs(data[0:self.DATASHOWSIZE-1:2]))})")
                             self.SigIncrementCurTime.emit()
                             gain = self.get_gain()
                             count = 0

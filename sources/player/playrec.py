@@ -64,6 +64,8 @@ class playrec_m(QObject):
         self.mdl["timechanged"] = False
         self.mdl["SPECDEBUG"] = True 
         self.mdl["expected_seconds"] = 0
+        self.mdl["AGC"] = True
+        self.mdl["Reset_AGC"] = True
         # Create a custom logger
         logging.getLogger().setLevel(logging.DEBUG)
         self.logger = logging.getLogger(__name__)
@@ -338,6 +340,10 @@ class playrec_c(QObject):
             return(errorstate,value)
             #return False
     ######################  TODO: change for general devicedrivers
+        #self.m["Reset_AGC"] = True
+        self.SigRelay.emit("cexex_playrec",["setgain",0])
+        time.sleep(0.1)
+        print(f"REMOVE: playrec-->play_manager: gain: {self.m['gain']}")
         self.stemlabcontrol.SigError.connect(self.stemlabcontrol_errorhandler)
         self.stemlabcontrol.SigMessage.connect(self.display_status) #currently not activem activate by re-writing display_status(message)
         try:
@@ -596,6 +602,7 @@ class playrec_c(QObject):
         self.m["wavheader"] = WAVheader_tools.get_sdruno_header(self,self.m["f1"])
         self.SigRelay.emit("cexex_playrec",["updatecurtime",0])
         self.SigRelay.emit("cexex_playrec",["showFilename", filename])
+        self.m["Reset_AGC"] = True
         
 
     def infosigmanager(self,message):
@@ -1060,6 +1067,7 @@ class playrec_v(QObject):
         self.m = playrec_m.mdl
         self.DATABLOCKSIZE = 1024*32
         self.GAINOFFSET = 40
+        self.AGC_TARGETVOLUME_DEFAULT = 0.85
         self.gui = gui
         self.playrec_c = playrec_c
         #self.norepeat = False
@@ -1085,6 +1093,7 @@ class playrec_v(QObject):
         self.m["recstate"] = False
         self.m["modality"] = ""
         self.m["pausestate"] = False
+        self.m["Reset_AGC"] = True
         self.gui.lineEdit_playrec_LO.setText("1125")
 
 
@@ -1116,6 +1125,9 @@ class playrec_v(QObject):
         self.gui.radioButton_LO_bias.setEnabled(True)
         self.gui.lineEdit_LO_bias.textChanged.connect(lambda: self.update_LO_bias("verbose","nochange"))
         self.gui.radioButton_LO_bias.clicked.connect(self.activate_LO_bias)
+        self.gui.radioButton_LO_bias.setEnabled(False)
+        self.m["AGC"] = False
+        self.gui.radioButton_AGC.clicked.connect(self.activate_AGC)
         #self.gui.pushButton_Play.setIcon(QIcon("./core/ressources/icons/play_v4.PNG"))
         self.gui.pushButton_Play.clicked.connect(self.cb_Butt_toggleplay)
         self.gui.pushButton_Stop.clicked.connect(self.playrec_c.cb_Butt_STOP)
@@ -1205,6 +1217,13 @@ class playrec_v(QObject):
             if 'STM_IP_address' in self.metadata.keys():
                 self.gui.lineEdit_IPAddress.setText(self.metadata["STM_IP_address"]) #TODO: Remove after transfer of playrec
                 self.m["STM_IP_address"] = self.metadata["STM_IP_address"] #TODO: Remove after transfer of playrec
+            if 'AGC_targetvolume' in self.metadata.keys():
+                self.m["AGC_targetvolume"] = self.metadata["AGC_targetvolume"] #TODO: Remove after transfer of playrec
+            else:
+                self.metadata["AGC_targetvolume"] = self.AGC_TARGETVOLUME_DEFAULT
+                stream = open("config_wizard.yaml", "w")
+                yaml.dump(self.metadata, stream)
+                stream.close()
         except:
             self.m["STM_IP_address"] = self.gui.lineEdit_IPAddress.text()
             self.logger.error("reset_gui: cannot get metadata")
@@ -1637,6 +1656,9 @@ class playrec_v(QObject):
                 self.logfilehandler(_value[1])
             if  _value[0].find("canvasbuild") == 0 and self.m["SPECDEBUG"]:
                 self.canvasbuild(_value[1])
+            if  _value[0].find("setgain") == 0:
+                print("cb_setgain reached")
+                self.cb_setgain()
             #evaltime = datetime.now() - reftime
             #print(f"rxhandler: within function evaltime from entry to finish: {evaltime}")
 
@@ -1722,12 +1744,13 @@ class playrec_v(QObject):
         Descr
         #TODO
         '''
-        if self.m["playthreadActive"] is False:
-            return False
         self.m["gain"] = 10**((self.gui.verticalSlider_Gain.value() - self.GAINOFFSET)/20)
         self.logger.debug("cb_setgain, gain: %f",self.m["gain"])
+        print(f"cab_set gain gain: {self.m['gain']}")
+        if self.m["playthreadActive"] is False:
+            return False
         self.playrec_c.playrec_tworker.set_gain(self.m["gain"])   #############TODO ?? what ?
-        #print(f"cab_set gain gain: {self.m['gain']}")
+
 
     def popup(self,i):
         """    
@@ -2095,6 +2118,7 @@ class playrec_v(QObject):
         :return: _False if error, True on succes_
         :rtype: _Boolean_
         """
+        AGC = 1
         scal_NEW = True #Updating, remove after tests
         if self.m["metadata"]["skinindex"] == 1:
             scal_Rescaling = True 
@@ -2104,6 +2128,7 @@ class playrec_v(QObject):
         #a = #10/139.5 #7/86  
         c = 11/89 #16.5/139.5 #8/86
         b = 72/89 #(139.5 - 10 -16.5)/139.5 #(86 -7 -8)/86
+
         # if self.m["TEST"]:
         #     return
         self.m["gain"] = self.playrec_c.playrec_tworker.get_gain()
@@ -2138,7 +2163,7 @@ class playrec_v(QObject):
         ####TODO: check spectrum for debugging
       
         if self.m["SPECDEBUG"]:
-            if np.std(cv) == 0:
+            if np.std(np.abs(cv)) == 0:
                 print({f"************std = {np.std(cv)}, substituting by dummy signal"})
                 cv = 1e-10*np.ones(len(cv))
             spr = np.abs(np.fft.fft(cv))
@@ -2153,24 +2178,24 @@ class playrec_v(QObject):
             self.curve.setData(datax, datay)
             #print(f"playrec in showRFdata: first 20 samples: datay : {datay[0:19]}, spr: {spr[0:19]}, freq: {freq[0:19]}, cv: {cv[0:19]}")
 
-        if self.m["TEST"]:
-            return
+        # if self.m["TEST"]:
+        #     return
         if scal_NEW:
             if scal_Rescaling:
-                span = 100
-                b = 80/100
-                c = 15/100
+                span= 103
+                c = 16/span
+                b = 82/span
             else:
-                span = 80
+                span =103
             refvol = 0.71
-            vol = 1.5*np.std(cv)/normfactor/refvol
-            if np.std(cv) == 0:
-                print({f"************std = {np.std(cv)}"})
+            vol = 1.5*np.std(np.abs(cv))/normfactor/refvol
+            if np.std(np.abs(cv)) == 0:
+                print({f"************std = {np.std(np.abs(cv))}"})
             if vol == 0:
                 print({f"************ vol = {vol}"})
                 vol = 1e-10
             dBvol = 20*np.log10(vol)
-            rawvol = c + b + dBvol/span*b
+            rawvol = c + b + dBvol/80*b
             if dBvol > 0:
               dispvol = min(100, rawvol*100)
             elif (dBvol < 0) and (dBvol > -span):
@@ -2196,6 +2221,28 @@ class playrec_v(QObject):
                         "{"
                             "background-color: green;"
                         "}")
+                
+                            # AGC, very simple tracking of the target volume:
+            if self.m["AGC"]:
+                cgain = self.gui.verticalSlider_Gain.value() - self.GAINOFFSET
+                if self.m["Reset_AGC"]:
+                    self.m["Reset_AGC"] = False
+                    print("REMOVE: showRFdata in playrec: RESET AGC")
+                    autocal_factor = self.m["AGC_targetvolume"]/vol
+                    cgain = cgain + 20*np.log10(autocal_factor)
+                    self.gui.verticalSlider_Gain.setProperty("value", int(np.round(cgain + self.GAINOFFSET)))
+                    time.sleep(0.1)
+                    print(f"self.mgain: {self.m['gain']}, autocal-factor: {autocal_factor}, targetvol: {self.m['AGC_targetvolume']}, curr vol: {vol}, dBvol: {dBvol}")
+                else:
+                    deltagain = 3
+                    #determine difference from target gain: 
+                    #loss = (target_vol - np.std(abs(cv)))/target_vol # can only vary between -1 and +1
+                    loss = (self.m["AGC_targetvolume"] - vol)/self.m["AGC_targetvolume"] # can only vary between -1 and +1
+                    #correct gain: 
+                    cgain += deltagain * loss
+                    self.gui.verticalSlider_Gain.setProperty("value", int(np.round(cgain + self.GAINOFFSET)))
+                    print(f"cgain: {cgain}, loss: {loss}, targetvol: {self.m['AGC_targetvolume']}, curr vol: {vol}, dBvol: {dBvol}")
+
         else:
             av = np.abs(cv)/normfactor  #TODO rescale according to scaler from formattag
             refvol = 0.5
@@ -2399,6 +2446,21 @@ class playrec_v(QObject):
             self.gui.lineEdit_LO_bias.setEnabled(False)
             self.gui.lineEdit_LO_bias.setStyleSheet("background-color: white")
         self.update_LO_bias("verbose","change")
+
+
+    def activate_AGC(self):
+        """ Purpose: handle radiobutton for AGC; 
+        :param [ParamName]: none
+        :type [ParamName]: none
+        :raises none
+        :return: none
+        :rtype: none
+        """
+        if self.gui.radioButton_AGC.isChecked() is True:
+            self.m["AGC"] = True
+        else:
+            self.m["AGC"] = False
+
 
     def toggle_LO_bias(self):
         """ Purpose: toggle status of the radiobuttongoup for LO bias setting; 
