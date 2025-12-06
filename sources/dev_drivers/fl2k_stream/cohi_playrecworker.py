@@ -162,12 +162,13 @@ class playrec_worker(QObject):
         #self.mutex.lock()
         errorstate, value = self.check_ready_fl2k()
         print("MUTEX")
-        # if errorstate:
-        #     print("no fl2k present")
-        #     self.SigError.emit(value)
-        #     self.SigFinished.emit()
-        #     return()
-        #self.mutex.unlock()
+        if errorstate:
+            print("no fl2k present")
+            self.SigError.emit(value)
+            self.SigFinished.emit()
+            time.sleep(1)
+            return()
+        self.mutex.unlock()
         print("past MUTEX")
         if format[0] == 1:  #PCM
             if format[2] == 16:
@@ -541,7 +542,7 @@ class playrec_worker(QObject):
                     stderr=subprocess.PIPE,
                     preexec_fn=os.setsid
                 )
-                
+
             except FileNotFoundError:
                 value = (f"Input file not found")
                 errorstate = True
