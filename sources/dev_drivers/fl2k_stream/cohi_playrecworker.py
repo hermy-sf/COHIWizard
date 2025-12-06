@@ -159,7 +159,7 @@ class playrec_worker(QObject):
         #     self.SigInfomessage.emit("Teststring from SigInfoMessage, SR criterion is fullfilled")
         
         print("checking for fl2k")
-        #self.mutex.lock()
+        self.mutex.lock()
         errorstate, value = self.check_ready_fl2k()
         print("MUTEX")
         if errorstate:
