@@ -1220,7 +1220,8 @@ class playrec_v(QObject):
             if 'AGC_targetvolume' in self.metadata.keys():
                 self.m["AGC_targetvolume"] = self.metadata["AGC_targetvolume"] #TODO: Remove after transfer of playrec
             else:
-                self.metadata["AGC_targetvolume"] = self.AGC_TARGETVOLUME_DEFAULT
+                self.m["AGC_targetvolume"] = self.AGC_TARGETVOLUME_DEFAULT
+                self.metadata["AGC_targetvolume"] = self.m["AGC_targetvolume"] 
                 stream = open("config_wizard.yaml", "w")
                 yaml.dump(self.metadata, stream)
                 stream.close()
