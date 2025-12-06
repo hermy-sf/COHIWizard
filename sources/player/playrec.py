@@ -342,8 +342,8 @@ class playrec_c(QObject):
     ######################  TODO: change for general devicedrivers
         #self.m["Reset_AGC"] = True
         self.SigRelay.emit("cexex_playrec",["setgain",0])
-        time.sleep(0.1)
-        print(f"REMOVE: playrec-->play_manager: gain: {self.m['gain']}")
+        #time.sleep(0.1)
+        #print(f"REMOVE: playrec-->play_manager: gain: {self.m['gain']}")
         self.stemlabcontrol.SigError.connect(self.stemlabcontrol_errorhandler)
         self.stemlabcontrol.SigMessage.connect(self.display_status) #currently not activem activate by re-writing display_status(message)
         try:
@@ -1067,7 +1067,7 @@ class playrec_v(QObject):
         self.m = playrec_m.mdl
         self.DATABLOCKSIZE = 1024*32
         self.GAINOFFSET = 40
-        self.AGC_TARGETVOLUME_DEFAULT = 0.85
+        self.AGC_TARGETVOLUME_DEFAULT = 0.4
         self.gui = gui
         self.playrec_c = playrec_c
         #self.norepeat = False
@@ -1746,7 +1746,7 @@ class playrec_v(QObject):
         '''
         self.m["gain"] = 10**((self.gui.verticalSlider_Gain.value() - self.GAINOFFSET)/20)
         self.logger.debug("cb_setgain, gain: %f",self.m["gain"])
-        print(f"cab_set gain gain: {self.m['gain']}")
+        #print(f"cab_set gain gain: {self.m['gain']}")
         if self.m["playthreadActive"] is False:
             return False
         self.playrec_c.playrec_tworker.set_gain(self.m["gain"])   #############TODO ?? what ?
@@ -2227,12 +2227,12 @@ class playrec_v(QObject):
                 cgain = self.gui.verticalSlider_Gain.value() - self.GAINOFFSET
                 if self.m["Reset_AGC"]:
                     self.m["Reset_AGC"] = False
-                    print("REMOVE: showRFdata in playrec: RESET AGC")
+                    #print("REMOVE: showRFdata in playrec: RESET AGC")
                     autocal_factor = self.m["AGC_targetvolume"]/vol
                     cgain = cgain + 20*np.log10(autocal_factor)
                     self.gui.verticalSlider_Gain.setProperty("value", int(np.round(cgain + self.GAINOFFSET)))
                     time.sleep(0.1)
-                    print(f"self.mgain: {self.m['gain']}, autocal-factor: {autocal_factor}, targetvol: {self.m['AGC_targetvolume']}, curr vol: {vol}, dBvol: {dBvol}")
+                    #print(f"self.mgain: {self.m['gain']}, autocal-factor: {autocal_factor}, targetvol: {self.m['AGC_targetvolume']}, curr vol: {vol}, dBvol: {dBvol}")
                 else:
                     deltagain = 3
                     #determine difference from target gain: 
@@ -2241,7 +2241,7 @@ class playrec_v(QObject):
                     #correct gain: 
                     cgain += deltagain * loss
                     self.gui.verticalSlider_Gain.setProperty("value", int(np.round(cgain + self.GAINOFFSET)))
-                    print(f"cgain: {cgain}, loss: {loss}, targetvol: {self.m['AGC_targetvolume']}, curr vol: {vol}, dBvol: {dBvol}")
+                    #print(f"cgain: {cgain}, loss: {loss}, targetvol: {self.m['AGC_targetvolume']}, curr vol: {vol}, dBvol: {dBvol}")
 
         else:
             av = np.abs(cv)/normfactor  #TODO rescale according to scaler from formattag

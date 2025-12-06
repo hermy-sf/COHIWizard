@@ -128,7 +128,7 @@ class playrec_worker(QObject):
         __slots__[10]: sampling_parameters
         """
         #print("reached playloopthread")
-        scalefactor_fl2k = 1 / 32 #empirical scaling factor for adjusting output volume to reasonable level; theoretically 1/2
+        scalefactor_fl2k = 1 / 16 #empirical scaling factor for adjusting output volume to reasonable level; theoretically 1/2
         filenames = self.get_filename()
         TEST = self.get_TEST()
         gain = self.get_gain()
