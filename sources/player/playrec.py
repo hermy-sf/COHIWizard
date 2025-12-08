@@ -97,6 +97,7 @@ class playrec_c(QObject):
     SigRelay = pyqtSignal(str,object)
     SigEOFStart = pyqtSignal()
     SigActivateOtherTabs = pyqtSignal(str,str,object)
+    SigTimertick = pyqtSignal()
 
     def __init__(self, playrec_m): 
         super().__init__()
@@ -515,7 +516,7 @@ class playrec_c(QObject):
         #TODO TODO TODO: check ob diese Implementierung nun die stemlab-Workerfunktionen richtig bedient
         #self.playrec_tworker = playrec_worker(self.stemlabcontrol)
 
-        
+        watchdogflag = False
         self.playrec_tworker = getattr(self.m["imported_device_modules"][self.m["currentSDRindex"]],'playrec_worker')(self.stemlabcontrol)
         
         # connect relay signals between SDRcontrol and playrecworker
@@ -527,7 +528,32 @@ class playrec_c(QObject):
             except:
                 print("handle_workerfinished not callable, no action")
         else:
-            print("Error in playrec-->play_tstarter: stemlabcontrol: handle_workerfinished not callable, no action taken")
+            print("no Sigrelay in playrec-->play_tstarter: stemlabcontrol: handle_workerfinished not callable, no action taken")
+            if ("watchdog" in device_ID_dict.keys()) and False: ###TODO TODO TODO: for activating watchdog functionality replace False --> True
+                #start watchdog and process deadlock surveillance
+                ###TODO TODO TODO: check and TEST, activate call of RP_shutdown substitute method for watchdog reser in stemlabcontrol
+                # remove comment after tests 08-12-2025
+                sdrcont_timercmd = ["watchdog_increment", self.playrec_tworker]
+                try: #connect timertick to watchdog clock of stemlabcontrol
+                    self.SigTimertick.connect(lambda: self.stemlabcontrol.RPShutdown(sdrcont_timercmd))
+                except:
+                    pass
+                sdrcont_argument = ["watchdog_reset", self.playrec_tworker] # TEST remove comment after tests 08-12-2025
+                try:  # connect watchdog reset to 'alife'-signal from playrec_tworker
+                    self.playrec_tworker.SigIncrementCurTime.connect(           
+                                                lambda: self.stemlabcontrol.RPShutdown(sdrcont_argument))  # TEST remove comment after tests 08-12-2025
+                except:
+                    pass
+                #start watchdog
+                watchdogflag = True    
+            #####this is a patch for handling special exceptions of a driver, e.g. fl2k when disconnecting device during operation
+            # the method self.stemlabcontrol.RPShutdown is re-used, because it is thought not to be 
+            # required in future drivers 
+
+
+####OLD:
+
+
 ######################  END: change for general devicedrivers
 
         self.playrec_tworker.moveToThread(self.playthread)
@@ -565,7 +591,13 @@ class playrec_c(QObject):
         self.playrec_tworker.SigNextfile.connect(self.nextfilemanager)
         self.SigEOFStart.connect(self.EOF_manager)
         self.playrec_tworker.SigFinished.connect(self.playrec_tworker.deleteLater)
-
+        if watchdogflag:
+            # stop watchdog
+            sdrcont_argument = ["watchdog_stop", self.playrec_tworker] ############TODO TODO TODO Check and test after 08-12-2025
+            try:
+                self.playrec_tworker.SigFinished.connect(lambda: self.stemlabcontrol.RPShutdown(sdrcont_argument)) ############TODO TODO TODO Check and test after 08-12-2025
+            except:
+                pass
         self.playthread.finished.connect(self.playthread.deleteLater)
         self.playrec_tworker.SigIncrementCurTime.connect(
                                                 lambda: self.SigRelay.emit("cexex_playrec",["updatecurtime",1]))
@@ -582,12 +614,17 @@ class playrec_c(QObject):
             # TODO replace playthreadflag by not self.playthread.isFinished()
             errorstate = False
             value = ""
-            
-            #return True
+            if watchdogflag:
+                # start watchdog
+                sdrcont_argument = ["watchdog_start", self.playrec_tworker] ############TODO TODO TODO NEW
+                errorstate, value = self.stemlabcontrol.RPShutdown(sdrcont_argument) ############TODO TODO TODO NEW
+
         else:
             #auxi.standard_errorbox("STEMLAB data transfer thread could not be started")
             errorstate = True
             value = "STEMLAB data transfer thread could not be started, please check if STEMLAB is connected correctly"
+
+
         return(errorstate,value)
 
     def nextfilemanager(self,filename):
@@ -1639,6 +1676,7 @@ class playrec_v(QObject):
             if  _value[0].find("updateotherGUIelements") == 0:
                 self.SigRelay.emit("cexex_all_",["updateGUIelements",0])
             if  _value[0].find("timertick") == 0:
+                self.playrec_c.SigTimertick.emit() 
                 if self.m["recstate"]:
                     self.blinkrec()
                 self.countdown()

@@ -128,6 +128,7 @@ class playrec_worker(QObject):
         __slots__[10]: sampling_parameters
         """
         #print("reached playloopthread")
+        self.kill_orphan_fl2k()
         scalefactor_fl2k = 1 / 16 #empirical scaling factor for adjusting output volume to reasonable level; theoretically 1/2
         filenames = self.get_filename()
         TEST = self.get_TEST()
@@ -167,6 +168,9 @@ class playrec_worker(QObject):
             self.SigError.emit(value)
             self.SigFinished.emit()
             time.sleep(1)
+            self.mutex.unlock()
+            configuration["icorr"] = 'handle_no_fl2k'
+            self.set_configparameters(configuration) 
             return()
         self.mutex.unlock()
         print("past MUTEX")
@@ -508,20 +512,38 @@ class playrec_worker(QObject):
         print("close file ")
         self.set_fileclose(True)
         fileHandle.close()
+        self.terminate_loop(ffmpeg_process,fl2k_process)
+        self.kill_orphan_fl2k()
+        # if not TEST:
+        #     # terminate fl2k_file process and wait for actual termination
+        #     ffmpeg_process.stdin.close()  # close stdin
+        #     ffmpeg_process.stdout.close()  # close stdout
+        #     ffmpeg_process.terminate()  # stop process gently
+        #     ffmpeg_process.wait()  # wait for process termination
+        #     stdout, stderr = fl2k_process.communicate()  # wait for the end of fl2k_file
+        #     # report result
+        #     print("fl2k output:")
+        #     print(stdout.decode())
+        #     if stderr:
+        #         print("fl2k_file errors:")
+        #         print(stderr.decode())
 
-        if not TEST:
-            # terminate fl2k_file process and wait for actual termination
-            ffmpeg_process.stdin.close()  # close stdin
-            ffmpeg_process.stdout.close()  # close stdout
-            ffmpeg_process.terminate()  # stop process gently
-            ffmpeg_process.wait()  # wait for process termination
-            stdout, stderr = fl2k_process.communicate()  # wait for the end of fl2k_file
-            # report result
-            print("fl2k output:")
-            print(stdout.decode())
-            if stderr:
-                print("fl2k_file errors:")
-                print(stderr.decode())
+        # self.SigFinished.emit()
+        return()
+    
+    def terminate_loop(self,ffmpeg_process,fl2k_process):
+        # terminate fl2k_file process and wait for actual termination
+        ffmpeg_process.stdin.close()  # close stdin
+        ffmpeg_process.stdout.close()  # close stdout
+        ffmpeg_process.terminate()  # stop process gently
+        ffmpeg_process.wait()  # wait for process termination
+        stdout, stderr = fl2k_process.communicate()  # wait for the end of fl2k_file
+        # report result
+        print("fl2k output:")
+        print(stdout.decode())
+        if stderr:
+            print("fl2k_file errors:")
+            print(stderr.decode())
 
         self.SigFinished.emit()
         return()
@@ -668,3 +690,48 @@ class playrec_worker(QObject):
         not applicable
         """
         return()
+    
+    def is_fl2k_process(self,proc):
+        try:
+            name = (proc.info.get('name') or "").lower()
+            if "fl2k_file" in name:
+                return True
+
+            cmdline = " ".join(proc.info.get('cmdline') or []).lower()
+            if "fl2k_file" in cmdline:
+                return True
+
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+
+        return False
+
+
+    def kill_orphan_fl2k(self):
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            if self.is_fl2k_process(proc):
+                print("kill hanging fl2k_file Process:", proc.pid)
+                proc.kill()
+        return
+
+    def is_ffmpeg_process(self,proc):
+        try:
+            name = (proc.info.get('name') or "").lower()
+            if "ffmpeg" in name:
+                return True
+
+            cmdline = " ".join(proc.info.get('cmdline') or []).lower()
+            if "fl2k_file" in cmdline:
+                return True
+
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+
+        return False
+    
+    def kill_orphan_ffmpeg(self):
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            if self.is_ffmpeg_process(proc):
+                print("kill hanging ffmpeg_file Process:", proc.pid)
+                proc.kill()
+        return

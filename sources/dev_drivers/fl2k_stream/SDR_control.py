@@ -40,6 +40,8 @@ class SDR_control(QObject):
     def __init__(self, *args, **kwargs):
 
         super().__init__(*args, **kwargs)
+        self.watchdog_count = 0
+        self.watchdog_active = False
         # self.HostAddress = self.get_HostAddress()
         # print(f"init stemlabcontrol Hostaddress: {self.HostAddress}")
 
@@ -70,7 +72,8 @@ class SDR_control(QObject):
                           "max_IFREQ": 100000000,
                           "min_IFREQ": 0,
                           "resolutions": [16, 24, 32],
-                          "connection_type": "USB"}
+                          "connection_type": "USB",
+                          "watchdog": True}
         #connection type USB_Vethernet is virtual, as the device in reality is USB but communication occurs via TCP to IP 127.0.0.1
         return(device_ID_dict)
 
@@ -204,10 +207,37 @@ class SDR_control(QObject):
         # return(errorstate, value)
         
 
-    def RPShutdown(self,configparams):
+    def RPShutdown(self,configuration):
         '''
         not applicable for fl2k
         '''
+        print(f"no shutdown for this device, config = {configuration}")
         errorstate = False
         value = ""
+        try:
+            testitem, worker = configuration
+            print(f"sdrcontrol substitute command = {testitem}")
+            if testitem.find('watchdog_start') > -1:
+                self.watchdog_active = True
+            if testitem.find('handle_no_fl2k') > -1:
+                worker.kill_orphan_fl2k()
+                print("sdrcontrol fl2k: no dongle found, terminating and cleaning orphan processes")
+                errorstate = True
+                value ="sdrcontrol fl2k: no dongle found, terminating and cleaning orphan processes"
+            if (testitem.find('watchdog_increment') > -1) and self.watchdog_active:
+                self.watchdog_count += 1
+                print(f"watchdog_count: {self.watchdog_count}")
+                if self.watchdog_count > 25:
+                    print("KILLING ffmpeg processes")
+                    self.watchdog_count =0
+                    self.watchdog_active = False
+                    #worker.kill_orphan_ffmpeg()
+
+            if testitem.find('watchdog_reset') > -1:
+                self.watchdog_count =0
+                #self.watchdog_active = False
+                print(f"RESET: watchdog_count: {self.watchdog_count}")
+        except:
+            print("no Shutdown executed")
+
         return(errorstate, value)
