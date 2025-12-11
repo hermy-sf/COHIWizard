@@ -86,6 +86,7 @@ class playrec_m(QObject):
         self.mdl["devicelist"] = os.listdir(os.path.join(os.getcwd(), "dev_drivers"))
         self.mdl["SDRcontrol"] = None
         self.mdl["device_ID_dict"] = {}
+        self.mdl["REC_AGC"] = False
         #os.path.isdir(os.getcwd)
 
 class playrec_c(QObject):
@@ -548,10 +549,7 @@ class playrec_c(QObject):
                 watchdogflag = True    
             #####this is a patch for handling special exceptions of a driver, e.g. fl2k when disconnecting device during operation
             # the method self.stemlabcontrol.RPShutdown is re-used, because it is thought not to be 
-            # required in future drivers 
-
-
-####OLD:
+            # required in future drivers
 
 
 ######################  END: change for general devicedrivers
@@ -1163,7 +1161,20 @@ class playrec_v(QObject):
         self.gui.lineEdit_LO_bias.textChanged.connect(lambda: self.update_LO_bias("verbose","nochange"))
         self.gui.radioButton_LO_bias.clicked.connect(self.activate_LO_bias)
         self.gui.radioButton_LO_bias.setEnabled(False)
-        self.m["AGC"] = False
+        self.m["AGC"] = True
+        self.m["REC_AGC"] = False
+        try:
+            stream = open("config_wizard.yaml", "r")
+            self.metadata = yaml.safe_load(stream)
+            stream.close()
+            if 'REC_AGC' in self.metadata.keys():
+                if self.metadata["REC_AGC"]:
+                    self.m["REC_AGC"] = True
+        except:
+            pass
+
+        self.gui.radioButton_AGC.setEnabled(True)
+        self.gui.radioButton_AGC.setChecked(True)
         self.gui.radioButton_AGC.clicked.connect(self.activate_AGC)
         #self.gui.pushButton_Play.setIcon(QIcon("./core/ressources/icons/play_v4.PNG"))
         self.gui.pushButton_Play.clicked.connect(self.cb_Butt_toggleplay)
@@ -2031,6 +2042,12 @@ class playrec_v(QObject):
         self.gui.pushButton_Loop.setEnabled(False)
         self.gui.pushButton_Play.setEnabled(False)
         self.gui.verticalSlider_Gain.setEnabled(False)
+        #experimental usage of Gain in Recording module, not tested ! TODO TODO TODO: text after 11-12-2025 
+        if self.m["REC_AGC"]:
+            self.gui.verticalSlider_Gain.setEnabled(True)
+
+
+
         #TODO TODO TODO warning if host not reachable
         
 
@@ -2262,7 +2279,7 @@ class playrec_v(QObject):
                         "}")
                 
                             # AGC, very simple tracking of the target volume:
-            if self.m["AGC"]:
+            if self.m["AGC"] and (self.m["modality"] == "play" or (self.m["REC_AGC"] and self.m["modality"] != "play")):
                 cgain = self.gui.verticalSlider_Gain.value() - self.GAINOFFSET
                 if self.m["Reset_AGC"]:
                     self.m["Reset_AGC"] = False

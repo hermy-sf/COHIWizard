@@ -434,10 +434,12 @@ class core_v(QObject):
             self.m["metadata"] = {"last_path": self.standardpath}
             self.m["metadata"]["rootpath"] = os.getcwd()
             self.m["metadata"]["STM_IP_address"] = "000.000.000.000"
-            auxi.standard_infobox("configuration file does not yet exist, a basic file will be generated. Please configure the STEMLAB IP address before using the Player")
+            #auxi.standard_infobox("configuration file does not yet exist, a basic file will be generated. Please configure the STEMLAB IP address before using the Player")
             self.m["metadata"]["recording_path"] = os.path.join(self.m["metadata"]["rootpath"], "out")
             self.m["metadata"]["skinindex"] = 1
             self.m["metadata"]["HIRES_ffmpeg"] = True 
+            self.m["metadata"]["REC_AGC"] = False 
+            self.m["metadata"]["AGC_targetvolume"] = 0.4
             no_ffmpeg_path = True
             if not os.path.exists(default_recordingpath):
                 os.makedirs(default_recordingpath)

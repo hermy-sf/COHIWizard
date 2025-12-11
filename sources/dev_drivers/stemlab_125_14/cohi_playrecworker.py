@@ -303,6 +303,7 @@ class playrec_worker(QObject):
         :return: none
         :rtype: none
         """
+        self.gain = self.get_gain()
         size2G = 2**31
         self.stopix = False
         filename = self.get_filename()
@@ -329,7 +330,7 @@ class playrec_worker(QObject):
         while size > 0 and self.stopix is False:
             if self.TEST is False:
                 self.mutex.lock()             
-                fileHandle.write((data[0:size//4] * 32767).astype(np.int16))
+                fileHandle.write((self.gain * data[0:size//4] * 32767).astype(np.int16))
                 # size is the number of bytes received per read operation
                 # from the socket; e.g. DATABLOCKSIZE samples have
                 # DATABLOCKSIZE*8 bytes, the data buffer is specified
@@ -343,7 +344,8 @@ class playrec_worker(QObject):
                 # TODO: check for replacing clock signalling by other clock
                 readbytes = readbytes + size
                 if readbytes > RECSEC:
-                    self.set_data((data[0:size//4] * 32767).astype(np.int16))
+                    self.gain = self.get_gain()
+                    self.set_data((self.gain * data[0:size//4] * 32767).astype(np.int16))
                     self.SigIncrementCurTime.emit()
                     totbytes += int(readbytes/2)
                     readbytes = 0
