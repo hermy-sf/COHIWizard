@@ -1238,6 +1238,13 @@ class playrec_v(QObject):
                     #auxi.standard_errorbox(f"Hardware driver {cf} cannot be activated.\n\
                     #Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
                     #COHIWizard will still be operative for all other correctly installed hardware devices")
+        
+        error,value = auxi.fetch_configyaml("last_device")
+        if not error:
+            self.m["currentSDRindex"] = value
+        else:
+            pass
+            #auxi.standard_errorbox(value)
 
         self.gui.comboBox_stemlab.setCurrentIndex(self.m["currentSDRindex"])
 
@@ -1434,10 +1441,13 @@ class playrec_v(QObject):
         self.m["HostAddress"] = self.gui.lineEdit_IPAddress.text()
         if self.m["device_ID_dict"]["device_name"] == "DONOTUSE":
             errorstate = True
-            value = f"THIS DEVICE DRIVER IS NOT YET AVAILABLE (still under development)"  
+            value = f"THIS DEVICE DRIVER IS NOT YET AVAILABLE (still under development)"
+        else:
+            errorstate, value = auxi.update_configyaml("last_device",self.m["currentSDRindex"] )
         if errorstate:
-            auxi.standard_errorbox(value) #TODO TODO TODO: good errorhandling with errorstate, value; errorhandler
+            auxi.standard_errorbox(value)
             self.gui.comboBox_stemlab.setCurrentIndex(self.m["standardSDRindex"])
+            self.m["currentSDRindex"] = self.m["standardSDRindex"]
         return(errorstate, value) 
 
 

@@ -15,6 +15,7 @@ import platform
 import urllib.request
 import zipfile
 import tarfile
+import yaml
 #import shutil #### Nicht nötig ??
 import sys
 import re
@@ -342,6 +343,61 @@ class auxiliaries():
         #return data
         return ret
     
+    def update_configyaml(key,dvalue):
+        """
+        open config_wizard.yaml, read metadata, update the entry with key 'key' with the value 'value'
+        :param : key: metadata dict key
+        :type : str
+        :param : dvalue: value of 'key' ind the metadata dict
+        :type : any
+        :raises : none
+        :return: errorstate
+        :rtype: Boolean
+        :return: value: metadata
+        :rtype : dicht
+        """
+        errorstate = False
+        value =[]
+        try:
+            stream = open("config_wizard.yaml", "r")
+            metadata = yaml.safe_load(stream)
+            stream.close()
+            metadata[key] = dvalue
+        except:
+            errorstate = True
+            value = "could not load config_wizard.yaml"
+        try:
+            stream = open("config_wizard.yaml", "w")
+            yaml.dump(metadata, stream)
+            stream.close()
+        except:
+            errorstate = True
+            value = "could not write config_wizard.yaml"            
+        return errorstate, value
+
+    def fetch_configyaml(key):
+        """
+        open config_wizard.yaml, read metadata, determine the entry with key 'key' with the value 'value' and return value
+        :param : key: metadata dict key
+        :type : str
+        :raises : none
+        :return: errorstate
+        :rtype: Boolean
+        :return: value: requested metadata or errormessage
+        :rtype : any
+        """
+        errorstate = False
+        value =[]
+        try:
+            stream = open("config_wizard.yaml", "r")
+            metadata = yaml.safe_load(stream)
+            stream.close()
+            value = metadata[key]
+        except:
+            errorstate = True
+            value = f"could not load key {key} from config_wizard.yaml"
+        return errorstate, value
+
 
     def standard_errorbox(errortext):
         msg = QMessageBox()
