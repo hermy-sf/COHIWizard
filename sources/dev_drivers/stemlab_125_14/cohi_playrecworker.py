@@ -346,7 +346,7 @@ class playrec_worker(QObject):
                 readbytes = readbytes + size
                 if readbytes > RECSEC:
                     self.gain = self.get_gain()
-                    self.set_data((self.gain * self.GAINFACTOR * data[0:size//4] * 32767).astype(np.int16))
+                    self.set_data((self.gain * data[0:size//4] * 32767).astype(np.int16))
                     self.SigIncrementCurTime.emit()
                     totbytes += int(readbytes/2)
                     readbytes = 0
