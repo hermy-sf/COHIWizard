@@ -166,6 +166,7 @@ class modulate_worker(QObject):
         output_base_name = self.get_output_base_name()
         exp_num_samples = self.get_exp_num_samples()
         init_phases = self.generate_multisine_phases(carrier_frequencies)
+        #init_phases = init_phases%(np.pi/2)  ###TODO line added acc to fmpeg fast mode, test after 14-12-2025
         self.process_multiple_carriers_blockwise(carrier_frequencies, playlists, sample_rate, block_size, cutoff_freq, modulation_depth, output_base_name, exp_num_samples,init_phases)
         self.SigFinished.emit()
 
@@ -215,6 +216,7 @@ class modulate_worker(QObject):
         """
         N = len(frequencies)  # Anzahl der Frequenzkomponenten
         phases = np.array([-np.pi * k * (k - 1) / N for k in range(1, N + 1)])
+        phases = phases - np.ones(len(phases)) * phases[0]  # subtract first phase --> first carrier is reference with zero phase
         return phases
 
 
@@ -352,7 +354,8 @@ class modulate_worker(QObject):
                 audio_block = np.zeros(block_size)
                 num_channels = 1
                 cumulative_time += block_size/original_sample_rate
-                print(f"make silence block at carrier {carrier_freq} until {cumulative_time}")
+                #print(f"make silence block at carrier {carrier_freq} until {cumulative_time}, silence value got from caller: {silence}, block_size: {block_size}, ref_block_size : {ref_block_size },  original_sample_rate : {original_sample_rate }, ")
+                self.logger.debug(f"read_and_process_audio_blockwise: make silence block at carrier {carrier_freq} until {cumulative_time}, silence flag got from caller: {silence}, duration: {self.get_silence_duration()} , block_size: {block_size} , reference_sample_rate: {reference_sample_rate}, ref_block_size : {ref_block_size },  original_sample_rate : {original_sample_rate }")
                 # check if silence has already reached maximum length
                 if cumulative_time >= self.get_silence_duration():
                     silence = False
@@ -368,6 +371,7 @@ class modulate_worker(QObject):
                 block_size = int(np.floor(ref_block_size * original_sample_rate / reference_sample_rate))
                 audio_block = f.read(block_size)
 
+            self.logger.debug(f"read_and_process_audio_blockwise: check audio block end: : {len(audio_block) == 0 and not silence}")
             if len(audio_block) == 0 and not silence:
                 # Audio file is finished, close file and open next one
                 print(f"close file {file_path} with index {current_file_index}; open next in list")
@@ -383,7 +387,10 @@ class modulate_worker(QObject):
                 del file_handles[current_file_index]  # remove Handle
                 current_file_index += 1
                 silence = True
+                self.logger.debug(f"read_and_process_audio_blockwise: before continue set silence : {silence}")
+
                 continue  # do not modulate, continue with the next audio file
+            self.logger.debug(f"read_and_process_audio_blockwise: after continue track silence : {silence}")
 
             # Mono-conversion
             audio_block = audio_gain * self.convert_to_mono(audio_block, num_channels)
@@ -403,12 +410,13 @@ class modulate_worker(QObject):
             filtered_block, zi = self.process_block(audio_block, sos, zi)
 
             # modulate to carrier
-            phase = 0
+            #phase = 0
             modulated_block = self.modulate_signal(filtered_block, carrier_freq, target_sample_rate, sample_offset, modulation_depth, phase)
             # update sample_offset for next block
             sample_offset += len(modulated_block)
 
             #TODO: here end of ffmpeg, which returns the modulated block directly
+            self.logger.debug(f"return from read_and_process_audio_blockwise: silence : {silence}")
 
             return modulated_block, zi, sample_offset, current_file_index, audio_gain, silence, cumulative_time
         
@@ -441,7 +449,7 @@ class modulate_worker(QObject):
         self.logger.debug(f"process_multiple_carriers_blockwise; carrier_frequencies:{carrier_frequencies}")
         self.stopix = False
         max_file_size = self.get_filesize_limit() #2 * 1024**3  # 2 GB in bytes
-        self.logger.debug(f"max filesize set to: {max_file_size}")
+        self.logger.debug(f"process_multiple_carriers_blockwise: max filesize set to: {max_file_size}")
         self.logger.debug(f"process_multiple_carriers_blockwise: expected overall filesize: {4*exp_num_samples}")
         max_samples_per_file = max_file_size // 4  # complex 16-bit PCM = 4 bytes per sample
         perc_progress_old = 0
@@ -454,7 +462,7 @@ class modulate_worker(QObject):
         # Initialize sample_offset and current_file_index for each carrier
         sample_offsets = [0] * len(carrier_frequencies)
         current_file_indices = [0] * len(carrier_frequencies)  # Track current file index for each carrier
-        self.logger.debug(f"synthesizer worker carrier frequencies: {carrier_frequencies}")
+        self.logger.debug(f"process_multiple_carriers_blockwise: synthesizer worker carrier frequencies: {carrier_frequencies}")
         # Initialize file_handles as a list of empty dictionaries for each carrier
         file_handles = [{} for _ in carrier_frequencies] 
         total_samples_written = 0
@@ -470,7 +478,7 @@ class modulate_worker(QObject):
         #generate starting timestamp for wavheader
         next_starttime = datetime.now()
         next_starttime = next_starttime.astimezone(pytz.utc)
-        self.logger.debug(f"synthesizer worker sample rate before modulating: {sample_rate}")
+        self.logger.debug(f"process_multiple_carriers_blockwise: synthesizer worker sample rate before modulating: {sample_rate}")
         audio_gain = np.zeros(len(playlists))
         cumulative_time = np.zeros(len(playlists))
         silence = [False] * len(playlists)
@@ -485,38 +493,46 @@ class modulate_worker(QObject):
                 #print(f"filehandles in modulate_worker, process mult carr blw: {file_handles}")
                 if self.stopix is True:
                     break
-                print(f">>>>>>>>>>>>> process mult carr block, carrier_freq: {carrier_freq}, phase {phase}:  ")
+                print(f">>>>>>>>>>>>> process mult carr block, carrier_freq: {carrier_freq}, phase {phase}: silence: {silence} ")
                 modulated_block, new_zi, sample_offsets[i], current_file_indices[i], audio_gain[i], silence[i], cumulative_time[i] = self.read_and_process_audio_blockwise(playlists[i], carrier_freq*1000, sample_rate, block_size, modulation_depth, zi, sample_offsets[i], current_file_indices[i], file_handles[i], audio_gain[i], silence[i], cumulative_time[i],sos, phase)
+                #self.logger.debug(f"slow process_multiple_carriers_blockwies: Schröder phase : {phase} @ sampling rate: {sample_rate} and and silence_duration: {silence[i]}, carrier_freq: {carrier_freq}")
 
                 if modulated_block is None: #--> end of Playlist has been reached
+                    self.logger.debug(f"process mult carr block: make dummy carrier at {carrier_freq} ")
+
+                    # TODO: generate unmodulated carrier  block
+                    # audio_block = np.zeros(block_size)
+                    # modulated_block = self.modulate_signal(self,audio_block, carrier_freq*1000, sample_rate, sample_offsets[i], modulation_depth, phase)
+                    # self.logger.debug(f"process mult carr block: make dummy carrier at {carrier_freq} ")
+
                     continue
                 # Dynamically adjust combined signal block size based on modulated block size
 
                 if combined_signal_block is None or len(combined_signal_block) < len(modulated_block):
                     
-                    self.logger.debug(f"modulated block is None or short  @ t = {sample_offsets[i]}, carrier = {i}")
+                    self.logger.debug(f"process_multiple_carriers_blockwise: modulated block is None or short  @ t = {sample_offsets[i]}, carrier = {i}")
                     if combined_signal_block is None:
                         combined_signal_block = np.zeros(len(modulated_block), dtype = np.complex128)
                         pass
                     else:
-                        self.logger.debug(f"modulated block is None or short len = {len(combined_signal_block)}, ZEROPAD")
-                        self.logger.debug(f"None/shortlen: diff len combined block -len mod block: {len(combined_signal_block) - len(modulated_block)}")
+                        self.logger.debug(f"process_multiple_carriers_blockwise: modulated block is None or short len = {len(combined_signal_block)}, ZEROPAD")
+                        self.logger.debug(f"process_multiple_carriers_blockwise: None/shortlen: diff len combined block -len mod block: {len(combined_signal_block) - len(modulated_block)}")
                         difflen = len(modulated_block) - len(combined_signal_block)  
                         zero_padding = np.zeros(difflen, dtype=np.complex128)
                         combined_signal_block = np.concatenate((combined_signal_block, zero_padding))
                     ######combined_signal_block = np.zeros(len(modulated_block), dtype = np.complex128)
                 gain = self.get_gain()
                 if np.abs(len(combined_signal_block) - len(modulated_block)) > 0:
-                    print(f"modulated block std gain*mb = {np.std(gain*modulated_block)} , gain = {gain} @ t = {sample_offsets[i]}, carrier = {i}")
-                    print(f"diff len combined block -len mod block: {len(combined_signal_block) - len(modulated_block)}")
-                    self.logger.debug(f"modulated block std gain*mb = {np.std(gain*modulated_block)} , gain = {gain} @ t = {sample_offsets[i]}, carrier = {i}")
-                    self.logger.debug(f"diff len combined block -len mod block: {len(combined_signal_block) - len(modulated_block)}")
+                    #print(f"modulated block std gain*mb = {np.std(gain*modulated_block)} , gain = {gain} @ t = {sample_offsets[i]}, carrier = {i}")
+                    #print(f"diff len combined block -len mod block: {len(combined_signal_block) - len(modulated_block)}")
+                    self.logger.debug(f"process_multiple_carriers_blockwise: modulated block std gain*mb = {np.std(gain*modulated_block)} , gain = {gain} @ t = {sample_offsets[i]}, carrier = {i}")
+                    self.logger.debug(f"process_multiple_carriers_blockwise: diff len combined block -len mod block: {len(combined_signal_block) - len(modulated_block)}")
                 combined_signal_block[:len(modulated_block)] += gain * modulated_block
                 LO_freq = self.get_LO_freq()
                 self.SigMessage.emit(f"###modulating at carrier: {str(carrier_freq + LO_freq/1000)}")
                 if np.std(gain*modulated_block) < 1e-3:
-                    print(f"modulated block is zero, std gain*mb = {np.std(gain*modulated_block)} , gain = {gain} @ t = {sample_offsets[i]}")   
-                    self.logger.debug(f"modulated block is zero, std gain*mb = {np.std(gain*modulated_block)} , gain = {gain} @ t = {sample_offsets[i]}")   
+                    #print(f"modulated block is zero, std gain*mb = {np.std(gain*modulated_block)} , gain = {gain} @ t = {sample_offsets[i]}")   
+                    self.logger.debug(f"process_multiple_carriers_blockwise: modulated block is zero, std gain*mb = {np.std(gain*modulated_block)} , gain = {gain} @ t = {sample_offsets[i]}")   
                 # If we processed any blocks, we're not done
                 done = False
 
@@ -1060,7 +1076,8 @@ class modulate_worker_ffmpeg(QObject):
         self.logger.debug(f"absolute carrier frequencies: {abs_carrier_frequencies}") 
         alignment = 4                                                              
         delays, phases = self.generate_multisine_delays(abs_carrier_frequencies,sample_rate,alignment)
-        phases = phases%np.pi/2
+        self.logger.debug(f"Schröder phases before %: {phases} and delays: {delays} @ sampling rate: {sample_rate} and frequencies: {abs_carrier_frequencies} and silence_duration: {silence_duration}")
+        phases = phases%(np.pi/2)
         self.logger.debug(f"Schröder phases : {phases} and delays: {delays} @ sampling rate: {sample_rate} and frequencies: {abs_carrier_frequencies}")
         #TODO TODO TODO: implement delays in ffmpeg filter chain
 
@@ -1285,7 +1302,15 @@ class modulate_worker_ffmpeg(QObject):
         """_summary_
         Process audio from multiple playlists blockwise, each corresponding to a different carrier frequency.
         Write the combined output to  WAV file
+        TODO: Schröder Phases implementation questionable. so far:
+        (1) generate schröder phases acc to formula
+        (2)
+                phases = phases%np.pi/2
+        TODO: This could be an error and which was meant was:
+                phases = phases%np.pi/2
 
+                check overall outcome !
+                
         :param carrier_frequencies: list of carrier frequencise
         :type carrier_frequencies: list of float
         :param playlists: _description_
@@ -1311,13 +1336,14 @@ class modulate_worker_ffmpeg(QObject):
         max_file_size = self.get_filesize_limit() #2 * 1024**3  # 2 GB in bytes
         self.logger.debug(f"max filesize set to: {max_file_size}")
         self.logger.debug(f"process_multiple_carriers_ffmpeg: expected overall filesize: {4*exp_num_samples}")
-        print(f"process_multiple_carriers_ffmpeg: expected overall filesize: {4*exp_num_samples}")
+        print(f"process_multiple_carriers_ffmpeg >>: expected overall filesize: {4*exp_num_samples}")
         abs_carrier_frequencies = carrier_frequencies * 1000 + np.ones(len(carrier_frequencies)) * self.get_LO_freq()
         self.logger.debug(f"absolute carrier frequencies: {abs_carrier_frequencies}") 
         alignment = 4                                                              
         delays, phases = self.generate_multisine_delays(abs_carrier_frequencies,sample_rate,alignment)
-        phases = phases%np.pi/2
-        self.logger.debug(f"Schröder phases : {phases} and delays: {delays} @ sampling rate: {sample_rate} and frequencies: {abs_carrier_frequencies}")
+        self.logger.debug(f"Schröder phases before %: {phases} and delays: {delays} @ sampling rate: {sample_rate} and frequencies: {abs_carrier_frequencies} and silence_duration: {silence_duration}")
+        phases = phases%(np.pi/2)
+        self.logger.debug(f"Schröder phases : {phases} and delays: {delays} @ sampling rate: {sample_rate} and frequencies: {abs_carrier_frequencies} and silence_duration: {silence_duration}")
         #TODO TODO TODO: implement delays in ffmpeg filter chain
 
 
@@ -2276,7 +2302,7 @@ class synthesizer_v(QObject):
         """determine optimal gain and set gain slider accordingly
         """
         numcar = self.gui.spinBox_numcarriers.value()
-        wanted_gain = 0.568 /2/ np.sqrt(numcar)*0.5  # 0.568 is the product of a safety margin 0.8 and the RMS of 1 Vp, i.e. 0.71
+        wanted_gain = 0.568 / np.sqrt(numcar)*0.5  # TODO: value changed tes: 14-12-2025   0.568 is the product of a safety margin 0.8 and the RMS of 1 Vp, i.e. 0.71
         #wanted_gain = 0.568 /2/numcar  # 0.568 is the product of a safety margin 0.8 and the RMS of 1 Vp, i.e. 0.71; sqrt ( nucar) is obviously not valid, there are correlations due to phase synchrony
         #improvement: phase scrambling for multisinus approach
         slider = (20*np.log10(wanted_gain) + self.GAINOFFSET)*10/9
@@ -2473,7 +2499,7 @@ class synthesizer_v(QObject):
         #TODO TODO: modify output base name so that it doesn't contain any extension and no _# at the end
 
 
-        block_size = 2**18   # Maximum block length
+        block_size = 2**16   # Maximum block length
         #total_reclength = self.get_reclength()
         #exp_num_samples = total_reclength * self.m["sample_rate"]*1000
         synthesizer_temp_path = os.path.join(os.path.dirname(Path(output_base_name)),"temp")
@@ -2506,6 +2532,8 @@ class synthesizer_v(QObject):
         self.modulate_worker.set_LO_freq(LO_frequency)
         self.modulate_worker.set_method_object(self.synthesizer_c)
         self.modulate_worker.set_silence_duration(self.gui.spinBox_pauseseconds.value())
+        print(f"set SILENCEPAUSE: {self.gui.spinBox_pauseseconds.value()}")
+        self.logger.debug(f"set SILENCEPAUSE: {self.gui.spinBox_pauseseconds.value()}")
         if self.NO2GBSPLITTING:
             self.modulate_worker.set_filesize_limit(2**10 * 1024**3)  # 1024 GB in bytes
         else:
