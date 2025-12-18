@@ -527,9 +527,10 @@ class playrec_c(QObject):
                 if callable(getattr(self.stemlabcontrol, 'handle_workerfinished')):
                     self.playrec_tworker.SigFinished.connect(self.stemlabcontrol.handle_workerfinished)
             except:
-                print("handle_workerfinished not callable, no action")
+                pass
+                #print("handle_workerfinished not callable, no action")
         else:
-            print("no Sigrelay in playrec-->play_tstarter: stemlabcontrol: handle_workerfinished not callable, no action taken")
+            #print("no Sigrelay in playrec-->play_tstarter: stemlabcontrol: handle_workerfinished not callable, no action taken")
             if ("watchdog" in device_ID_dict.keys()) and False: ###TODO TODO TODO: for activating watchdog functionality replace False --> True
                 #start watchdog and process deadlock surveillance
                 ###TODO TODO TODO: check and TEST, activate call of RP_shutdown substitute method for watchdog reser in stemlabcontrol
@@ -1838,6 +1839,9 @@ class playrec_v(QObject):
         #TODO TODO TODO: inactivate other tabs
         self.SigActivateOtherTabs.emit("Player","inactivate",["View spectra"])
         if self.gui.pushButton_Play.isChecked():
+            if not self.gui.lineEdit_IPAddress.isReadOnly():
+                auxi.standard_errorbox("IP address has not been saved yet, please press 'save IP address' and hence confirm the validity of the address ! ")
+                return False
             if not self.m["fileopened"]:
                 if self.gui.radioButton_LO_bias.isChecked():
                     #TODO TODO TODO: replace by query method
@@ -2016,6 +2020,9 @@ class playrec_v(QObject):
         :return: none
         :rtype: none
         """
+        if not self.gui.lineEdit_IPAddress.isReadOnly():
+            auxi.standard_errorbox("IP address has not been saved yet, please press 'save IP address' and hence confirm the validity of the address ! ")
+            return False
         self.SigActivateOtherTabs.emit("Player","inactivate",["View spectra"])
         self.recording_path_checker()
         #   self.gui.pushButton_REC.setIcon(QIcon("pause_v4.PNG"))

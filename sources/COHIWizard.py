@@ -1,4 +1,4 @@
-#Version 2.1.4
+#Version 2.1.6
 # -*- coding: utf-8 -*-logfile
 # For reducing to RFCorder: disable all modules except resample in the config_modules.yaml file
 #
@@ -23,7 +23,7 @@ import datetime as ndatetime
 from datetime import datetime
 from pathlib import Path
 from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtWidgets import QMainWindow, QWidget, QApplication, QHBoxLayout, QLabel, QSizePolicy, QDesktopWidget
+from PyQt5.QtWidgets import QMainWindow, QWidget, QApplication, QHBoxLayout, QLabel, QSizePolicy, QDesktopWidget, QProgressDialog
 # from PyQt5.QtGui import QFont, QFontMetrics
 
 from PyQt5.QtCore import QTimer, QObject, QThread, pyqtSignal, QSize, Qt
@@ -357,6 +357,24 @@ class core_c(QObject):
         self.SigRelay.emit("cm_all_",["recording_path",self.m["recording_path"]])   #does not work !!!!   because all other modules are not yet instantiated !
         self.SigRelay.emit("cexex_xcore",["updateConfigElements",0])
 
+#from PyQt5.QtCore import QThread, pyqtSignal
+
+class DeviceSearchWorker(QThread):
+    finished = pyqtSignal(object)
+
+    def run(self):
+        # Simulierter langer Prozess
+        #time.sleep(5)
+        zeroconf = Zeroconf()
+        listener = RPListener()
+        browser = ServiceBrowser(zeroconf, "_http._tcp.local.", listener)
+        time.sleep(2)  # kurze Wartezeit für Antworten
+        zeroconf.close()
+        print("Found Red Pitayas:", listener.devices)
+        self.finished.emit(listener.devices)
+
+
+
 class core_v(QObject):
     """core view class, implements communication with the GUI elements and with controller module
     holds all common module variables as a dictionary self.m
@@ -502,6 +520,7 @@ class core_v(QObject):
         if self.timethread.isRunning():
             self.timethreaddActive = True #TODO:future system state
 
+
     #TODO: make IP address editor easier to handle, test method
     # def eventFilter(self, source, event):
     #     if (event.type() == Qt.KeyPress and
@@ -530,6 +549,44 @@ class core_v(QObject):
         self.SigRelay.emit("cexex_waveditor",["overwrite_header",0])
         pass
 
+    def start_device_search(self):
+        self.progress = QProgressDialog(
+            "Searching for connected devices,\nplease wait...",
+            None,
+            0, 0,
+            gui
+        )
+        self.progress.setWindowModality(Qt.ApplicationModal)
+        self.progress.setCancelButton(None)
+        self.progress.setMinimumDuration(0)
+        self.progress.show()
+        self.waitfordevices = True
+
+        self.worker = DeviceSearchWorker()
+        self.worker.finished.connect(self.on_search_finished)
+        self.worker.start()
+
+    def on_search_finished(self,devicelist):
+        print("on_search_finished: +++++++ Found Red Pitayas:", devicelist)
+        if len(devicelist) > 0:
+            self.gui.lineEdit_IPAddress.setText(devicelist[0][1])
+            auxi.standard_infobox("Address found. If correct, please press 'set IP', else enter correct address manually !")
+        else:
+            auxi.standard_errorbox("no Red Pitaya found, please check if device is connected or determine and enter address manually!")
+        self.editHostAddress_action()
+
+            # self.gui.lineEdit_IPAddress.setReadOnly(True)
+            # self.gui.lineEdit_IPAddress.setEnabled(False)
+            # self.gui.pushButton_IP.clicked.connect(self.editHostAddress)
+            # self.gui.pushButton_IP.setText("Set IP Address")
+            # self.gui.pushButton_IP.adjustSize()
+
+        self.progress.close()
+        self.progress.deleteLater()
+        self.worker.deleteLater()
+
+
+
     def editHostAddress(self):     #TODO Check if this is necessary, rename to cb_.... ! 
         ''' 
         Purpose: slot function for the edidHostAddress Lineedit item
@@ -551,14 +608,25 @@ class core_v(QObject):
         ## else:
         ##     print("Keine Red Pitayas gefunden.")
 
-        # Find connected red pitaya and return its IP/MAC
+        #Find connected red pitaya and return its IP/MAC
+
         # zeroconf = Zeroconf()
         # listener = RPListener()
         # browser = ServiceBrowser(zeroconf, "_http._tcp.local.", listener)
         # time.sleep(2)  # kurze Wartezeit für Antworten
         # zeroconf.close()
-        #print("Gefundene Red Pitayas:", listener.devices)
-        
+        # print("Found Red Pitayas:", listener.devices)
+        if self.gui.lineEdit_IPAddress.isReadOnly():
+            self.start_device_search()
+        else:
+            pass
+
+
+        # while self.waitfordevices:
+        #     time.sleep(0.5)
+        #     print("wait")
+
+    def editHostAddress_action(self):
         self.gui.lineEdit_IPAddress.setEnabled(True)
         self.gui.lineEdit_IPAddress.setReadOnly(False)
         self.gui.pushButton_IP.clicked.connect(self.set_IP) ####TODO: send identified IP to self.set_IP for auto-preset
@@ -1250,6 +1318,7 @@ if __name__ == '__main__':
     from auxiliaries import RPListener
     
     #instantiate core module
+    time.sleep(0.01)
     xcore_m = core_m()
     xcore_c = core_c(xcore_m)
     xcore_v = core_v(gui,xcore_c,xcore_m) # self.gui wird in xcore_v gestartet 
@@ -1422,6 +1491,6 @@ if __name__ == '__main__':
     except:
         xcore_v.logger.debug("startup Tab not defined in configuration file config_wizard.yaml")
         xcore_v.gui.tabWidget.setCurrentIndex(0)
-    print("COHIWIzard Version 2.1.4 , 05-12-2025, (C) Hermann Scharfetter")
+    print("COHIWIzard Version 2.1.6 , 18-12-2025, (C) Hermann Scharfetter")
     sys.exit(app.exec_())
     ###############TODO: zeroconf muss nun importiert werden !
