@@ -973,7 +973,7 @@ class playrec_c(QObject):
                     if errorstate:
                         Formatcheck_False = True
                         #self.errorhandler(value)
-                        print(f"invalid STEMLABRATES, skip file in list: {self.m["f1"]}")
+                        print(f"invalid STEMLABRATES, skip file in list: {self.m['f1']}")
                     self.SigRelay.emit("cexex_playrec",["listhighlighter",self.m["playlist_ix"]])
                     time.sleep(0.1)
                 
