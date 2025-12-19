@@ -1,4 +1,4 @@
-#Version 2.1.6
+#Version 2.1.7
 # -*- coding: utf-8 -*-logfile
 # For reducing to RFCorder: disable all modules except resample in the config_modules.yaml file
 #
@@ -621,10 +621,7 @@ class core_v(QObject):
         else:
             pass
 
-
-        # while self.waitfordevices:
-        #     time.sleep(0.5)
-        #     print("wait")
+        #self.editHostAddress_action()
 
     def editHostAddress_action(self):
         self.gui.lineEdit_IPAddress.setEnabled(True)
@@ -1491,6 +1488,6 @@ if __name__ == '__main__':
     except:
         xcore_v.logger.debug("startup Tab not defined in configuration file config_wizard.yaml")
         xcore_v.gui.tabWidget.setCurrentIndex(0)
-    print("COHIWIzard Version 2.1.6 , 18-12-2025, (C) Hermann Scharfetter")
+    print("COHIWIzard Version 2.1.7 , 18-12-2025, (C) Hermann Scharfetter")
     sys.exit(app.exec_())
     ###############TODO: zeroconf muss nun importiert werden !
