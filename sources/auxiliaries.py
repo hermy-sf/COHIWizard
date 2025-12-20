@@ -399,6 +399,43 @@ class auxiliaries():
         return errorstate, value
 
 
+    def show_infobox_withcheck(messagetext, checkboxtext):
+        """
+        QMessageBox which displays an info text 'messagetext' and adds a checkbox with explaining text 'checkboxtext'
+        The state of the ok_button and the checkbox are returned
+        
+        :param messagetext : text which shall be displayed as message text
+        :type : str
+        :param checkboxtext : text for the checkbox
+        :type : str
+        :returns : ok_pressed
+        :type : Boolean
+        :returns: dont_show_again
+        :type : Boolean 
+        """
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Information)
+        msg.setWindowTitle("Information")
+        msg.setText(messagetext)
+        
+
+        # OK-Button
+        msg.setStandardButtons(QMessageBox.Ok)
+
+        # Checkbox
+        checkbox = QCheckBox(checkboxtext)
+        msg.setCheckBox(checkbox)
+
+        # Dialog anzeigen (modal)
+        result = msg.exec_()   # PyQt6: msg.exec()
+
+        # Rückgabewerte
+        ok_pressed = (result == QMessageBox.Ok)
+        dont_show_again = checkbox.isChecked()
+
+        return ok_pressed, dont_show_again
+
+
     def standard_errorbox(errortext):
         msg = QMessageBox()
         msg.setIcon(QMessageBox.Critical)

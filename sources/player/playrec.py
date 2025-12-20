@@ -1218,6 +1218,7 @@ class playrec_v(QObject):
                 #module_path = os.path.join("dev_drivers",cf)
                 #full_module_path = f"{module_path}.cohi_playrecworker"
                 #print(f"vvvvvvvvvvvvvvvvvvvvvvvvvvv    full_module_path: {full_module_path}")
+                
                 try:
                     self.m["imported_device_modules"].append(importlib.import_module(full_module_path))
                     #print(f"vvvvvvvvvvvvvvvvvvvvvvvvvvv    imported device module: {self.m['imported_device_modules']}")
@@ -1233,9 +1234,27 @@ class playrec_v(QObject):
                     self.gui.comboBox_stemlab.addItem(str(cf)) #shifted from (***)
                 except:
                     print(f"module {cf} not in driver list, will be ignored")
-                    auxi.standard_infobox(f"Hardware driver {cf} cannot be activated.\n\
+                    messagetext = f"Hardware driver {cf} cannot be activated.\n\
                     Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
-                    COHIWizard will still be operative for all other correctly installed hardware devices")
+                    COHIWizard will still be operative for all other correctly installed hardware devices"
+                    dontshowlabel = f"dontshow{cf}"
+                    if dontshowlabel not in self.metadata.keys():
+                        checkboxtext = "Don't show this message again"
+                        ok_pressed, dont_show_again = auxi.show_infobox_withcheck(messagetext, checkboxtext)
+                        if dont_show_again:
+                            try:
+                                self.metadata[dontshowlabel] = True 
+                                stream = open("config_wizard.yaml", "w")
+                                yaml.dump(self.metadata, stream)
+                                stream.close()
+                            except:
+                                self.logger.error("playrec: 'dont show' labelling: cannot write metadata")
+                                pass
+
+
+                    # auxi.standard_infobox(f"Hardware driver {cf} cannot be activated.\n\
+                    # Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
+                    # COHIWizard will still be operative for all other correctly installed hardware devices")
                     #auxi.standard_errorbox(f"Hardware driver {cf} cannot be activated.\n\
                     #Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
                     #COHIWizard will still be operative for all other correctly installed hardware devices")
