@@ -303,7 +303,7 @@ class playrec_worker(QObject):
         :return: none
         :rtype: none
         """
-        self.GAINFACTOR = 4
+        self.GAINFACTOR = 1
         self.gain = self.get_gain()
         size2G = 2**31
         self.stopix = False
