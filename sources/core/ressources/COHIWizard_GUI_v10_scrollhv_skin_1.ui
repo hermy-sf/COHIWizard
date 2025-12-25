@@ -4509,6 +4509,9 @@ UFL</string>
                   </disabled>
                  </palette>
                 </property>
+                <property name="toolTip">
+                 <string>enable automatic volume control during playback</string>
+                </property>
                 <property name="autoFillBackground">
                  <bool>true</bool>
                 </property>
@@ -4964,7 +4967,7 @@ UFL</string>
                  <bool>false</bool>
                 </property>
                 <property name="toolTip">
-                 <string>allow definition of STEMLAB IP address</string>
+                 <string>auto-search / definition of STEMLAB IP address</string>
                 </property>
                 <property name="autoFillBackground">
                  <bool>true</bool>
@@ -7454,6 +7457,9 @@ UFL</string>
                   <verstretch>1</verstretch>
                  </sizepolicy>
                 </property>
+                <property name="toolTip">
+                 <string>enable automatic gain control during recording</string>
+                </property>
                 <property name="text">
                  <string>AGC</string>
                 </property>
@@ -7493,7 +7499,14 @@ UFL</string>
     <addaction name="actionFile_open"/>
     <addaction name="actionOverwrite_header"/>
    </widget>
+   <widget class="QMenu" name="menuDocumentation">
+    <property name="title">
+     <string>Documentation</string>
+    </property>
+    <addaction name="actionopen_pdf"/>
+   </widget>
    <addaction name="menuFile"/>
+   <addaction name="menuDocumentation"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
   <action name="actionFile_open">
@@ -7526,6 +7539,11 @@ UFL</string>
   <action name="actionLoad_template_header">
    <property name="text">
     <string>Load template header</string>
+   </property>
+  </action>
+  <action name="actionopen_pdf">
+   <property name="text">
+    <string>open pdf</string>
    </property>
   </action>
  </widget>

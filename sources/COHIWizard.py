@@ -1,4 +1,4 @@
-#Version 2.1.8
+#Version 2.2.0
 # -*- coding: utf-8 -*-logfile
 # For reducing to RFCorder: disable all modules except resample in the config_modules.yaml file
 #
@@ -23,11 +23,16 @@ import datetime as ndatetime
 from datetime import datetime
 from pathlib import Path
 from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtWidgets import QMainWindow, QWidget, QApplication, QHBoxLayout, QLabel, QSizePolicy, QDesktopWidget, QProgressDialog
+from PyQt5.QtWidgets import QApplication #TODO: Webengine aktivieren für pdf-Anzeigen
+# from PyQt5.QtWebEngineWidgets import QWebEngineView
+# from PyQt5.QtWebEngineWidgets import QWebEngineSettings
+# from PyQt5.QtCore import QUrl
+from PyQt5.QtWidgets import QMainWindow, QWidget, QApplication, QHBoxLayout, QLabel, QSizePolicy, QDesktopWidget, QProgressDialog, QDockWidget
+
 # from PyQt5.QtGui import QFont, QFontMetrics
 
 from PyQt5.QtCore import QTimer, QObject, QThread, pyqtSignal, QSize, Qt
-from PyQt5.QtGui import QFont, QIcon, QFont, QFontMetrics
+from PyQt5.QtGui import QFont, QIcon, QFontMetrics
 import time
 import yaml
 import importlib
@@ -216,6 +221,39 @@ class starter(QMainWindow):
         ]
 
 
+import fitz  # PyMuPDF
+from PyQt5.QtWidgets import QLabel, QVBoxLayout, QScrollArea
+from PyQt5.QtGui import QImage, QPixmap
+
+class PdfViewer(QWidget):
+    def __init__(self, pdf_path, parent=None):
+        super().__init__(parent)
+
+        self.doc = fitz.open(str(pdf_path))
+
+        layout = QVBoxLayout(self)
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+
+        container = QWidget()
+        vbox = QVBoxLayout(container)
+
+        for page in self.doc:
+            pix = page.get_pixmap()
+            img = QImage(
+                pix.samples,
+                pix.width,
+                pix.height,
+                pix.stride,
+                QImage.Format_RGB888
+            )
+            lbl = QLabel()
+            lbl.setPixmap(QPixmap.fromImage(img))
+            lbl.setAlignment(Qt.AlignCenter)
+            vbox.addWidget(lbl)
+
+        scroll.setWidget(container)
+        layout.addWidget(scroll)
 
 class core_m(QObject):
     """core model class, holds all common module variables as a dictionary self.mdl
@@ -410,7 +448,7 @@ class core_v(QObject):
         self.gui.Mainwindowreference = gui
         self.gui.actionFile_open.triggered.connect(self.cb_open_file)
         self.gui.actionOverwrite_header.triggered.connect(self.send_overwrite_header)
-
+        self.gui.actionopen_pdf.triggered.connect(self.open_pdf)
         #
         self.gui.Mainwindowreference.SigResize.connect(self.resizehandler)
         ###TODO: re-organize, there should be no access to gui elements of other modules
@@ -447,6 +485,8 @@ class core_v(QObject):
                 self.m["metadata"]["recording_path"] = self.m["rootpath"]
             if not "ffmpeg_path" in list(self.m["metadata"].keys()):
                 no_ffmpeg_path = True
+            if not "documentation" in self.m["metadata"]:
+                no_documentation = True 
         except:
             print("cannot get config_wizard.yaml metadata, write a new initial config file")
             self.m["metadata"] = {"last_path": self.standardpath}
@@ -458,6 +498,7 @@ class core_v(QObject):
             self.m["metadata"]["HIRES_ffmpeg"] = True 
             self.m["metadata"]["REC_AGC"] = False 
             self.m["metadata"]["AGC_targetvolume"] = 0.4
+            self.m["metadata"]["documentation"] = "/home/scharfetter/Documents/cohiradia/COHIWizard/documentation/UserManual_COHIWizard_v2.x_en.pdf"
             no_ffmpeg_path = True
             if not os.path.exists(default_recordingpath):
                 os.makedirs(default_recordingpath)
@@ -531,6 +572,49 @@ class core_v(QObject):
     #             self.gui.lineEdit_IPAddress.setCursorPosition(cursor + 1)  # Move cursor to the next field
     #             return True  # Ignore default Tab key behavior
     #     return super().eventFilter(source, event)
+
+    def open_pdf(self):
+        """open and display the COHIWizard user manual PDF in a separate window
+        :param: none
+        :type: none
+        :raises: none
+        :return: errorstate, value
+        :rtype: Boolean, str"""  
+        errorstate = False
+        value = ""
+        errorstate, value = auxi.fetch_configyaml("documentation")
+        if errorstate:
+            auxi.standard_errorbox(value)
+            return errorstate, value   
+        # if not errorstate:
+        #     pdf_path = Path(value)
+        # else:  
+            
+        #     errorstate = True
+        #     value = "No documentation_pdf entry in config_wizard.yaml found"
+        #     auxi.standard_errorbox(value)
+        #     return errorstate, value
+        # base_dir = Path(__file__).resolve().parent #TODO make part of the configuration
+        # doc_dir = base_dir.parent / "documentation" 
+        # pdf_path = doc_dir / "UserManual_COHIWizard_v2.x_en.pdf"
+        # pdf_path = (Path(__file__).resolve().parent.parent /
+        #         "documentation" /
+        #         "UserManual_COHIWizard_v2.x_en.pdf")
+        pdf_path = Path(self.m["metadata"]["documentation"])
+        # if not pdf_path.exists():
+        #     raise FileNotFoundError(pdf_path)
+        #     pdf_path = Path(self.m["rootpath"]) / "core" / "COHIWizard_manual.pdf"
+        if not pdf_path.exists():
+            auxi.standard_errorbox(f"PDF manual not found at {pdf_path}")
+            errorstate = True
+            value = f"PDF manual not found at {pdf_path}"
+            return errorstate, value    
+
+        self.pdf_viewer = PdfViewer(pdf_path)
+        self.pdf_viewer.setWindowTitle("COHIWizard Manual")
+        self.pdf_viewer.resize(800, 600)
+        self.pdf_viewer.show()
+        return errorstate, value
 
     def resizehandler(self, label, size):
         """resize handler for the main window, handles resizing widgets based on size of MainWindow
@@ -1488,6 +1572,11 @@ if __name__ == '__main__':
     except:
         xcore_v.logger.debug("startup Tab not defined in configuration file config_wizard.yaml")
         xcore_v.gui.tabWidget.setCurrentIndex(0)
-    print("COHIWIzard Version 2.1.8 , 18-12-2025, (C) Hermann Scharfetter")
+    print("COHIWIzard Version 2.2.0 , 25-12-2025, (C) Hermann Scharfetter")
+
+
+
     sys.exit(app.exec_())
     ###############TODO: zeroconf muss nun importiert werden !
+
+
