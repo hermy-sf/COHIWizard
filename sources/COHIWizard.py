@@ -498,11 +498,12 @@ class core_v(QObject):
             self.m["metadata"]["HIRES_ffmpeg"] = True 
             self.m["metadata"]["REC_AGC"] = False 
             self.m["metadata"]["AGC_targetvolume"] = 0.4
-            base_dir = Path(__file__).resolve().parent #TODO make part of the configuration
-            doc_dir = base_dir.parent / "documentation"
-            alternative_doc_dir = os.path.join(self.m["rootpath"], "documentation")
-            self.m["metadata"]["documentation"] = os.path.join(doc_dir, "UserManual_COHIWizard_v2.x_en.pdf") 
-            self.m["metadata"]["documentation_alt"] = os.path.join(alternative_doc_dir, "UserManual_COHIWizard_v2.x_en.pdf") 
+            # base_dir = Path(__file__).resolve().parent #TODO make part of the configuration
+            # doc_dir = base_dir.parent / "documentation"
+            doc_dir = os.path.join(os.fspath(Path(self.m["rootpath"]).parent),  "documentation")
+            os.path.join(os.fspath(Path(self.m["rootpath"]).parent),  "documentation")
+            self.m["metadata"]["documentation"] = os.path.join(doc_dir, "UserManual_COHIWizard.pdf") 
+            #self.m["metadata"]["documentation_alt"] = os.path.join(alternative_doc_dir, "UserManual_COHIWizard_v2.x_en.pdf") 
             no_ffmpeg_path = True
             if not os.path.exists(default_recordingpath):
                 os.makedirs(default_recordingpath)
