@@ -4518,6 +4518,9 @@ UFL</string>
                 <property name="text">
                  <string>AVC</string>
                 </property>
+                <property name="autoExclusive">
+                 <bool>false</bool>
+                </property>
                </widget>
               </item>
               <item row="1" column="12">

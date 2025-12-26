@@ -1684,6 +1684,7 @@ class Ui_MainWindow(object):
         palette.setBrush(QtGui.QPalette.Disabled, QtGui.QPalette.PlaceholderText, brush)
         self.radioButton_AGC.setPalette(palette)
         self.radioButton_AGC.setAutoFillBackground(True)
+        self.radioButton_AGC.setAutoExclusive(False)
         self.radioButton_AGC.setObjectName("radioButton_AGC")
         self.gridLayout_10.addWidget(self.radioButton_AGC, 15, 9, 1, 1)
         self.pushButton_IP = QtWidgets.QPushButton(self.tab_playrec)
