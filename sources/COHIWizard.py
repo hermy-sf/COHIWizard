@@ -786,7 +786,7 @@ class core_v(QObject):
             self.gui.lineEdit_IPAddress.setText(devicelist[0][1])
             auxi.standard_infobox("Address found. If correct, please press 'set IP', else enter correct address manually !")
         else:
-            auxi.standard_errorbox("no Red Pitaya found, please check if device is connected or determine and enter address manually!")
+            auxi.standard_errorbox("No Red Pitaya found. \nPlease retry once again, because at the first time the auto-search may fail. \n \n If still unsuccessful, check if device is connected or determine and enter the address manually!")
         self.editHostAddress_action()
 
             # self.gui.lineEdit_IPAddress.setReadOnly(True)
