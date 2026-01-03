@@ -12,7 +12,7 @@ Appropriate recordings can be played back on historic Radio receivers with exter
 2) unpack the zip file to a local directory of your PC, say `cohihome`
 3) start the exe File COHIWizard_v2.2.x.exe, x being the last sub-version
 
-## Method B (most recent version) for execution under Python (also running under LINUX but not yet excessively tested. The main functions have been successfully executed under DEBIAN 12and DEBIAN 13): 
+## Method B (most recent version) for execution under Python (also running under LINUX, tested for Debian12 and 13): 
 
 1) install Python v3.10 on your PC (development is being done with v3.10.11); the COHIWIzard or some of its components may fail with other versions
 2) clone the repository from GITHUB to your PC to a folder, say `cohihome`
