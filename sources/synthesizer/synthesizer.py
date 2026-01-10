@@ -284,7 +284,7 @@ class modulate_worker(QObject):
         # Bestimme die erwartete maximale Amplitude nach Filterung der Spitzen
         expected_max_amp = filtered_amplitudes.max() if filtered_amplitudes.size > 0 else amplitudes.max()
         expected_RMS_amp = filtered_amplitudes.std() if filtered_amplitudes.size > 0 else amplitudes.std()
-        print("ready")
+        #print("ready")
         self.SigMessage.emit("----")
         return expected_max_amp, expected_RMS_amp
 
@@ -398,7 +398,7 @@ class modulate_worker(QObject):
             if len(audio_block) < block_size:
                 delta = block_size - len(audio_block)
                 aux = np.zeros(block_size)
-                print(f"zeropad audio block, pad length = {delta}, len audioblock: {len(audio_block)}" )
+                #print(f"zeropad audio block, pad length = {delta}, len audioblock: {len(audio_block)}" )
                 aux[0 : len(audio_block)] = audio_block
                 audio_block = aux
             # Resamplingif required
@@ -493,7 +493,7 @@ class modulate_worker(QObject):
                 #print(f"filehandles in modulate_worker, process mult carr blw: {file_handles}")
                 if self.stopix is True:
                     break
-                print(f">>>>>>>>>>>>> process mult carr block, carrier_freq: {carrier_freq}, phase {phase}: silence: {silence} ")
+                #print(f">>>>>>>>>>>>> process mult carr block, carrier_freq: {carrier_freq}, phase {phase}: silence: {silence} ")
                 modulated_block, new_zi, sample_offsets[i], current_file_indices[i], audio_gain[i], silence[i], cumulative_time[i] = self.read_and_process_audio_blockwise(playlists[i], carrier_freq*1000, sample_rate, block_size, modulation_depth, zi, sample_offsets[i], current_file_indices[i], file_handles[i], audio_gain[i], silence[i], cumulative_time[i],sos, phase)
                 #self.logger.debug(f"slow process_multiple_carriers_blockwies: Schröder phase : {phase} @ sampling rate: {sample_rate} and and silence_duration: {silence[i]}, carrier_freq: {carrier_freq}")
 
@@ -585,7 +585,7 @@ class modulate_worker(QObject):
                 if perc_progress > 100:
                     break
             deltatime = time.time() - reftime
-            print(f"block with size : {block_size} written, time: {deltatime}")            
+            #print(f"block with size : {block_size} written, time: {deltatime}")            
         # Close the final output file
         out_file.close()
         filesize = total_samples_written*4
@@ -910,7 +910,7 @@ class modulate_worker_ffmpeg(QObject):
         BLUE = "\033[34m"
         RESET = "\033[0m"  # setzt die Farbe zurück
         if self.lastround:
-            print(f"{BLUE}>>>>>>>>>>>>>>>>>>>>>>>>> get_aligned_block; read complex data from file {filename} at start: {start}, block size: {block_size} as INT16 !!! ")
+            #print(f"{BLUE}>>>>>>>>>>>>>>>>>>>>>>>>> get_aligned_block; read complex data from file {filename} at start: {start}, block size: {block_size} as INT16 !!! ")
             data = np.empty(block_size, dtype=np.int16)
             with open(filename, "rb") as f:
                 f.seek(start)
@@ -922,7 +922,7 @@ class modulate_worker_ffmpeg(QObject):
                 print(f"{RESET}")
                 return complex_data
         else:
-            print(f"{GREEN}>>>>>>>>>>>>>>>>>>>>>>>>> get_aligned_block; read complex data from file {filename} at start: {start}, block size: {block_size} as FLOAT32 !!! ")
+            #print(f"{GREEN}>>>>>>>>>>>>>>>>>>>>>>>>> get_aligned_block; read complex data from file {filename} at start: {start}, block size: {block_size} as FLOAT32 !!! ")
             data = np.empty(block_size, dtype=np.float32)
             with open(filename, "rb") as f:
                 f.seek(start)
@@ -931,7 +931,7 @@ class modulate_worker_ffmpeg(QObject):
                 int_data = np.frombuffer(data, dtype=np.float32)
                 complex_data = (int_data[::2] + 1j * int_data[1::2])
                 self.logger.debug(f"get_aligned_block; return complex data of len:{len(complex_data)}")
-                print(f"{RESET}")
+                #print(f"{RESET}")
                 return complex_data
                 
 
@@ -1066,12 +1066,12 @@ class modulate_worker_ffmpeg(QObject):
         # playlists[i][j] ist eine 2-Dim liste mit den vollen Pfaden der Audio Files, [i] ist der carrierindex, [j] ist der Audioindex einer Audioserie des carriers i
         self.set_progress(0)
         self.logger.debug(f"process_multiple_carriers_ffmpeg; carrier_frequencies:{carrier_frequencies}")
-        print(f"process_multiple_carriers_ffmpeg; carrier_frequencies:{carrier_frequencies}")
+        #print(f"process_multiple_carriers_ffmpeg; carrier_frequencies:{carrier_frequencies}")
         self.stopix = False
         max_file_size = self.get_filesize_limit() #2 * 1024**3  # 2 GB in bytes
         self.logger.debug(f"max filesize set to: {max_file_size}")
         self.logger.debug(f"process_multiple_carriers_ffmpeg: expected overall filesize: {4*exp_num_samples}")
-        print(f"process_multiple_carriers_ffmpeg: expected overall filesize: {4*exp_num_samples}")
+        #print(f"process_multiple_carriers_ffmpeg: expected overall filesize: {4*exp_num_samples}")
         abs_carrier_frequencies = carrier_frequencies * 1000 + np.ones(len(carrier_frequencies)) * self.get_LO_freq()
         self.logger.debug(f"absolute carrier frequencies: {abs_carrier_frequencies}") 
         alignment = 4                                                              
@@ -1331,12 +1331,12 @@ class modulate_worker_ffmpeg(QObject):
         # playlists[i][j] ist eine 2-Dim liste mit den vollen Pfaden der Audio Files, [i] ist der carrierindex, [j] ist der Audioindex einer Audioserie des carriers i
         self.set_progress(0)
         self.logger.debug(f"process_multiple_carriers_ffmpeg; carrier_frequencies:{carrier_frequencies}")
-        print(f"process_multiple_carriers_ffmpeg; carrier_frequencies:{carrier_frequencies}")
+        #print(f"process_multiple_carriers_ffmpeg; carrier_frequencies:{carrier_frequencies}")
         self.stopix = False
         max_file_size = self.get_filesize_limit() #2 * 1024**3  # 2 GB in bytes
         self.logger.debug(f"max filesize set to: {max_file_size}")
         self.logger.debug(f"process_multiple_carriers_ffmpeg: expected overall filesize: {4*exp_num_samples}")
-        print(f"process_multiple_carriers_ffmpeg >>: expected overall filesize: {4*exp_num_samples}")
+        #print(f"process_multiple_carriers_ffmpeg >>: expected overall filesize: {4*exp_num_samples}")
         abs_carrier_frequencies = carrier_frequencies * 1000 + np.ones(len(carrier_frequencies)) * self.get_LO_freq()
         self.logger.debug(f"absolute carrier frequencies: {abs_carrier_frequencies}") 
         alignment = 4                                                              
@@ -1662,7 +1662,8 @@ class synthesizer_c(QObject):
 
 
     def dummy(self):
-        print("hello from superclass")
+        #print("hello from superclass")
+        pass
 
     def checkdiskspace(self,expected_filesize, _dir):
         """check if free diskspace is sufficient for writing expeczed_filesize bytes on directory _dir
@@ -1705,7 +1706,7 @@ class synthesizer_c(QObject):
         value = None
         if len(argv) > 0:
             c = argv[0]
-            print(f"argv in read_soundfile: {argv}")
+            #print(f"argv in read_soundfile: {argv}")
             if c.find("c") == 0:
                 checkflag = True
 
@@ -1724,10 +1725,10 @@ class synthesizer_c(QObject):
                     "-qscale:a", "2",   # Audio quality for MP3 (ignored for WAV)
                     true_tempfile
                 ]
-                print(f">>>>>>>>>ooooooooooooooo############. ffmpeg_command: {ffmpeg_command}")
-                print("\nstart subprocess")
+                #print(f">>>>>>>>>ooooooooooooooo############. ffmpeg_command: {ffmpeg_command}")
+                #print("\nstart subprocess")
                 subprocess.run(ffmpeg_command, check=True)
-                print("\nsubprocess terminated")
+                #print("\nsubprocess terminated")
             ############ ALTERNATIVE SOUNDFILE TREATMENT see appendix SFBUF
 
             except subprocess.CalledProcessError as e:
@@ -2399,8 +2400,8 @@ class synthesizer_v(QObject):
                 expected_filesize *= 4 # double space needed because of intermediate temp files with full recording lengthand float32 intermediate type
             YELLOW = "\033[33m"
             RESET = "\033[0m" 
-            print(f"{YELLOW} expected filesize: {expected_filesize}, HIRES: {HIRES}")
-            print(f"{RESET}") 
+            #print(f"{YELLOW} expected filesize: {expected_filesize}, HIRES: {HIRES}")
+            #print(f"{RESET}") 
         try:
             errorstatus, value = self.synthesizer_c.checkdiskspace(expected_filesize, self.m["recording_path"])
         except:
@@ -2419,7 +2420,7 @@ class synthesizer_v(QObject):
             self.autosave = True
             # necessary only if no project has been loaded previously 
             self.save_project()
-            print("save temporary project file")
+            #print("save temporary project file")
             time.sleep(0.5)
             errorstatus, value = self.load_project()
             if errorstatus:
@@ -2711,7 +2712,7 @@ class synthesizer_v(QObject):
                 file_path = os.path.join(self.m["temp_path"], filename)
                 try:
                     os.remove(file_path)
-                    print(f"temp file deleted: {file_path}")
+                    #print(f"temp file deleted: {file_path}")
                 except Exception as e:
                     print(f"Error when deleting temporary file: {file_path}: {str(e)}")
 
@@ -3286,7 +3287,7 @@ class synthesizer_v(QObject):
 
                 #TODO TODO TODO: Anzeige, dass nun ein länger dauernder Prozess startet (Read from URL)
                     ctime = datetime.now()
-                    print(f"start read URL list @ {ctime}")
+                    #print(f"start read URL list @ {ctime}")
                     #TODO TODO TODO: Ermitteln, of ffmpeg installiert ist. Wenn nein:autoinstall
                     errorstatus, aux = self.get_stream_duration(file_path)
                     if errorstatus:
@@ -3295,7 +3296,7 @@ class synthesizer_v(QObject):
                         return(errorstatus, value)
                     duration += aux
                     value = duration
-                    print(f"end read URL list @ {ctime}, duration: {duration}")
+                    #print(f"end read URL list @ {ctime}, duration: {duration}")
                 #self.gui.label_audioset_name.setText("")
                 #self.gui.label_audioset_name.setStyleSheet("background-color: #FFFFFF; color: black;")  # weiss
                 else:
@@ -3400,9 +3401,9 @@ class synthesizer_v(QObject):
 
     def on_value_changed(self, value):
         # Reagiere sofort, wenn der Wert geändert wird und die Spinbox nicht den Fokus hat
-        print(f"###########Focus unlear")
+        #print(f"###########Focus unclear")
         if self.gui.spinBox_numcarriers.value() != self.previous_value:
-            print(f"Wert durch Pfeiltasten geändert: {value}")
+            #print(f"Wert durch Pfeiltasten geändert: {value}")
             # Aktualisiere den vorherigen Wert
             self.previous_value = value
             self.freq_carriers_update()
@@ -3412,7 +3413,7 @@ class synthesizer_v(QObject):
         initiates updating of the number of carriers
         """
         self.freq_carriers_update()
-        print("on editing finished")
+        #print("on editing finished")
 
     def freq_carriers_update(self,*argv):
         """
@@ -3678,7 +3679,7 @@ class synthesizer_v(QObject):
         self.m["audioBW"] = float(self.gui.lineEdit_audiocutoff_freq.text())
         if len(argv) > 0:
             c = argv[0]
-            print(f"argv in AudioBWupdate: {argv}")
+            #print(f"argv in AudioBWupdate: {argv}")
             if c.find("nup") == 0:
                 return
         self.freq_carriers_update()
@@ -3699,7 +3700,7 @@ class synthesizer_v(QObject):
         self.m["LO"] = float(self.gui.lineEdit_LO.text())
         if len(argv) > 0:
             c = argv[0]
-            print(f"argv in LO_update: {argv}")
+            #print(f"argv in LO_update: {argv}")
             if c.find("nup") == 0:
                 return
         self.freq_carriers_update()
@@ -3740,7 +3741,7 @@ class synthesizer_v(QObject):
         self.m["fc_low"] = float(self.gui.lineEdit_fc_low.text())
         if len(argv) > 0:
             c = argv[0]
-            print(f"argv in fc_low_update: {argv}")
+            #print(f"argv in fc_low_update: {argv}")
             if c.find("nup") == 0:
                 return
         #####TODO TODO TODO: check if argv necessary otherwise no custom carrier treatment
@@ -3774,7 +3775,7 @@ class synthesizer_v(QObject):
         self.m["carrier_distance"] = float(self.gui.lineEdit_carrierdistance.text())
         if len(argv) > 0:
             c = argv[0]
-            print(f"argv in fc_low_update: {argv}")
+            #print(f"argv in fc_low_update: {argv}")
             if c.find("nup") == 0:
                 nup = True
         if not nup:       
@@ -4020,9 +4021,10 @@ class synthesizer_v(QObject):
             #dialog.set_table_data()
             #self.custom_carriers  
             custom_carriers = dialog.get_table_data()
-            print("Eingegebene Daten:")
+            #print("Eingegebene Daten:")
             for row in custom_carriers:
-                print(row)
+                #print(row)
+                pass
         self.freq_carriers_update(self,custom_carriers)
         self.fc_low_update('nup')
 
@@ -4144,7 +4146,7 @@ class synthesizer_v(QObject):
             self.readFilePath.append(current_filepath)
 
         # Now, sub_playlists holds the segmented playlists and headers contains the associated index for each
-        print(sub_playlists)
+        #print(sub_playlists)
         #print(headers)
         custom_carriers = []
         for ix in range(len(headers)):#TODO necessary ?
