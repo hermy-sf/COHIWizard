@@ -41,6 +41,7 @@ import logging
 import platform
 from icons import Logos
 from zeroconf import Zeroconf, ServiceBrowser
+import subprocess
 
 class starter(QMainWindow):
     """instantiates the MainWindow, instantiates a auxiliary gui object for the
@@ -710,40 +711,33 @@ class core_v(QObject):
             errorstate = True
             value = f"PDF manual not found at {pdf_path}"
             return errorstate, value    
+        
+        if sys.platform.startswith("linux"):
+            subprocess.Popen(["xdg-open", str(pdf_path)])
+    ###############TODO TODO TODO TEsten !
+        elif sys.platform.startswith("win"):
+            os.startfile(str(pdf_path))
 
-        self.pdf_viewer = PdfViewer(pdf_path)
-        self.pdf_viewer.setWindowTitle("COHIWizard Manual")
-        screen = QGuiApplication.screenAt(QCursor.pos())
-        geom = screen.availableGeometry()
-        width  = int(geom.width() * 0.7)
-        height = int(geom.height() * 0.7)
-        self.pdf_viewer.resize(width, height)
-        self.pdf_viewer.move(
-            geom.center() - self.pdf_viewer.rect().center()
-        )
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(pdf_path)])
 
-        #self.pdf_viewer.setGeometry(geom)
-        #self.pdf_viewer.resize(800, 600)
-        self.pdf_viewer.show()
+        else:
+            raise RuntimeError(f"Unsupported OS: {sys.platform}")
+        ###############
+
+        # self.pdf_viewer = PdfViewer(pdf_path)
+        # self.pdf_viewer.setWindowTitle("COHIWizard Manual")
+        # screen = QGuiApplication.screenAt(QCursor.pos())
+        # geom = screen.availableGeometry()
+        # width  = int(geom.width() * 0.7)
+        # height = int(geom.height() * 0.7)
+        # self.pdf_viewer.resize(width, height)
+        # self.pdf_viewer.move(
+        #     geom.center() - self.pdf_viewer.rect().center()
+        # )
+
+        # self.pdf_viewer.show()
         return errorstate, value
-        # if not errorstate:
-        #     pdf_path = Path(value)
-        # else:  
-            
-        #     errorstate = True
-        #     value = "No documentation_pdf entry in config_wizard.yaml found"
-        #     auxi.standard_errorbox(value)
-        #     return errorstate, value
-        # base_dir = Path(__file__).resolve().parent #TODO make part of the configuration
-        # doc_dir = base_dir.parent / "documentation" 
-        # pdf_path = doc_dir / "UserManual_COHIWizard_v2.x_en.pdf"
-        # pdf_path = (Path(__file__).resolve().parent.parent /
-        #         "documentation" /
-        #         "UserManual_COHIWizard_v2.x_en.pdf")
-
-        # if not pdf_path.exists():
-        #     raise FileNotFoundError(pdf_path)
-        #     pdf_path = Path(self.m["rootpath"]) / "core" / "COHIWizard_manual.pdf"
 
 
     def resizehandler(self, label, size):
