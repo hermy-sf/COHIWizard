@@ -464,7 +464,7 @@ class playrec_worker(QObject):
                                 else:
                                     print("############# NaN NaN NaN NaN in showdata ################")
                             else:
-                                print(f"REMOVE_playrecworker_fl2k: gain = {gain}, preset_volume = {preset_volume}, std(data: {np.std(np.abs(data[0:2:self.DATASHOWSIZE-1]))})")
+                                #print(f"REMOVE_playrecworker_fl2k: gain = {gain}, preset_volume = {preset_volume}, std(data: {np.std(np.abs(data[0:2:self.DATASHOWSIZE-1]))})")
                                 #self.set_data( preset_volume * gain * data[0:self.DATASHOWSIZE])
                                 #self.set_data( data[0:self.DATASHOWSIZE])
                                 self.set_data( preset_volume * scalefactor_fl2k * data[0:self.DATASHOWSIZE])
