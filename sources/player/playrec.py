@@ -1853,6 +1853,11 @@ class playrec_v(QObject):
         :param: none
         :type: none
         """
+        #self.st = self.et
+        self.st = time.time()
+        self.et = time.time()
+        self.logger.debug(f"999 playrec timing segment etime: {self.et-self.st} s: playrec timing base start")
+        #print(f"6C segment etime: {et-st} s: relay and updateGUIs of all modules")
         self.playlist_update()
         self.update_LO_bias()
         #TODO TODO TODO: inactivate other tabs
@@ -1901,6 +1906,10 @@ class playrec_v(QObject):
             self.m["timescaler"] = self.m["wavheader"]['nSamplesPerSec']*self.m["wavheader"]['nBlockAlign']
 
             errorstate, value = self.playrec_c.checkSTEMLABrates()
+            self.st = self.et
+            self.et = time.time()
+            self.logger.debug(f"999 playrec timing segment etime: {self.et-self.st} s: Segment 2: checked STEMlab rates")
+
             #if not self.playrec_c.checkSTEMLABrates():
             if errorstate:
                 self.playrec_c.errorhandler(value)
@@ -1913,7 +1922,14 @@ class playrec_v(QObject):
             if self.m["playthreadActive"] == True:
                 #self.playrec_c.playrec_tworker.pausestate = False
                 self.playrec_c.playrec_tworker.set_pause(False)
+            self.st = self.et
+            self.et = time.time()
+            self.logger.debug(f"999 playrec timing segment etime: {self.et-self.st} s: Segment 3: call play_manager")
             errorstate, value = self.playrec_c.play_manager()
+            self.st = self.et
+            self.et = time.time()
+            self.logger.debug(f"999 playrec timing segment etime: {self.et-self.st} s: Segment 4: play_manager call accomplished")
+
             if errorstate:
                 self.playrec_c.errorhandler(value)
             self.m["pausestate"] = False
@@ -1926,6 +1942,10 @@ class playrec_v(QObject):
             if self.m["playthreadActive"] == True:
                 #self.playrec_c.playrec_tworker.pausestate = True
                 self.playrec_c.playrec_tworker.set_pause(True)
+        self.st = self.et
+        self.et = time.time()
+        self.logger.debug(f"999 playrec timing segment etime: {self.et-self.st} s: relay and updateGUIs of all modules")
+
         if self.m["errorf"]:
             #auxi.standard_errorbox(self.m["errortxt"])
             return False
