@@ -331,6 +331,10 @@ class playrec_c(QObject):
         """        
         errorstate = False
         value = ""
+        #self.st = self.et
+        self.st = time.time()
+        self.et = time.time()
+        self.logger.debug(f"999 playrec play manager timing segment etime: {self.et-self.st} s: PRW segment 1:play_manager start")
 
         if self.m["playthreadActive"]:
             self.logger.debug("playthread is active, no action") 
@@ -356,6 +360,10 @@ class playrec_c(QObject):
         errorstate, value = self.stemlabcontrol.set_play()
         if errorstate:
             self.playrec_c.errorhandler(value)
+        self.st = self.et
+        self.et = time.time()
+        self.logger.debug(f"999 playrec play manager timing segment etime: {self.et-self.st} s: PRW segment 2: sdr_control accomplished")
+
         self.m["modality"] = "play"
     ######################  END change for general devicedrivers
     
@@ -393,7 +401,10 @@ class playrec_c(QObject):
         # e.g. for fl2k: start fl2k_tcp and then launch connected data_messenger
         # in self.SDR#control.sdrserverstart(self.m["sdr_configparams"])
         # statt stemlabcontrol wird eine generelle Instanz SDRcontrol  gestartet
-        
+        self.st = self.et
+        self.et = time.time()
+        self.logger.debug(f"999 playrec play manager timing segment etime: {self.et-self.st} s: PRW segment 3: call tworker start ")
+
         if self.m["TEST"] is False:
             self.m["sdr_configparams"]["TEST"] = False
             errorstate, process = self.stemlabcontrol.sdrserverstart(self.m["sdr_configparams"])
@@ -413,6 +424,10 @@ class playrec_c(QObject):
             else:
                 errorstate = True  #TODO TODO TODO: better errorhandling and messaging with errorstate, value and errorhandler
                 value = "Cannot configure SDR socket. Please check your STEMLAB connection."
+            self.st = self.et
+            self.et = time.time()
+            self.logger.debug(f"999 playrec play manager timing segment etime: {self.et-self.st} s: PRW SUBsegment 3A: play_tstarter start actually called")
+
         else:
             self.m["sdr_configparams"]["TEST"] = True
             ################TODO TODO TODO: for test only, remove later
@@ -423,10 +438,15 @@ class playrec_c(QObject):
             # if not self.play_tstarter():
             #     return False
     ######################  END: change for general devicedrivers
+        self.st = self.et
+        self.et = time.time()
+        self.logger.debug(f"999 playrec play manager timing segment etime: {self.et-self.st} s: PRW segment : playrecworker started")
 
-            self.logger.info("stemlabcontrols activated")
+
+        self.logger.info("stemlabcontrols activated")
         # errorstate = True
         # value = "dummy error for testing"
+        
         self.SigRelay.emit("cexex_playrec",["listhighlighter",0])
         return(errorstate,value)
 
@@ -487,6 +507,11 @@ class playrec_c(QObject):
         :return: _False if error, True on succes_
         :rtype: _Boolean_
         """        
+        #self.st = time.time()
+        self.st = self.et
+        self.et = time.time()
+        self.logger.debug(f"999 playrec tworker segment etime: {self.et-self.st} s: TWKR segment 0: tstarter reached")
+
         errorstate = False
         value = ""
         device_ID_dict =self.stemlabcontrol.identify()
@@ -554,6 +579,9 @@ class playrec_c(QObject):
 
 
 ######################  END: change for general devicedrivers
+        self.st = self.et
+        self.et = time.time()
+        self.logger.debug(f"999 playrec tworker segment etime: {self.et-self.st} s: TWKR segment 1: setup thread")
 
         self.playrec_tworker.moveToThread(self.playthread)
         self.playrec_tworker.set_timescaler(self.m["timescaler"])
@@ -606,6 +634,10 @@ class playrec_c(QObject):
             self.playrec_tworker.SigBufferOverflow.connect(
                                          lambda: self.SigRelay.emit("cexex_playrec",["indicate_bufoverflow",0])) #TODO reactivate
         self.playthread.start()
+        self.st = self.et
+        self.et = time.time()
+        self.logger.debug(f"999 playrec tworker segment etime: {self.et-self.st} s: TWKR segment 2: thread started")
+
         if self.playthread.isRunning():
             self.m["playthreadActive"] = True
             self.SigRelay.emit("cm_all_",["playthreadActive",self.m["playthreadActive"]])  ###TODO: geht nicht
@@ -623,6 +655,9 @@ class playrec_c(QObject):
             errorstate = True
             value = "STEMLAB data transfer thread could not be started, please check if STEMLAB is connected correctly"
 
+        self.st = self.et
+        self.et = time.time()
+        self.logger.debug(f"999 playrec tworker segment etime: {self.et-self.st} s: TWKR segment 4: tstarter job accomplished")
 
         return(errorstate,value)
 
@@ -2245,7 +2280,7 @@ class playrec_v(QObject):
         #     return
         self.m["gain"] = self.playrec_c.playrec_tworker.get_gain()
         #print(f"get gain in showRFdata gain: {self.m['gain']}")
-        self.logger.debug("gain from tworker gain to showRFdata: %f",self.m["gain"])
+        #self.logger.debug("gain from tworker gain to showRFdata: %f",self.m["gain"])
         data = self.playrec_c.playrec_tworker.get_data()
         if len(data) < 256: # skip data monitoring if len(data) < 8, coding for the need of extra fast processing
             #print(f"showRDdata: len(data) = {len(data)} < 256, no data shown")
