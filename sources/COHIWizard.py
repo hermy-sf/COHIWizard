@@ -1,4 +1,4 @@
-#Version 2.2.1
+#Version 2.2.2
 # -*- coding: utf-8 -*-logfile
 # For reducing to RFCorder: disable all modules except resample in the config_modules.yaml file
 #
@@ -23,13 +23,9 @@ import datetime as ndatetime
 from datetime import datetime
 from pathlib import Path
 from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtWidgets import QApplication #TODO: Webengine aktivieren für pdf-Anzeigen
-# from PyQt5.QtWebEngineWidgets import QWebEngineView
-# from PyQt5.QtWebEngineWidgets import QWebEngineSettings
-# from PyQt5.QtCore import QUrl
+from PyQt5.QtWidgets import QApplication
 from PyQt5.QtWidgets import QMainWindow, QWidget, QApplication, QHBoxLayout, QLabel, QSizePolicy, QDesktopWidget, QProgressDialog, QDockWidget
 from PyQt5.QtGui import QGuiApplication, QCursor
-# from PyQt5.QtGui import QFont, QFontMetrics
 
 from PyQt5.QtCore import QTimer, QObject, QThread, pyqtSignal, QSize, Qt
 from PyQt5.QtGui import QFont, QIcon, QFontMetrics
@@ -681,7 +677,7 @@ class core_v(QObject):
             self.timethreaddActive = True #TODO:future system state
 
 
-    #TODO: make IP address editor easier to handle, test method
+    #TODO: make IP address editor easier to handle in manual mode, test method
     # def eventFilter(self, source, event):
     #     if (event.type() == Qt.KeyPress and
     #         event.key() == Qt.Key_Tab and
@@ -775,6 +771,16 @@ class core_v(QObject):
         self.worker.start()
 
     def on_search_finished(self,devicelist):
+        """ 
+        Takes action when the search for IP addresses of connected STEMLABs is accomplished: 
+        generates and displays list of devices found
+        if at least one device is found, fills in the first IP address found into the IP address line edit field. Terminates DeviceSearchWorker thread 
+        and takes over the found address via self.editHostAddress_action()
+        :param: devicelist
+        :type: list
+        :raises: none
+        :return: none
+        """
         print("on_search_finished: +++++++ Found Red Pitayas:", devicelist)
         if len(devicelist) > 0:
             self.gui.lineEdit_IPAddress.setText(devicelist[0][1])
@@ -797,33 +803,20 @@ class core_v(QObject):
 
     def editHostAddress(self):     #TODO Check if this is necessary, rename to cb_.... ! 
         ''' 
-        Purpose: slot function for the edidHostAddress Lineedit item
-        activate Host IP address field and enable saving mode
+        Purpose: 
         Returns: nothing
         '''
-        ## ## Bevore toggling IP editing, scan for existing STEMLAB, run arp query
-        ## redpitaya_ouis = ["00:26:32", "3c:2c:30", "b8:27:eb"]
+        """ 
+        slot function for the the pushbutton_IP button
+        to start auto-detection of connected Red Pitaya STEMLABs        
+        :param: none
+        :raises: none
+        :return: none
+        """
 
-        ## # initialize UDP-Broadcast-Packet, in order to cause ARP-Requests
-        ## auxi().trigger_linklocal_arp()
-        ## # identify connected STEMLABs
-        ## devices = auxi().discover_linklocal_devices(filter_oui=redpitaya_ouis)
-
-        ## if devices:
-        ##     print("Gefundene Red Pitayas:")
-        ##     for ip, mac in devices:
-        ##         print(f"{ip}  →  {mac}")
-        ## else:
-        ##     print("Keine Red Pitayas gefunden.")
 
         #Find connected red pitaya and return its IP/MAC
 
-        # zeroconf = Zeroconf()
-        # listener = RPListener()
-        # browser = ServiceBrowser(zeroconf, "_http._tcp.local.", listener)
-        # time.sleep(2)  # kurze Wartezeit für Antworten
-        # zeroconf.close()
-        # print("Found Red Pitayas:", listener.devices)
         if self.gui.lineEdit_IPAddress.isReadOnly():
             self.start_device_search()
         else:
@@ -832,6 +825,14 @@ class core_v(QObject):
         #self.editHostAddress_action()
 
     def editHostAddress_action(self):
+        """ 
+        change function of the IP Address button to editing mode
+            enable IP address line
+            disable Button for editing address 
+        :param: none
+        :raises: none
+        :return: none
+        """
         self.gui.lineEdit_IPAddress.setEnabled(True)
         self.gui.lineEdit_IPAddress.setReadOnly(False)
         self.gui.pushButton_IP.clicked.connect(self.set_IP) ####TODO: send identified IP to self.set_IP for auto-preset
@@ -1614,10 +1615,6 @@ if __name__ == '__main__':
             #print(f"Error creating model, control, view for {mod_name}: {e}")
             xcore_v.logger.error(f"__main__: Error creating model, control, view for {mod_name}: {e}")
 
-    # #TODO TODO TODO TODO TODO TODO TODO difficult to find, poor programming style, look for other connection (via relaying ?)
-    #tab_c[list_mvct_modules.index("resample")].SigUpdateGUIelements.connect(tab_v[list_mvct_modules.index("resample")].updateGUIelements)
-    # replaced by         self.resample_c.SigUpdateGUIelements.connect(self.updateGUIelements) in resample_v
-# TODO Test after 21-11-2024
     if 'view_spectra' in list_mvct_modules:
         xcore_v.SigUpdateOtherGUIs.connect(tab_v[list_mvct_modules.index("view_spectra")].updateGUIelements)
         #xcore_v.SigUpdateOtherGUIs.emit()
@@ -1696,7 +1693,7 @@ if __name__ == '__main__':
     except:
         xcore_v.logger.debug("startup Tab not defined in configuration file config_wizard.yaml")
         xcore_v.gui.tabWidget.setCurrentIndex(0)
-    print("COHIWIzard Version 2.2.1 , 10-01-2026, (C) Hermann Scharfetter")
+    print("COHIWIzard Version 2.2.2 , 14-02-2026, (C) Hermann Scharfetter")
 
 
 

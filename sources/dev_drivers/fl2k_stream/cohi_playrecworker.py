@@ -171,7 +171,24 @@ class playrec_worker(QObject):
             self.mutex.unlock()
             configuration["icorr"] = 'handle_no_fl2k'
             self.set_configparameters(configuration) 
+            #return()
+        
+            print("close file ")
+            self.set_fileclose(True)
+            #fileHandle.close()
+            #self.terminate_loop(ffmpeg_process,fl2k_process)
+            fl2k_process.terminate()
+            try:
+                fl2k_process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                print("Process did not terminate, forcefully killing it")
+                if os.name == "posix":
+                    os.killpg(os.getpgid(fl2k_process.pid), signal.SIGKILL)  # Linux/macOS
+                else:
+                    fl2k_process.kill()  # Windows
+            self.kill_orphan_fl2k()
             return()
+
         self.mutex.unlock()
         #print("past MUTEX")
         if format[0] == 1:  #PCM

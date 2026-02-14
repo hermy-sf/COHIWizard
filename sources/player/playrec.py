@@ -2630,7 +2630,7 @@ class playrec_v(QObject):
             self.gui.lineEdit_LO_bias.setStyleSheet("background-color: yellow")
 
 
-    def editHostAddress(self):     #TODO Check if this is necessary, rename to cb_.... ! 
+    def editHostAddress(self):     #TODO Check if this is necessary 
         ''' 
         Purpose: Callback for edidHostAddress Lineedit item
         activate Host IP address field and enable saving mode
