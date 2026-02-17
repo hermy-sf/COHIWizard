@@ -20,7 +20,6 @@ Appropriate recordings can be played back on historic Radio receivers with exter
 3) change to this folder
 4) create a virtual environment with
 ```bash
-docker compose up -d
 python –m venv venv
 ```
 6) activate the venv by `venv/Scripts/activate`
