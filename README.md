@@ -22,16 +22,16 @@ Appropriate recordings can be played back on historic Radio receivers with exter
 ```bash
 python –m venv venv
 ```
-6) activate the venv by
+5) activate the venv by
 ```bash
 venv/Scripts/activate
 ```
-8) install the required packages from the requirements.txt (in `cohihome`) file by typing
+6) install the required packages from the requirements.txt (in `cohihome`) file by typing
 ```bash
 pip install -r requirements.txt
 ```
-9) change dir to `cohihome`/sources
-10) run the main script:
+7) change dir to `cohihome`/sources
+8) run the main script:
 ```bash
 python COHIWizard.py
 ```
