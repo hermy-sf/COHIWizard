@@ -25,16 +25,16 @@ python –m venv venv
 6) activate the venv by
 ```bash
 venv/Scripts/activate
-``
+```
 8) install the required packages from the requirements.txt (in `cohihome`) file by typing
 ```bash
 pip install -r requirements.txt
-``
+```
 9) change dir to `cohihome`/sources
 10) run the main script:
 ```bash
 python COHIWizard.py
-``
+```
 
 COHIWizard.py starts up a GUI with a recorder/player and various utilities for e.g. visualization of the spectra, resampling, annotation (beta version) and editing of wav-headers.
 
