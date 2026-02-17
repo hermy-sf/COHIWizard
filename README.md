@@ -15,13 +15,26 @@ Appropriate recordings can be played back on historic Radio receivers with exter
 
 ## Method B (most recent version) for execution under Python (also running under LINUX, tested for Debian12 and 13): 
 
+
 1) install Python v3.10 on your PC (development is being done with v3.10.11); the COHIWIzard or some of its components may fail with other versions
 2) clone the repository from GITHUB to your PC to a folder, say `cohihome`
 3) change to this folder
-4) create a virtual environment with `python –m venv venv`
-5) activate the venv by `venv/Scripts/activate`
-6) install the required packages from the requirements.txt (in `cohihome`) file by typing `pip install -r requirements.txt`
+4) create a virtual environment with
+```bash
+python –m venv venv
+```
+5) activate the venv by
+```bash
+venv/Scripts/activate
+```
+6) install the required packages from the requirements.txt (in `cohihome`) file by typing
+```bash
+pip install -r requirements.txt
+```
 7) change dir to `cohihome`/sources
-8) run the main script: `python COHIWizard.py`
+8) run the main script:
+```bash
+python COHIWizard.py
+```
 
 COHIWizard.py starts up a GUI with a recorder/player and various utilities for e.g. visualization of the spectra, resampling, annotation (beta version) and editing of wav-headers.
