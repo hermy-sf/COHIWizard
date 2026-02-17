@@ -22,6 +22,7 @@ Appropriate recordings can be played back on historic Radio receivers with exter
 ```bash
 docker compose up -d
 python –m venv venv
+```
 6) activate the venv by `venv/Scripts/activate`
 7) install the required packages from the requirements.txt (in `cohihome`) file by typing `pip install -r requirements.txt`
 8) change dir to `cohihome`/sources
