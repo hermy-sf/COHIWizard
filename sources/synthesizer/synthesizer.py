@@ -4097,6 +4097,23 @@ class synthesizer_v(QObject):
         # Iterate through each line in the playlist content
         for line in playlist_content.splitlines():
             # Look for #EXTGRP lines
+            if line.startswith('#EXTPARAM_BW:'):
+                BW_info = line.split(':')[1].strip()  # sometext_index
+                self.m["audioBW"] = float(BW_info.split('_')[-1])  #
+                self.gui.lineEdit_audiocutoff_freq.setText(str(self.m["audioBW"]))
+                #self.audioBW_update("nup")
+            if line.startswith('#EXTPARAM_RECLENGTH:'):
+                hour_info = line.split(':')[1].strip()  # sometext_index
+                min_info = line.split(':')[2].strip()  # sometext_index
+                sec_info = line.split(':')[3].strip()  # sometext_index
+
+        # preset_time = QTime(0,0,20) 
+        # self.create_duration = self.gui.timeEdit_reclength.time()
+        # self.gui.timeEdit_reclength.setTime(preset_time)
+
+                preset_time = QTime(int(hour_info), int(min_info), int(sec_info))#
+                self.gui.timeEdit_reclength.setTime(preset_time)
+                self.create_duration = self.gui.timeEdit_reclength.time()
             if line.startswith('#EXTGRP:'):
                 # If there's already a current sub-playlist, store it
                 if current_playlist:
@@ -4127,7 +4144,7 @@ class synthesizer_v(QObject):
                 if line.startswith('#') and line:  # Ignoriere Kommentare und leere Zeilen
                     #print(line)  # Mediendateipfad
                     pass
-                if not line.startswith('#') and line:  # Ignoriere Kommentare und leere Zeilen
+                if not line.startswith('#') and line:  # TODO TODO TODO: IGNORIERE AUCH leere Linien mit länge > 0 !!!!   Ignoriere Kommentare und leere Zeilen
                     current_playlist.append(line)
 
         # Append the last sub-playlist after the loop has ended

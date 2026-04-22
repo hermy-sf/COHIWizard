@@ -73,9 +73,17 @@ class starter(QMainWindow):
         if skinindex == 0:
             from core import COHIWizard_GUI_v10_scrollhv_skin_0
             self.gui = COHIWizard_GUI_v10_scrollhv_skin_0.Ui_MainWindow()
-        else:
+        elif skinindex == 1:
             from core import COHIWizard_GUI_v10_scrollhv_skin_1
             self.gui = COHIWizard_GUI_v10_scrollhv_skin_1.Ui_MainWindow()
+        elif skinindex == 2:
+            from core import COHIWizard_GUI_v10_scrollhv_skin_2
+            self.gui = COHIWizard_GUI_v10_scrollhv_skin_2.Ui_MainWindow()   
+        else: #default: take skin 1
+            from core import COHIWizard_GUI_v10_scrollhv_skin_1
+            self.gui = COHIWizard_GUI_v10_scrollhv_skin_1.Ui_MainWindow()
+            #testcomment
+
             
         self.gui.setupUi(self)
         self.iconButtons = []
@@ -675,6 +683,9 @@ class core_v(QObject):
         self.timethread.start()
         if self.timethread.isRunning():
             self.timethreaddActive = True #TODO:future system state
+        if self.m["metadata"]["skinindex"] == 2:
+            self.gui.pushButton_Fileopen.clicked.connect(self.gui.actionFile_open.trigger)
+
 
 
     #TODO: make IP address editor easier to handle in manual mode, test method
