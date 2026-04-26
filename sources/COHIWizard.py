@@ -1,4 +1,4 @@
-#Version 2.2.2
+#Version 2.2.3
 # -*- coding: utf-8 -*-logfile
 # For reducing to RFCorder: disable all modules except resample in the config_modules.yaml file
 #
@@ -79,6 +79,9 @@ class starter(QMainWindow):
         elif skinindex == 2:
             from core import COHIWizard_GUI_v10_scrollhv_skin_2
             self.gui = COHIWizard_GUI_v10_scrollhv_skin_2.Ui_MainWindow()   
+        elif skinindex == 3:
+            from core import COHIWizard_GUI_v10_scrollhv_skin_3
+            self.gui = COHIWizard_GUI_v10_scrollhv_skin_3.Ui_MainWindow()   
         else: #default: take skin 1
             from core import COHIWizard_GUI_v10_scrollhv_skin_1
             self.gui = COHIWizard_GUI_v10_scrollhv_skin_1.Ui_MainWindow()
@@ -100,7 +103,7 @@ class starter(QMainWindow):
             hnew = int(wnew / aspectratio_opt)
 
         self.resize(wnew, hnew)
-        if skinindex == 2:
+        if skinindex == 2 or skinindex == 3:
             #self.showFullScreen()
             self.showMaximized()
 
@@ -673,6 +676,8 @@ class core_v(QObject):
         self.core_c.SigRelay.connect(self.rxhandler)
         ###TODO: re-organize, there should be no access to gui elements of other modules
         self.gui.playrec_pushButton_recordingpath.clicked.connect(self.core_c.recording_path_setter)
+        if self.m["metadata"]["skinindex"] == 2 or self.m["metadata"]["skinindex"] == 3:
+            self.gui.pushButton_Fileopen.clicked.connect(self.gui.actionFile_open.trigger)
         self.updateConfigElements()
         self.firsttick = True
         self.timethread = QThread()
@@ -686,8 +691,7 @@ class core_v(QObject):
         self.timethread.start()
         if self.timethread.isRunning():
             self.timethreaddActive = True #TODO:future system state
-        if self.m["metadata"]["skinindex"] == 2:
-            self.gui.pushButton_Fileopen.clicked.connect(self.gui.actionFile_open.trigger)
+
 
 
 
@@ -1707,7 +1711,7 @@ if __name__ == '__main__':
     except:
         xcore_v.logger.debug("startup Tab not defined in configuration file config_wizard.yaml")
         xcore_v.gui.tabWidget.setCurrentIndex(0)
-    print("COHIWIzard Version 2.2.2 , 14-02-2026, (C) Hermann Scharfetter")
+    print("COHIWIzard Version 2.2.3 , 26-04-2026, (C) Hermann Scharfetter")
 
 
 

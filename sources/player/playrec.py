@@ -1171,7 +1171,20 @@ class playrec_v(QObject):
     def init_playrec_ui(self):
 
         self.gui.playrec_radioButtonpushButton_write_logfile.clicked.connect(self.togglelogfilehandler)
-        self.gui.playrec_radioButtonpushButton_write_logfile.setChecked(True)
+        self.standardpath = os.getcwd()  #TODO: this is a core variable in core model
+        try:
+            stream = open("config_wizard.yaml", "r")
+            self.m["metadata"] = yaml.safe_load(stream)
+            stream.close()
+            self.ismetadata = True
+            
+        except:
+            self.ismetadata = False
+        try:
+            self.gui.playrec_radioButtonpushButton_write_logfile.setChecked(self.m["metadata"]["logfilehandler"])    
+        except:
+            self.gui.playrec_radioButtonpushButton_write_logfile.setChecked(True)
+        
 
         self.gui.pushButton_Loop.setChecked(False)
         self.gui.pushButton_Loop.clicked.connect(self.Buttloopmanager)
@@ -1385,6 +1398,20 @@ class playrec_v(QObject):
             self.logger.setLevel(logging.NOTSET)
             self.SigRelay.emit("cexex_all_",["logfilehandler",False])
 
+        self.standardpath = os.getcwd()  #TODO: this is a core variable in core model
+        try:
+            stream = open("config_wizard.yaml", "r")
+            self.m["metadata"] = yaml.safe_load(stream)
+            stream.close()
+            self.ismetadata = True
+        except:
+            self.ismetadata = False
+            return
+        self.m["metadata"]["logfilehandler"] = self.gui.playrec_radioButtonpushButton_write_logfile.isChecked()
+        stream = open("config_wizard.yaml", "w")
+        yaml.dump(self.m["metadata"], stream)
+        stream.close()
+        
     def sdrdevice_changehandler(self):
         QTimer.singleShot(0, self.process_combobox_change)
 
@@ -2234,6 +2261,8 @@ class playrec_v(QObject):
             self.gui.gridLayout_10.addWidget(self.plot_widget,13,12,1,2)
         elif self.m["metadata"]["skinindex"] == 2:    
             self.gui.gridLayout_10.addWidget(self.plot_widget,10,12,3,2)
+        elif self.m["metadata"]["skinindex"] == 3:    
+            self.gui.gridLayout_10.addWidget(self.plot_widget,8,13,3,2)
         else: #default take skin 1
             self.gui.gridLayout_10.addWidget(self.plot_widget,13,12,1,2)
 
