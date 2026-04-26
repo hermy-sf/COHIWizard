@@ -1645,6 +1645,7 @@ class playrec_v(QObject):
         self.gui.label_Filename_Player.setText(self.m["my_filename"] + self.m["ext"])
 
     def reset_GUI(self):
+        self.cb_Butt_STOP()
         self.gui.listWidget_playlist.clear()
         self.gui.listWidget_sourcelist.clear()
         self.gui.label_Filename_Player.setText("")

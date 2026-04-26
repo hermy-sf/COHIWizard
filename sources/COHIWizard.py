@@ -100,6 +100,9 @@ class starter(QMainWindow):
             hnew = int(wnew / aspectratio_opt)
 
         self.resize(wnew, hnew)
+        if skinindex == 2:
+            #self.showFullScreen()
+            self.showMaximized()
 
     def resizeEvent(self, event):
         """resize event handler for the main window, handles resizing widgets based on size of MainWindow
@@ -1690,7 +1693,7 @@ if __name__ == '__main__':
     xcore_v.SigRelay.emit("cm_all_",xcore_v.m["rootpath"])
     xcore_v.SigRelay.emit("cm_all_",["Mainwindowreference",gui])
     xcore_v.SigRelay.emit("cexex_all_",["resizeaction",gui])
-    #gui.resize_initialize()
+    xcore_v.SigRelay.emit("cexex_playrec",["reset_playerbuttongroup",0])    #gui.resize_initialize()
     # gui.find_widgets_with_font()
     # gui.find_icon_buttons()
     #gui.resize_actor()
