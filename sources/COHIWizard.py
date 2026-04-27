@@ -70,18 +70,21 @@ class starter(QMainWindow):
         #from core import COHIWizard_GUI_v10_scrollhv
         #self.gui = COHIWizard_GUI_v10_scrollhv.Ui_MainWindow()
         #TODO: import correct skin, use dynamic import
+        self.maxsize = 20
         if skinindex == 0:
             from core import COHIWizard_GUI_v10_scrollhv_skin_0
             self.gui = COHIWizard_GUI_v10_scrollhv_skin_0.Ui_MainWindow()
         elif skinindex == 1:
             from core import COHIWizard_GUI_v10_scrollhv_skin_1
             self.gui = COHIWizard_GUI_v10_scrollhv_skin_1.Ui_MainWindow()
+            
         elif skinindex == 2:
             from core import COHIWizard_GUI_v10_scrollhv_skin_2
             self.gui = COHIWizard_GUI_v10_scrollhv_skin_2.Ui_MainWindow()   
         elif skinindex == 3:
             from core import COHIWizard_GUI_v10_scrollhv_skin_3
-            self.gui = COHIWizard_GUI_v10_scrollhv_skin_3.Ui_MainWindow()   
+            self.gui = COHIWizard_GUI_v10_scrollhv_skin_3.Ui_MainWindow()
+            self.maxsize = 50
         else: #default: take skin 1
             from core import COHIWizard_GUI_v10_scrollhv_skin_1
             self.gui = COHIWizard_GUI_v10_scrollhv_skin_1.Ui_MainWindow()
@@ -173,7 +176,7 @@ class starter(QMainWindow):
             # font.setPixelSize(font_size)
             # widget.setFont(font)
             min_size=11
-            max_size=20
+            max_size=self.maxsize
             self.fit_font_to_widget(widget, min_size, max_size)
 
     def fit_font_to_widget(self, widget, min_size=8, max_size=100):
@@ -224,7 +227,7 @@ class starter(QMainWindow):
             return
         """Finde alle Widgets, die einen Font haben und Text anzeigen"""
         # Optional: nur bestimmte Klassen einbeziehen
-        font_classes = (QPushButton, QLabel, QLineEdit, QCheckBox, QComboBox, QRadioButton,QTimeEdit, QTableWidgetItem, QProgressBar)
+        font_classes = (QPushButton, QLabel, QLineEdit, QCheckBox, QComboBox, QRadioButton,QTimeEdit, QTableWidgetItem, QProgressBar, QListWidget, QListWidgetItem)
 
         self.widgets_with_font = [
             w for w in self.findChildren(QWidget)

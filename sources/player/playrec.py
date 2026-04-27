@@ -2288,7 +2288,7 @@ class playrec_v(QObject):
     def showRFdata(self):
         """_take over datasegment from player loop worker and caluclate from there the signal volume and present it in the volume indicator
         read gain value and present it in the player Tab on the 'progressbar' Widget 'progressBar_volume'
-        Parameters: a = length form top to 0dB tick
+        Parameters: a = length from top to 0dB tick
         b = length between -80 and 0 dB ticks
         c = length between bottom and -80dB tick
         a+b+c = total length of the indicator and hence of the progress-bar volume 
@@ -2298,7 +2298,7 @@ class playrec_v(QObject):
         """
         AGC = 1
         scal_NEW = True #Updating, remove after tests
-        if self.m["metadata"]["skinindex"] == 1:
+        if self.m["metadata"]["skinindex"] >= 1:
             scal_Rescaling = True 
         else:
             scal_Rescaling = False
