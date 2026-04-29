@@ -96,7 +96,7 @@ class playrec_c(QObject):
 
     SigAny = pyqtSignal()
     SigRelay = pyqtSignal(str,object)
-    SigEOFStart = pyqtSignal()
+    SigEOFStart = pyqtSignal() #?? ever used ? TODO check and remove if not required
     SigActivateOtherTabs = pyqtSignal(str,str,object)
     SigTimertick = pyqtSignal()
 
@@ -615,8 +615,8 @@ class playrec_c(QObject):
         self.playrec_tworker.SigInfomessage.connect(self.infosigmanager)
         self.playrec_tworker.SigFinished.connect(self.recloopmanager)
         self.playrec_tworker.SigError.connect(self.errorsigmanager)
-        self.playrec_tworker.SigNextfile.connect(self.nextfilemanager)
-        self.SigEOFStart.connect(self.EOF_manager)
+        self.playrec_tworker.SigNextfile.connect(self.nextfilemanager) #?? ever used ? TODO check and remove if not required
+        self.SigEOFStart.connect(self.EOF_manager) #?? ever used ? TODO check and remove if not required
         self.playrec_tworker.SigFinished.connect(self.playrec_tworker.deleteLater)
         if watchdogflag:
             # stop watchdog
@@ -859,37 +859,6 @@ class playrec_c(QObject):
             self.logger.info("EOF-manager: player has been stopped")
             time.sleep(0.5)
             return
-        #if (os.path.isfile(self.m["my_dirname"] + '/' + self.m["wavheader"]['nextfilename']) == True and self.m["wavheader"]['nextfilename'] != "" ): #TODO delete after tests 23-12-2024: 
-        ###TODO TODO TODO: remove after testing 26-12-2024r
-        #if False:
-        #if (os.path.isfile(os.path.join(self.m["my_dirname"], self.m["wavheader"]['nextfilename'])) and self.m["wavheader"]['nextfilename'] != "" ):
-            # if not self.TESTFILELISTCONTINUOUS:
-            #     ###TODO TODO TODO: obsolete, nextfile is handled by tworker
-            #     # play next file in nextfile-list
-            #     #self.m["f1"] = self.m["my_dirname"] + '/' + self.m["wavheader"]['nextfilename'] TODO: delete after tests 23-12-2024
-            #     self.m["f1"] = os.path.join(self.m["my_dirname"], self.m["wavheader"]['nextfilename'])
-            #     self.m["my_filename"] = Path(self.m["f1"]).stem
-            #     ####TODO geht nicht
-            #     #self.SigRelay.emit("cm_all_",["f1",self.m["my_dirname"] + '/' + self.m["wavheader"]['nextfilename']])
-            #     #self.SigRelay.emit("cm_all_",["my_filename",self.m["my_filename"]])####TODO geht nicht
-            #     self.m["wavheader"] = WAVheader_tools.get_sdruno_header(self,self.m["f1"])
-            #     self.m["wavheader"]['nextfilename'] = self.m["wavheader"]['nextfilename'].rstrip()
-            #     time.sleep(0.02)
-            #     errorstate,value = self.play_tstarter()
-            #     if errorstate:
-            #         self.errorhandler(value)
-            #     time.sleep(0.02)
-            #     self.m["fileopened"] = True
-            #     #self.SigRelay.emit("cm_all_",["fileopened",True])####TODO geht nicht
-            #     #TODO: self.my_filename + self.ext müssen updated werden, übernehmen aus open file
-            #     #self.SigRelay.emit("cexex_all_",["updateGUIelements",0])####TODO geht nicht
-            #     self.SigRelay.emit("cexex_playrec",["updateotherGUIelements",0])
-            #     self.SigRelay.emit("cexex_playrec",["updatecurtime",0])
-            #     #self.logger.info("fetch nextfile")
-            #     print(f"playrec namechange after nextfile test, filename: {self.m['my_filename']}")
-            # else:
-            #     print("automatic nextfile treatment, no nextfilehandling necessary")
-            #    pass
         
         if self.m["Buttloop_pressed"]:
             time.sleep(0.1)
@@ -1023,9 +992,6 @@ class playrec_c(QObject):
         if self.m["playthreadActive"] is False:
             self.m["fileopened"] = False ###CHECK
             self.SigRelay.emit("cm_all_",["fileopened",False]) #TODO: funktioniert nicht
-            #self.SigRelay.emit("cexex_playrec",["reset_GUI",0]) #TODO remove after tests
-            #self.SigRelay.emit("cexex_playrec",["reset_playerbuttongroup",0])
-            #return
         else:
             self.playrec_tworker.stop_loop()
         if self.m["TEST"] is False:
@@ -1036,8 +1002,6 @@ class playrec_c(QObject):
         self.SigRelay.emit("cexex_playrec",["reset_GUI",0])
         #TODO TODO TODO: activate other tabs
         self.SigActivateOtherTabs.emit("Player","activate",[])
-        #self.SigRelay.emit("cexex_win",["reset_GUI",0]) #TODO remove after tests, may not be connected with _c
-        #print("STOP pressed")
 
     def jump_1_byte(self):             #increment current time in playtime window and update statusbar
         """
@@ -1672,7 +1636,8 @@ class playrec_v(QObject):
         self.gui.label_Filename_Player.setText(self.m["my_filename"] + self.m["ext"])
 
     def reset_GUI(self):
-        self.cb_Butt_STOP()
+        #self.playrec_c.cb_Butt_STOP()   ### remove after tests 28-06-2026
+        #self.cb_Butt_STOP()
         self.gui.listWidget_playlist.clear()
         self.gui.listWidget_sourcelist.clear()
         self.gui.label_Filename_Player.setText("")
@@ -1681,17 +1646,10 @@ class playrec_v(QObject):
         self.gui.label_Filename_Player.setText('')
 
         if self.m["playlist_active"] == True:
-        #     self.gui.pushButton_act_playlist.setChecked(True)
-        #     self.gui.listWidget_sourcelist.setEnabled(True)
-        #     self.gui.listWidget_playlist.setEnabled(True)
-        #     self.m["playlist_active"] = True
-        # else:
             self.gui.pushButton_act_playlist.setChecked(False)
             self.gui.listWidget_sourcelist.setEnabled(False)
             self.gui.listWidget_playlist.setEnabled(False)
             self.m["playlist_active"] = False
-
-        #self.SigActivateOtherTabs.emit("Player","activate",[])
   
     def addplaylistitem(self):
         item = QtWidgets.QListWidgetItem()
@@ -1704,7 +1662,6 @@ class playrec_v(QObject):
         for x in os.listdir(self.m["my_dirname"]):
             if x.endswith(".wav"):
                 if True: #x != (self.m["my_filename"] + self.m["ext"]): #TODO: obsolete old form when automatically loading opened file to playlist
-                    #resfilelist.append(x) #TODO: used ?????????
                     _item=self.gui.listWidget_sourcelist.item(ix)
                     _item.setText(x)
                     fnt = _item.font()
@@ -1826,8 +1783,6 @@ class playrec_v(QObject):
         """
         self.m["playprogress"] = self.gui.ScrollBar_playtime.value()
         self.playrec_c.jump_to_position_c()
-        #self.m["QTMAINWINDOWparent"]
-        #self.gui.ScrollBar_playtime.mousePressEvent = self.m["QTMAINWINDOWparent"].scrollbar_mousePressEvent
 
     def toggleUTC(self):
         if self.gui.checkBox_UTC.isChecked():
@@ -1842,7 +1797,6 @@ class playrec_v(QObject):
             self.m["TEST"] = False
 
     def cb_Butt_toggle_playlist(self):
-        #system_state = sys_state.get_status()
         if self.m["playlist_active"] == False:
             self.gui.pushButton_act_playlist.setChecked(True)
             self.gui.listWidget_sourcelist.setEnabled(True)
@@ -1869,18 +1823,14 @@ class playrec_v(QObject):
 
         self.logger.info("playlist_update: playlist updated")
         time.sleep(0.001)
-        #system_state = sys_state.get_status()
         #get all items of playlist Widget and write them to system_state["playlist"]
         lw = self.gui.listWidget_playlist
         # let lw haven elements in it.
         self.m["playlist"] = []
         for x in range(lw.count()):
             item = lw.item(x)
-            #playlist.append(lw.item(x))
             self.m["playlist"].append(item.text())
-        #self.m["playlist"] = self.m["playlist"]
         self.m["playlist_len"] = self.gui.listWidget_playlist.count()
-        #self.SigRelay.emit("cm_playrec",["playlist",self.m["playlist"]])
 
     def cb_setgain(self):
         '''
@@ -1904,7 +1854,6 @@ class playrec_v(QObject):
             lw = self.gui.listWidget_playlist
             item = lw.item(_index)
             item.setBackground(QtGui.QColor("lightgreen"))  #TODO: shift to resampler view ???? why ???
-    #item.setBackground(QtGui.QColor("lightgreen"))
 
     def cb_Butt_toggleplay(self):
         """ 
@@ -1945,7 +1894,6 @@ class playrec_v(QObject):
                         ###RESET playgroup
                         self.reset_playerbuttongroup()
                         self.reset_LO_bias()
-                        #sys_state.set_status(system_state)
                         return False
 
                 self.gui.radioButton_LO_bias.setEnabled(False)
@@ -1957,7 +1905,6 @@ class playrec_v(QObject):
                     #TODO TODO TODO: OBSOLETE ? check if this is ever reached ? self.m["fileopened" is False is a condition that this branch is reched !
                     # restore automatic call of fileopen in this case
                     self.reset_playerbuttongroup()
-                    #sys_state.set_status(system_state)
                     return False
                 if not self.playrec_c.LO_bias_checkbounds():
                     self.reset_playerbuttongroup()
@@ -2019,9 +1966,7 @@ class playrec_v(QObject):
         '''
         Returns: nothing
         '''
-        #system_state = sys_state.get_status()
         self.playrec_c.cb_Butt_STOP()
-        #self.timertick.stoptick()
         self.SigRelay.emit("cexex_xcore",["stoptick",0])
         self.playrec_c.stemlabcontrol.RPShutdown(self.m["sdr_configparams"])
         #TODO TODO TODO: check if it would also be fine to instantiate the stemlabcontrol object only here in the player
@@ -2196,7 +2141,6 @@ class playrec_v(QObject):
         """
 
         """
-        #system_state = sys_state.get_status()
         self.gui.pushButton_Play.setIcon(QIcon("./core/ressources/icons/play_v4.PNG"))
         self.gui.pushButton_Play.setChecked(False)
         self.gui.pushButton_Loop.setChecked(False)
@@ -2205,8 +2149,6 @@ class playrec_v(QObject):
         self.gui.Label_Recindicator.setStyleSheet(('background-color: rgb(255,255,255)'))
         self.m["playthreadActive"] = False
         self.SigRelay.emit("cm_all_",["playthreadActive",self.m["playthreadActive"]])
-        #self.activate_tabs(["View_Spectra","Annotate","Resample","YAML_editor","WAV_header"])
-        #self.setactivity_tabs("Player","activate",[])
         self.SigActivateOtherTabs.emit("Player","activate",[])
         self.m["fileopened"] = False ###CHECK
         self.SigRelay.emit("cm_all_",["fileopened",False])
@@ -2318,16 +2260,12 @@ class playrec_v(QObject):
             return
         #tracking error detector removed, appears in old main module
         s = len(data)
-        #time.sleep(1)
         #print(f"############### playrec recloop data: {data[0]}")
         nan_ix = [i for i, x in enumerate(data) if np.isnan(x)]
         if np.any(np.isnan(data)):
             self.logger.error("show RFdata: NaN found in data, length: %i ,maxval: %f , avg: %f" , len(nan_ix),  np.max(data), np.median(data))
             self.m["stopstate"] = True
-            #time.sleep(1)
             data[nan_ix] = 1e-8*np.ones(len(nan_ix))
-            #sys_state.set_status(system_state)
-            #return(False)
         cv = (data[0:s-1:2].astype(np.float32) + 1j * data[1:s:2].astype(np.float32))*self.m["gain"]
         if self.m["wavheader"]['wFormatTag'] == 1:
             normfactor = int(2**int(self.m["wavheader"]['nBitsPerSample']-1))-1
@@ -2335,7 +2273,6 @@ class playrec_v(QObject):
             normfactor = 1 #TODO:future system state
         else:
             auxi.standard_errorbox("wFormatTag is neither 1 nor 3; unsupported Format, this file cannot be processed")
-            #sys_state.set_status(system_state)
             return False
         
         ####TODO: check spectrum for debugging
@@ -2506,7 +2443,6 @@ class playrec_v(QObject):
             # guarantee integer multiple of nBlockalign, > 0, <= filesize
             if increment != -1 and increment != 1 or self.m["timechanged"] == True:
                 if self.m["fileopened"] and self.m["playthreadActive"] is True:
-                    #print(f'increment curtime cond seek cur file open: {system_state["f1"]}')
                     try:
                         self.prfilehandle = self.playrec_c.playrec_tworker.get_fileHandle()
                         
@@ -2687,8 +2623,6 @@ class playrec_v(QObject):
         :return: none
         :rtype: none
         """
-        #system_state = sys_state.get_status()
-        #self.HostAddress = self.gui.Conf_lineEdit_IPAddress.text()
         self.m["HostAddress"] = self.gui.lineEdit_IPAddress.text()
         #print("IP address read")
         try:
