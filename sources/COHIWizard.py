@@ -681,6 +681,7 @@ class core_v(QObject):
         self.gui.playrec_pushButton_recordingpath.clicked.connect(self.core_c.recording_path_setter)
         if self.m["metadata"]["skinindex"] == 2 or self.m["metadata"]["skinindex"] == 3:
             self.gui.pushButton_Fileopen.clicked.connect(self.gui.actionFile_open.trigger)
+            self.gui.menubar.setVisible(False)
         self.updateConfigElements()
         self.firsttick = True
         self.timethread = QThread()
