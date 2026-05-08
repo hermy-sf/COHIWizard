@@ -2528,6 +2528,7 @@ class playrec_v(QObject):
             # else:
             #     self.norepeat = False   
         LObiasraw = self.gui.lineEdit_LO_bias.text().lstrip(" ")
+        #print(f"#################### update_LO_bias: LObiasraw: {LObiasraw}")
         if len(LObiasraw) < 1:
             return False
         LObias_sign = 1

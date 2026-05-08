@@ -18,9 +18,13 @@ class skinhandler():
         # We redirect the signal of pushButton_Fileopen to the same function as File Open in the menu bar,
         # the menu bar, in turn, is set invisible, so that the user only sees the new button.
         # which is present in skin 1, and which is used in skin 1, so that the functionality is preserved across skins.
+        print("Redirecting global UI items to skin items")
         gui.pushButton_Fileopen.clicked.connect(gui.actionFile_open.trigger)
         gui.menubar.setVisible(False)
-        print("Redirecting global UI items to skin items")
+        #redirect spinbox for LO offset for touchscreen only use
+        gui.spinBox_LOoffset.valueChanged.connect(lambda: gui.lineEdit_LO_bias.setText(str(gui.spinBox_LOoffset.value())))
+        #gui.lineEdit_LO_bias.text()
+
 
     def reorganize_canvas(gui,plot_widget):
         # This function would contain logic to redirect UI items to the appropriate skin directories
