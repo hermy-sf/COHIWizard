@@ -66,6 +66,7 @@ class playrec_m(QObject):
         self.mdl["expected_seconds"] = 0
         self.mdl["AGC"] = True
         self.mdl["Reset_AGC"] = True
+        self.mdl["skinhandler"] = []
         # Create a custom logger
         logging.getLogger().setLevel(logging.DEBUG)
         self.logger = logging.getLogger(__name__)
@@ -1185,10 +1186,12 @@ class playrec_v(QObject):
                     self.m["REC_AGC"] = True
         except:
             pass
-
-        self.gui.radioButton_AGC.setEnabled(True)
-        self.gui.radioButton_AGC.setChecked(True)
-        self.gui.radioButton_AGC.clicked.connect(self.activate_AGC)
+        try:
+            self.gui.radioButton_AGC.setEnabled(True)
+            self.gui.radioButton_AGC.setChecked(True)
+            self.gui.radioButton_AGC.clicked.connect(self.activate_AGC)
+        except:
+            pass
         #self.gui.pushButton_Play.setIcon(QIcon("./core/ressources/icons/play_v4.PNG"))
         self.gui.pushButton_Play.clicked.connect(self.cb_Butt_toggleplay)
         self.gui.pushButton_Stop.clicked.connect(self.playrec_c.cb_Butt_STOP)
@@ -2197,16 +2200,26 @@ class playrec_v(QObject):
         # self.cref = auxi.generate_canvas(self,self.gui.gridLayout_10,[13,11,1,2],[-1,-1,-1,-1],gui)
         # self.cref["ax"].tick_params(axis='both', which='major', labelsize=6)
         self.plot_widget = pg.PlotWidget()
-        if self.m["metadata"]["skinindex"] == 0:
-            self.gui.gridLayout_10.addWidget(self.plot_widget,13,11,1,2)
-        elif self.m["metadata"]["skinindex"] == 1:
-            self.gui.gridLayout_10.addWidget(self.plot_widget,13,12,1,2)
-        elif self.m["metadata"]["skinindex"] == 2:    
-            self.gui.gridLayout_10.addWidget(self.plot_widget,10,12,3,2)
-        elif self.m["metadata"]["skinindex"] == 3:    
-            self.gui.gridLayout_10.addWidget(self.plot_widget,8,13,3,2)
-        else: #default take skin 1
-            self.gui.gridLayout_10.addWidget(self.plot_widget,13,12,1,2)
+        #print(f'#################################### skinhandler: {self.m["skinhandler"][0].reorganize_canvas}')
+        
+        self.m["skinhandler"][0].reorganize_canvas(gui.gui,self.plot_widget)
+       
+        #TODO: remove after tests 08-05-2026
+        # if self.m["metadata"]["skinindex"] == 0:
+        #     self.m["skinhandler"][0].reorganize_canvas(gui.gui,self.plot_widget)
+        #     #self.gui.gridLayout_10.addWidget(self.plot_widget,13,11,1,2)
+        # elif self.m["metadata"]["skinindex"] == 1:
+        #     self.m["skinhandler"][0].reorganize_canvas(gui.gui,self.plot_widget)
+        #     #self.gui.gridLayout_10.addWidget(self.plot_widget,13,12,1,2)
+        # elif self.m["metadata"]["skinindex"] == 2: 
+        #     self.m["skinhandler"][0].reorganize_canvas(gui.gui,self.plot_widget)   
+        #     #self.gui.gridLayout_10.addWidget(self.plot_widget,10,12,3,2)
+        # elif self.m["metadata"]["skinindex"] == 3:    
+        #     self.m["skinhandler"][0].reorganize_canvas(gui.gui,self.plot_widget)
+        #     #self.gui.gridLayout_10.addWidget(self.plot_widget,8,13,3,2)
+        # else: #default take skin 1
+        #     self.m["skinhandler"][0].reorganize_canvas(gui,self.plot_widget)
+        #     #self.gui.gridLayout_10.addWidget(self.plot_widget,13,12,1,2)
 
 
         self.plot_widget.setMinimumSize(QSize(200, 0))
@@ -2570,11 +2583,13 @@ class playrec_v(QObject):
         :return: none
         :rtype: none
         """
-        if self.gui.radioButton_AGC.isChecked() is True:
-            self.m["AGC"] = True
-        else:
+        try:
+            if self.gui.radioButton_AGC.isChecked() is True:
+                self.m["AGC"] = True
+            else:
+                self.m["AGC"] = False
+        except:
             self.m["AGC"] = False
-
 
     def toggle_LO_bias(self):
         """ Purpose: toggle status of the radiobuttongoup for LO bias setting; 

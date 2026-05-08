@@ -30,8 +30,8 @@ def replace(file_path, text, subs, flags=0):
 file_path = "./core/COHIWizard_GUI_v10_scrollhv.py"
 file_path = "./core/COHIWizard_GUI_v10_scrollhv_skin_0.py"
 file_path = "./core/COHIWizard_GUI_v10_scrollhv_skin_1.py"
-# file_path = "./core/COHIWizard_GUI_v10_scrollhv_skin_2.py"
-file_path = "./core/COHIWizard_GUI_v10_scrollhv_skin_3.py"
+file_path = "./core/COHIWizard_GUI_v10_scrollhv_skin_2.py"
+#file_path = "./core/COHIWizard_GUI_v10_scrollhv_skin_3.py"
 
 text = "font.setPointSize(11)"
 subs = "font.setPointSize(11)"

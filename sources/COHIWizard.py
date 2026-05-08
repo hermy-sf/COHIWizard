@@ -1,4 +1,4 @@
-#Version 2.2.3
+#Version 2.2.4
 # -*- coding: utf-8 -*-logfile
 # For reducing to RFCorder: disable all modules except resample in the config_modules.yaml file
 #
@@ -71,26 +71,24 @@ class starter(QMainWindow):
         #self.gui = COHIWizard_GUI_v10_scrollhv.Ui_MainWindow()
         #TODO: import correct skin, use dynamic import
         self.maxsize = 20
-        if skinindex == 0:
-            from core import COHIWizard_GUI_v10_scrollhv_skin_0
-            self.gui = COHIWizard_GUI_v10_scrollhv_skin_0.Ui_MainWindow()
-        elif skinindex == 1:
-            from core import COHIWizard_GUI_v10_scrollhv_skin_1
-            self.gui = COHIWizard_GUI_v10_scrollhv_skin_1.Ui_MainWindow()
-            
-        elif skinindex == 2:
-            from core import COHIWizard_GUI_v10_scrollhv_skin_2
-            self.gui = COHIWizard_GUI_v10_scrollhv_skin_2.Ui_MainWindow()   
-        elif skinindex == 3:
-            from core import COHIWizard_GUI_v10_scrollhv_skin_3
-            self.gui = COHIWizard_GUI_v10_scrollhv_skin_3.Ui_MainWindow()
-            self.maxsize = 50
-        else: #default: take skin 1
-            from core import COHIWizard_GUI_v10_scrollhv_skin_1
-            self.gui = COHIWizard_GUI_v10_scrollhv_skin_1.Ui_MainWindow()
-            #testcomment
 
-            
+        module_name = f"COHIWizard_GUI_v10_scrollhv_skin_{skinindex}"
+        full_module = f"core.{module_name}"
+        try:
+            imported_module = importlib.import_module(full_module)
+            self.gui = imported_module.Ui_MainWindow()
+            # import player handler for maxsize
+            player_module_name = f"playerskinhandler_{skinindex}"
+            player_full_module = f"player.{player_module_name}"
+            player_imported = importlib.import_module(player_full_module)
+            self.maxsize = player_imported.skinhandler.maxsize()
+        except ImportError:
+            # default to skin 1
+            imported_module = importlib.import_module("core.COHIWizard_GUI_v10_scrollhv_skin_1")
+            self.gui = imported_module.Ui_MainWindow()
+            player_imported = importlib.import_module("player.playerskinhandler_1")
+            self.maxsize = player_imported.skinhandler.maxsize()
+
         self.gui.setupUi(self)
         self.iconButtons = []
         self.widgets_with_font = []
@@ -106,9 +104,7 @@ class starter(QMainWindow):
             hnew = int(wnew / aspectratio_opt)
 
         self.resize(wnew, hnew)
-        if skinindex == 2 or skinindex == 3:
-            #self.showFullScreen()
-            self.showMaximized()
+
 
     def resizeEvent(self, event):
         """resize event handler for the main window, handles resizing widgets based on size of MainWindow
@@ -575,7 +571,10 @@ class core_v(QObject):
         self.gui.Mainwindowreference = gui
         self.gui.actionFile_open.triggered.connect(self.cb_open_file)
         self.gui.actionOverwrite_header.triggered.connect(self.send_overwrite_header)
-        self.gui.actionopen_pdf.triggered.connect(self.open_pdf)
+        try:
+            self.gui.actionopen_pdf.triggered.connect(self.open_pdf)
+        except:
+            print("no pdf reading option available, old skin") 
         #
         self.gui.Mainwindowreference.SigResize.connect(self.resizehandler)
         ###TODO: re-organize, there should be no access to gui elements of other modules
@@ -679,9 +678,9 @@ class core_v(QObject):
         self.core_c.SigRelay.connect(self.rxhandler)
         ###TODO: re-organize, there should be no access to gui elements of other modules
         self.gui.playrec_pushButton_recordingpath.clicked.connect(self.core_c.recording_path_setter)
-        if self.m["metadata"]["skinindex"] == 2 or self.m["metadata"]["skinindex"] == 3:
-            self.gui.pushButton_Fileopen.clicked.connect(self.gui.actionFile_open.trigger)
-            self.gui.menubar.setVisible(False)
+        # if self.m["metadata"]["skinindex"] == 2 or self.m["metadata"]["skinindex"] == 3:
+        #     self.gui.pushButton_Fileopen.clicked.connect(self.gui.actionFile_open.trigger)
+        #     self.gui.menubar.setVisible(False)
         self.updateConfigElements()
         self.firsttick = True
         self.timethread = QThread()
@@ -692,7 +691,7 @@ class core_v(QObject):
         self.timertick.SigFinished.connect(self.timertick.deleteLater)
         self.timethread.finished.connect(self.timethread.deleteLater)
         self.timertick.SigTick.connect(self.updatetimer)
-        self.timethread.start()
+        #self.timethread.start()
         if self.timethread.isRunning():
             self.timethreaddActive = True #TODO:future system state
 
@@ -1538,7 +1537,7 @@ if __name__ == '__main__':
         skinindex = 1
     else:    
         skinindex = wiz_config["skinindex"] ##########TODO CHECK
-    gui = starter(skinindex)
+   
     #print(f"__main__: gui = {gui} gui.gui = {gui.gui}")
     from auxiliaries import WAVheader_tools
     from auxiliaries import auxiliaries as auxi
@@ -1547,42 +1546,56 @@ if __name__ == '__main__':
     
     #instantiate core module
     time.sleep(0.01)
-    xcore_m = core_m()
-    xcore_c = core_c(xcore_m)
-    xcore_v = core_v(gui,xcore_c,xcore_m) # self.gui wird in xcore_v gestartet 
+
 
     config = load_config_from_yaml("config_modules.yaml")
     #TODO TODO TODO: generalize: get from config !
 
+    logging.getLogger().setLevel(logging.DEBUG)
+    initial_logger = logging.getLogger(__name__)
     sub_module = "modules"
     mod_base = {'player':'playrec'}
     config['modules'] = {**mod_base, **config['modules']}
     #print(f"config file content: {config}")
     widget_base = {'player': 'Player'}
     config['module_names'] = {**widget_base, **config['module_names']}
-    loaded_modules = dynamic_import_from_config(config,sub_module,xcore_v.logger)
+    #loaded_modules = dynamic_import_from_config(config,sub_module,xcore_v.logger)
+    loaded_modules = dynamic_import_from_config(config,sub_module,initial_logger)
     #print(f"__main__ first if NEW: {loaded_modules}")
-
-    gui.show()
 
     list_mvct_directories = list(config['modules'].keys())
     #get list of corresponding mvct modules
     list_mvct_modules = list(config['modules'].values())
     #add dict of widget modules to config
     aux_dict = {}
+    skin_dict = {}
     for ix in range(len(list_mvct_directories)):
 
         aux_dict[list_mvct_directories[ix]] = list_mvct_directories[ix] + "_widget_skin_" + str(skinindex)
+        skin_dict[list_mvct_directories[ix]] = list_mvct_directories[ix] + "skinhandler_" + str(skinindex)
     config["widget"] = aux_dict
-    #print(f"__main__ 2nd if NEW: config, aux_dict: {config['widget']}")
-    
+    config["skinhandler"] = skin_dict
     #get list of corresponding widget modules
     list_widget_modules = list(config['widget'].values())
+    list_skin_modules = list(config['skinhandler'].values())
+    loaded_widget_modules = dynamic_import_from_config(config,"widget",initial_logger)
+    loaded_skin_modules = dynamic_import_from_config(config,"skinhandler",initial_logger)
 
-    loaded_widget_modules = dynamic_import_from_config(config,"widget",xcore_v.logger)
-    #print(loaded_widget_modules)
+    
+    # startup gui and core module
+    gui = starter(skinindex)
+    xcore_m = core_m()
+    xcore_c = core_c(xcore_m)
+    xcore_v = core_v(gui,xcore_c,xcore_m) # self.gui wird in xcore_v gestartet 
+    gui.show()
+    #print(f"__main__ 2nd if NEW: config, aux_dict: {config['widget']}")
+    
+    ################# replace all xcore_v.logger calls by initial_logger until skinhandlers are running, then switch to xcore_v.logger
+    # loaded_widget_modules = dynamic_import_from_config(config,"widget",xcore_v.logger)
+    # loaded_skin_modules = dynamic_import_from_config(config,"skinhandler",xcore_v.logger)
 
     tabui = []
+    skinhandler = []
     tab_widget = []
     for ix in range(len(list_mvct_directories)):
         try:
@@ -1592,25 +1605,46 @@ if __name__ == '__main__':
                 #dummy operation, because Player UI already exists
                 tab_widget.append([])
                 tabui.append([])
-                pass
+                try:
+                    skinhandler.append(getattr(loaded_skin_modules[list_skin_modules[ix]],"skinhandler"))
+                except:
+                    skinhandler.append([])
+                    pass
             else:
                 #generate new Widget, name it, label it , carry out its setupUi method, except for player,
                 #  whose UI already exists in form of xcore.gui and whose Tab also already exists
+                try:
+                    skinhandler.append(getattr(loaded_skin_modules[list_skin_modules[ix]],"skinhandler"))
+                except:
+                    skinhandler.append([])
+                    pass
                 tabui.append(getattr(loaded_widget_modules[list_widget_modules[ix]], "Ui_" + list_widget_modules[ix].replace("_skin_" + str(skinindex),""))())
                 tab_widget.append(QtWidgets.QWidget())
                 tab_widget[ix].setWindowTitle(mod_name)
                 tab_widget[ix].setObjectName("tab_" + mod_name)
                 tab_widget[ix].setWindowIconText(mod_name)
                 tabui[ix].setupUi(tab_widget[ix])
+                ################## TODO: this cannot be done before starting GUI, because tabWidget does not exist before that; check if skinhandlers can be started before GUI is started, then this code can be shifted to the skinhandler loop above
                 a = gui.gui.tabWidget.addTab(tab_widget[ix], "")
                 gui.gui.tabWidget.setTabText(a,mod_name)
             #print(f"Successfully created tab for {mod_name}.")
         except AttributeError as e:
             #print(f"Error creating tab for {mod_name}: {e}")
-            xcore_v.logger.error(f"__main__: Error creating tab for {mod_name}: {e}")
+            #xcore_v.logger.error(f"__main__: Error creating tab for {mod_name}: {e}")
+            initial_logger.error(f"__main__: Error creating tab for {mod_name}: {e}")
 
     #access elements of tabUI_Player via tabUI_Player instance ! not gui.gui.
     #app.aboutToQuit.connect(win.stop_worker)    #graceful thread termination on app exit
+
+    # call skinhandler for screen size
+    try:
+        skinhandler[0].resize_ui(gui)
+        skinhandler[0].redirect_ui_items(gui.gui)
+
+    except:
+        print("no skinhandler found, no skin operations carried out")
+        pass
+
     tab_dict = {}
     tab_dict["list"] = ["xcore"]
     tab_dict["tabname"] = ["xcore"]
@@ -1697,7 +1731,9 @@ if __name__ == '__main__':
     xcore_v.connect_init()
     # enable relaying startup settings to all modules if required
     xcore_v.updateConfigElements() 
+    xcore_v.SigRelay.emit("cm_all_",["skinhandler",skinhandler])
     xcore_v.SigRelay.emit("cexex_all_",["canvasbuild",gui])   # communicate reference to gui instance to all modules which instanciate a canvas with auxi.generate_canvas(self,gridref,gridc,gridt,gui)
+
     xcore_v.SigRelay.emit("cm_all_",xcore_v.m["rootpath"])
     xcore_v.SigRelay.emit("cm_all_",["Mainwindowreference",gui])
     xcore_v.SigRelay.emit("cexex_all_",["resizeaction",gui])
@@ -1715,7 +1751,8 @@ if __name__ == '__main__':
     except:
         xcore_v.logger.debug("startup Tab not defined in configuration file config_wizard.yaml")
         xcore_v.gui.tabWidget.setCurrentIndex(0)
-    print("COHIWIzard Version 2.2.3 , 26-04-2026, (C) Hermann Scharfetter")
+    xcore_v.timethread.start()
+    print("COHIWIzard Version 2.2.4 , 08-05-2026, (C) Hermann Scharfetter")
 
 
 
