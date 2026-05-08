@@ -35,6 +35,7 @@ import importlib
 from PyQt5.QtWidgets import *
 import logging
 import platform
+import math
 from icons import Logos
 from zeroconf import Zeroconf, ServiceBrowser
 import subprocess
@@ -1532,12 +1533,21 @@ if __name__ == '__main__':
     #print("v13")
     app = QApplication([])
     wiz_config = load_config_from_yaml("config_wizard.yaml")
+    # Get display diagonal size in inches
+    screen = QGuiApplication.primaryScreen()
+    physical_size = screen.physicalSize()
+    diagonal_inches = math.sqrt(physical_size.width()**2 + physical_size.height()**2) / 25.4
     
-    if wiz_config == None:
+    if wiz_config["skinindex"] == None:
         skinindex = 1
-    else:    
-        skinindex = wiz_config["skinindex"] ##########TODO CHECK
-   
+        wiz_config["skinindex"]
+        wiz_config["autoskin"] = True
+    if diagonal_inches <= 7 and wiz_config["autoskin"] == True:
+        skinindex = 2
+    else:
+        skinindex = wiz_config["skinindex"]
+
+    
     #print(f"__main__: gui = {gui} gui.gui = {gui.gui}")
     from auxiliaries import WAVheader_tools
     from auxiliaries import auxiliaries as auxi
@@ -1549,8 +1559,8 @@ if __name__ == '__main__':
 
 
     config = load_config_from_yaml("config_modules.yaml")
-    #TODO TODO TODO: generalize: get from config !
 
+    
     logging.getLogger().setLevel(logging.DEBUG)
     initial_logger = logging.getLogger(__name__)
     sub_module = "modules"
