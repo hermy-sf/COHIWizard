@@ -621,9 +621,18 @@ class core_v(QObject):
             self.m["metadata"]["STM_IP_address"] = "000.000.000.000"
             #auxi.standard_infobox("configuration file does not yet exist, a basic file will be generated. Please configure the STEMLAB IP address before using the Player")
             self.m["metadata"]["recording_path"] = os.path.join(self.m["metadata"]["rootpath"], "out")
-            self.m["metadata"]["skinindex"] = 1
+            screen = QGuiApplication.primaryScreen()
+            physical_size = screen.physicalSize()
+            diagonal_inches = math.sqrt(physical_size.width()**2 + physical_size.height()**2) / 25.4
+            if diagonal_inches <= 7 and wiz_config["autoskin"] == True:
+                self.m["metadata"]["skinindex"] = 2
+            else:
+                self.m["metadata"]["skinindex"] = 1
+            self.m["metadata"]["autoskin"] = True
+            self.m["metadata"]["logfilehandler"] = True
             self.m["metadata"]["HIRES_ffmpeg"] = True 
             self.m["metadata"]["REC_AGC"] = False 
+            self.m["metadata"]["dontshowadalm2000"] = False 
             self.m["metadata"]["AGC_targetvolume"] = 0.4
             # base_dir = Path(__file__).resolve().parent #TODO make part of the configuration
             # doc_dir = base_dir.parent / "documentation"
@@ -1508,7 +1517,7 @@ def dynamic_import_from_config(config,sub_module,logger):
             logger.debug(f"dynamic import: Successfully imported {module} from {full_module_path}.")
             #print(f"Successfully imported {module} from {full_module_path}.")
         except ModuleNotFoundError as e:
-            print(f"dynamic import Error importing {module} from {directory}: {e}")
+            #print(f"dynamic import Error importing {module} from {directory}: {e}")
             logger.debug(f"dynamic import: Error importing {module} from {directory}: {e}")
     return imported_modules
 
@@ -1532,21 +1541,27 @@ if __name__ == '__main__':
         QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
     #print("v13")
     app = QApplication([])
-    wiz_config = load_config_from_yaml("config_wizard.yaml")
-    # Get display diagonal size in inches
     screen = QGuiApplication.primaryScreen()
     physical_size = screen.physicalSize()
     diagonal_inches = math.sqrt(physical_size.width()**2 + physical_size.height()**2) / 25.4
-    
-    if wiz_config["skinindex"] == None:
-        skinindex = 1
-        wiz_config["skinindex"]
-        wiz_config["autoskin"] = True
-    if diagonal_inches <= 7 and wiz_config["autoskin"] == True:
-        skinindex = 2
-    else:
-        skinindex = wiz_config["skinindex"]
-
+    try:
+        wiz_config = load_config_from_yaml("config_wizard.yaml")
+        # Get display diagonal size in inches
+        
+        if wiz_config["skinindex"] == None:
+            skinindex = 1
+            wiz_config["skinindex"]
+            wiz_config["autoskin"] = True
+        if diagonal_inches <= 7 and wiz_config["autoskin"] == True:
+            skinindex = 2
+        else:
+            skinindex = wiz_config["skinindex"]
+    except:
+        if diagonal_inches <= 7 and wiz_config["autoskin"] == True:
+            skinindex = 2
+        else:
+            skinindex = 1
+        print("could not load wizard configuration, set skinindex to default value 1")
     
     #print(f"__main__: gui = {gui} gui.gui = {gui.gui}")
     from auxiliaries import WAVheader_tools

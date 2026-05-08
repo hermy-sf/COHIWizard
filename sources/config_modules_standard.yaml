@@ -1,0 +1,24 @@
+modules:
+  spectralviewer: view_spectra
+  resampler: resample
+  wavheader_editor: wavheader_editor
+  yaml_editor: yaml_editor
+  annotator: annotate
+  synthesizer: synthesizer
+module_names:
+  spectralviewer: View Spectra
+  resampler: Resampler
+  wavheader_editor: Wavheader Editor
+  yaml_editor: Yaml Editor
+  annotator: Annotator
+  synthesizer: Synthesizer
+dev_workers:
+  adalm2000: cohi_playrecworker.py
+  fl2k: cohi_playrecworker.py
+  fl2k_stream: cohi_playrecworker.py
+  stemlab_125_14: cohi_playrecworker.py
+SDR_controllers:
+  adalm2000: SDR_control.py
+  fl2k: SDR_control.py
+  fl2k_stream: SDR_control.py
+  stemlab_125_14: SDR_control.py
