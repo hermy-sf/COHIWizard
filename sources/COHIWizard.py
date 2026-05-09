@@ -624,7 +624,7 @@ class core_v(QObject):
             screen = QGuiApplication.primaryScreen()
             physical_size = screen.physicalSize()
             diagonal_inches = math.sqrt(physical_size.width()**2 + physical_size.height()**2) / 25.4
-            if diagonal_inches <= 7 and wiz_config["autoskin"] == True:
+            if diagonal_inches <= 7:
                 self.m["metadata"]["skinindex"] = 2
             else:
                 self.m["metadata"]["skinindex"] = 1
@@ -1544,20 +1544,21 @@ if __name__ == '__main__':
     screen = QGuiApplication.primaryScreen()
     physical_size = screen.physicalSize()
     diagonal_inches = math.sqrt(physical_size.width()**2 + physical_size.height()**2) / 25.4
+
     try:
         wiz_config = load_config_from_yaml("config_wizard.yaml")
         # Get display diagonal size in inches
-        
-        if wiz_config["skinindex"] == None:
+        if not "skinindex" in wiz_config:
             skinindex = 1
             wiz_config["skinindex"]
+        if not "autoskin" in wiz_config:
             wiz_config["autoskin"] = True
         if diagonal_inches <= 7 and wiz_config["autoskin"] == True:
             skinindex = 2
         else:
             skinindex = wiz_config["skinindex"]
     except:
-        if diagonal_inches <= 7 and wiz_config["autoskin"] == True:
+        if diagonal_inches <= 7:
             skinindex = 2
         else:
             skinindex = 1
