@@ -148,9 +148,10 @@ class starter(QMainWindow):
         self.resize_actor()
 
     def trigger_resize_event(self):
+        """DUMMY function ???"""
         #print("################>>>>>>>>>>>>>>>trigger resize<<<<<<<<<<<<<<<####################")
         old_size = self.size()
-        self.resize(old_size.width() + 1, old_size.height())
+        #self.resize(old_size.width() + 1, old_size.height())
         self.resize(old_size)
 
     def resize_actor(self):
@@ -237,130 +238,130 @@ from PyQt5.QtWidgets import QLabel, QVBoxLayout, QScrollArea
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtCore import QEvent
 
-class PdfViewer(QWidget):
-    def __init__(self, pdf_path, parent=None):
-        super().__init__(parent)
+# class PdfViewer(QWidget):
+#     def __init__(self, pdf_path, parent=None):
+#         super().__init__(parent)
 
-        self.doc = fitz.open(str(pdf_path))
-        self.zoom_factor = 1
+#         self.doc = fitz.open(str(pdf_path))
+#         self.zoom_factor = 1
 
-        self.page_labels = []
+#         self.page_labels = []
 
-        layout = QVBoxLayout(self)
+#         layout = QVBoxLayout(self)
 
-        self.scroll = QScrollArea(self)
-        self.scroll.setWidgetResizable(True)
+#         self.scroll = QScrollArea(self)
+#         self.scroll.setWidgetResizable(True)
 
-        self.container = QWidget()
-        self.vbox = QVBoxLayout(self.container)
+#         self.container = QWidget()
+#         self.vbox = QVBoxLayout(self.container)
 
-        self.scroll.setWidget(self.container)
-        layout.addWidget(self.scroll)
-        self.scroll.viewport().installEventFilter(self)
-        # Platzhalter für Seiten
-        for _ in self.doc:
-            lbl = QLabel()
-            lbl.setAlignment(Qt.AlignCenter)
-            self.page_labels.append(lbl)
-            self.vbox.addWidget(lbl)
+#         self.scroll.setWidget(self.container)
+#         layout.addWidget(self.scroll)
+#         self.scroll.viewport().installEventFilter(self)
+#         # Platzhalter für Seiten
+#         for _ in self.doc:
+#             lbl = QLabel()
+#             lbl.setAlignment(Qt.AlignCenter)
+#             self.page_labels.append(lbl)
+#             self.vbox.addWidget(lbl)
 
-        #self.fit_to_width()
+#         #self.fit_to_width()
 
 
-    def eventFilter(self, obj, event):
-        if obj is self.scroll.viewport() and event.type() == QEvent.Wheel:
-            if event.modifiers() & Qt.ControlModifier:
-                if event.angleDelta().y() > 0:
-                    self.zoom_factor *= 1.1
-                else:
-                    self.zoom_factor /= 1.1
+#     def eventFilter(self, obj, event):
+#         if obj is self.scroll.viewport() and event.type() == QEvent.Wheel:
+#             if event.modifiers() & Qt.ControlModifier:
+#                 if event.angleDelta().y() > 0:
+#                     self.zoom_factor *= 1.1
+#                 else:
+#                     self.zoom_factor /= 1.1
 
-                self.zoom_factor = max(0.2, min(self.zoom_factor, 5.0))
-                self.render_pages()
-                return True   # Event VERBRAUCHT
-        return super().eventFilter(obj, event)
+#                 self.zoom_factor = max(0.2, min(self.zoom_factor, 5.0))
+#                 self.render_pages()
+#                 return True   # Event VERBRAUCHT
+#         return super().eventFilter(obj, event)
     
-    def showEvent(self, event):
-        super().showEvent(event)
-        if not hasattr(self, "_initial_fit_done"):
-            self._initial_fit_done = True
-            self.fit_to_width()
+#     def showEvent(self, event):
+#         super().showEvent(event)
+#         if not hasattr(self, "_initial_fit_done"):
+#             self._initial_fit_done = True
+#             self.fit_to_width()
 
 
-    def render_pages(self):
-        for i, page in enumerate(self.doc):
-            matrix = fitz.Matrix(self.zoom_factor, self.zoom_factor)
-            pix = page.get_pixmap(matrix=matrix)
+#     def render_pages(self):
+#         for i, page in enumerate(self.doc):
+#             matrix = fitz.Matrix(self.zoom_factor, self.zoom_factor)
+#             pix = page.get_pixmap(matrix=matrix)
 
-            img = QImage(
-                pix.samples,
-                pix.width,
-                pix.height,
-                pix.stride,
-                QImage.Format_RGB888
-            )
+#             img = QImage(
+#                 pix.samples,
+#                 pix.width,
+#                 pix.height,
+#                 pix.stride,
+#                 QImage.Format_RGB888
+#             )
 
-            self.page_labels[i].setPixmap(QPixmap.fromImage(img))
+#             self.page_labels[i].setPixmap(QPixmap.fromImage(img))
 
-    def fit_to_width(self):
-        page = self.doc.load_page(0)
-        view_width = self.scroll.viewport().width()
-        page_width = page.rect.width
+#     def fit_to_width(self):
+#         page = self.doc.load_page(0)
+#         view_width = self.scroll.viewport().width()
+#         page_width = page.rect.width
 
-        self.zoom_factor = (view_width - 20) / page_width
-        self.render_pages()
+#         self.zoom_factor = (view_width - 20) / page_width
+#         self.render_pages()
 
-    def wheelEvent(self, event):
-        if event.modifiers() & Qt.ControlModifier:
-            if event.angleDelta().y() > 0:
-                self.zoom_factor *= 1.1
-            else:
-                self.zoom_factor /= 1.1
+#     def wheelEvent(self, event):
+#         if event.modifiers() & Qt.ControlModifier:
+#             if event.angleDelta().y() > 0:
+#                 self.zoom_factor *= 1.1
+#             else:
+#                 self.zoom_factor /= 1.1
 
-            self.zoom_factor = max(0.2, min(self.zoom_factor, 5.0))
-            self.render_pages()
-        else:
-            super().wheelEvent(event)
+#             self.zoom_factor = max(0.2, min(self.zoom_factor, 5.0))
+#             self.render_pages()
+#         else:
+#             super().wheelEvent(event)
 
     # def resizeEvent(self, event):
     #     super().resizeEvent(event)
     #     self.fit_to_width()
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if hasattr(self, "_initial_fit_done"):
-            self.fit_to_width()
+    # def resizeEvent(self, event):
+    #     super().resizeEvent(event)
+    #     if hasattr(self, "_initial_fit_done"):
+    #         self.fit_to_width()
 
 
-class PdfViewer_old(QWidget):
-    def __init__(self, pdf_path, parent=None):
-        super().__init__(parent)
+# class PdfViewer_old(QWidget):
+#     def __init__(self, pdf_path, parent=None):
+#         super().__init__(parent)
 
-        self.doc = fitz.open(str(pdf_path))
+#         self.doc = fitz.open(str(pdf_path))
 
-        layout = QVBoxLayout(self)
-        scroll = QScrollArea(self)
-        scroll.setWidgetResizable(True)
+#         layout = QVBoxLayout(self)
+#         scroll = QScrollArea(self)
+#         scroll.setWidgetResizable(True)
 
-        container = QWidget()
-        vbox = QVBoxLayout(container)
+#         container = QWidget()
+#         vbox = QVBoxLayout(container)
 
-        for page in self.doc:
-            pix = page.get_pixmap()
-            img = QImage(
-                pix.samples,
-                pix.width,
-                pix.height,
-                pix.stride,
-                QImage.Format_RGB888
-            )
-            lbl = QLabel()
-            lbl.setPixmap(QPixmap.fromImage(img))
-            lbl.setAlignment(Qt.AlignCenter)
-            vbox.addWidget(lbl)
+#         for page in self.doc:
+#             pix = page.get_pixmap()
+#             img = QImage(
+#                 pix.samples,
+#                 pix.width,
+#                 pix.height,
+#                 pix.stride,
+#                 QImage.Format_RGB888
+#             )
+#             lbl = QLabel()
+#             lbl.setPixmap(QPixmap.fromImage(img))
+#             lbl.setAlignment(Qt.AlignCenter)
+#             vbox.addWidget(lbl)
 
-        scroll.setWidget(container)
-        layout.addWidget(scroll)
+#         scroll.setWidget(container)
+#         layout.addWidget(scroll)
 
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
@@ -368,15 +369,15 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from PyQt5.QtCore import QUrl
 from pathlib import Path
 
-class PdfViewer_2(QWidget):
-    def __init__(self, pdf_path: Path):
-        super().__init__()
+# class PdfViewer_2(QWidget):
+#     def __init__(self, pdf_path: Path):
+#         super().__init__()
 
-        layout = QVBoxLayout(self)
-        self.view = QWebEngineView(self)
-        layout.addWidget(self.view)
+#         layout = QVBoxLayout(self)
+#         self.view = QWebEngineView(self)
+#         layout.addWidget(self.view)
 
-        self.view.setUrl(QUrl.fromLocalFile(str(pdf_path)))
+#         self.view.setUrl(QUrl.fromLocalFile(str(pdf_path)))
 
 
 class core_m(QObject):

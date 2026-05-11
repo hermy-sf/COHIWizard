@@ -1,5 +1,12 @@
 """Make file for compiling the COHIWizard with pyinstaller importing hidden imports (submodules)
-This is necessary for versions of the COHIWizard after introducing dynamic impot of the modules"""
+This is necessary for versions of the COHIWizard after introducing dynamic impot of the modules
+
+important settings: check, that all hidden imports are included. If using skins: set skinindexrange to np.arange(N+1) where N is the number of available skins
+also include command += (f' --hidden-import=core.COHIWizard_GUI_v10_scrollhv_skin_#') for all skinindices #
+
+TODO: implement automatic search for all available skins
+
+"""
 
 import subprocess
 import yaml
@@ -24,7 +31,7 @@ list_mvct_directories = list(config['modules'].keys())
 list_mvct_modules = list(config['modules'].values())
 #add dict of widget modules to config
 aux_dict = {}
-skinindexrange = np.arange(2)
+skinindexrange = np.arange(4)
 for ix in range(len(list_mvct_directories)):
     #aux_dict[list_mvct_directories[ix]] = list_mvct_directories[ix] + "_widget"
     #for skinindex in skinindexrange:
@@ -38,11 +45,16 @@ list_widget_modules = list(config['widget'].values())
 hooks_path = os.path.join(os.getcwd())
 #root string
 #command = 'pyinstaller --icon=COHIWizard_ico4.ico --onefile --log-level=DEBUG --additional-hooks-dir=hooks --paths=' + hooks_path + ' -F COHIWizard.py '#pyinstaller --onefile --additional-hooks-dir=hooks dein_script.py
-command = 'pyinstaller --icon=COHIWizard_ico4.ico --onefile COHIWizard.py --paths=. '#pyinstaller --onefile --additional-hooks-dir=hooks dein_script.py
+
+#command = 'pyinstaller --icon=COHIWizard_ico4.ico --onefile --clean --noupx --noconsole COHIWizard.py --paths=. '#pyinstaller --onefile --additional-hooks-dir=hooks dein_script.py
+command = 'pyinstaller --icon=COHIWizard_ico4.ico --clean --noupx COHIWizard.py --paths=. '#pyinstaller --onefile --additional-hooks-dir=hooks dein_script.py
+
 #command = 'pyinstaller --icon=COHIWizard_ico4.ico --onefile sources/COHIWizard.py --paths=sources'
 # include hidden imports according to config_modules.yaml
 command += (f' --hidden-import=core.COHIWizard_GUI_v10_scrollhv_skin_0')
 command += (f' --hidden-import=core.COHIWizard_GUI_v10_scrollhv_skin_1')
+command += (f' --hidden-import=core.COHIWizard_GUI_v10_scrollhv_skin_2')
+command += (f' --hidden-import=core.COHIWizard_GUI_v10_scrollhv_skin_3')
 for ix in range(len(list_mvct_directories)): 
     module = list_mvct_directories[ix] + "." + list_mvct_modules[ix] 
         #aux_dict[list_mvct_directories[ix]] = list_mvct_directories[ix] + "_widget_skin_" + str(skinindex)
@@ -52,7 +64,9 @@ for ix in range(len(list_mvct_directories)):
     module = list_mvct_directories[ix] + "." + list_widget_modules[ix] 
     #command += (f' --hidden-import={module}')
     for skinindex in skinindexrange:
-        command += (f' --hidden-import={module}' + "_skin_" + str(skinindex))
+       command += (f' --hidden-import={module}' + "_skin_" + str(skinindex))
+       command += (f' --hidden-import={module}'.rstrip("_widget") + "skinhandler_" + str(skinindex))
+       pass
 
 if os.path.exists(os.path.join(os.getcwd(),'dev_drivers')):
     list_dev_drivers = list(config["dev_workers"])
