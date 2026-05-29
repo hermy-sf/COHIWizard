@@ -79,6 +79,11 @@ class playrec_worker(QObject):
             print(f"cohi_playrecworker for ADALM initialization failed: Configuration file {configpath} not found, using default ffmpeg path")
             self.ffmpeg_path = "ffmpeg"
 
+        # Try test volume correction acc suggestion T. Nickel  , see also changed line before ao.push in pusher_thread  
+        # self.test_volume_prescaler = 1
+        # if "test_volume_prescaler" in metadata:
+        # print(f"test_volume_prescaler found in config file, using value {metadata['test_volume_prescaler']} for test volume correction")
+        #     self.test_volume_prescaler = metadata["test_volume_prescaler"]
 
     def set_filename(self,_value):
         self.__slots__[0] = _value
@@ -142,14 +147,18 @@ class playrec_worker(QObject):
         try:
             while True:
                 chunk = self.chunk_queue.get()
+                #chunk = self.chunk_queue.get()*self.test_volume_prescaler ### Test volume correction acc suggestion T. Nickel
                 if chunk is None:
                     break  # EOF
-                samples = np.frombuffer(chunk, dtype=np.float32).tolist()
+            #    samples = (5*np.frombuffer(chunk, dtype=np.float32)).tolist()
+                samples_raw = np.frombuffer(chunk, dtype=np.int16).tolist()
                 if ao == None:
                     #TODO TODO TODO: throw error and return to caller
                     print(f"pusher thread chunk begin: {chunk[:10]}... end: {chunk[-10:]}")
                 else:
-                    ao.push(0, samples)
+                    #   ao.push(0, samples)
+                    ao.pushRaw(0, samples_raw)
+
         except Exception as e:
             print(f"Pusher thread error: {e}")
 
@@ -191,7 +200,8 @@ class playrec_worker(QObject):
             "[part_re][part_im]amix=inputs=2:duration=shortest[out]",
             #"-map", "[out]", "-c:a", "pcm_s8", "-f", "caf", "-"
             #"-map", "[out]", "-c:a", "pcm_f32le", "-f", "caf", str(outfile)
-            "-map", "[out]", "-c:a", "pcm_f32le", "-f", "f32le", "pipe:1"  # Schreibe in die Standardausgabe (stdout)
+            #"-map", "[out]", "-c:a", "pcm_f32le", "-f", "f32le", "pipe:1"  # Schreibe in die Standardausgabe (stdout)
+            "-map", "[out]", "-c:a", "pcm_s16le", "-f", "s16le", "pipe:1"  # Schreibe in die Standardausgabe (stdout)
             ]
 
         return ffmpeg_cmd
@@ -201,6 +211,7 @@ class playrec_worker(QObject):
         f_nyquist = (lo_shift+sampling_rate/2))
         OSR is tha value which divides SRDAC such that 
         (1) SRDAC/OSR >= 2 * f_nyquist
+        #TODO: make OSR less, such that the aliasing prüblem identified by T Nickel is mitigated, i.e. the image of the signal band is not directly on top of the signal band but slightly shifted, e.g. by setting OSR such that the image is at least 100 kHz away from the signal band
         (2) r = SRDAC/OSR is integer, ideally r is an integer multiple of sampling_rate 
 
         :param SRDAC: sampling rate of the ADALM DAC (clock)
@@ -213,8 +224,9 @@ class playrec_worker(QObject):
         :return: oversampling rate OSR
 
         """
+        relaxfactor_OSR = 1 # 1.2 #relaxation factor for OSR to mitigate aliasing problem identified by T Nickel, i.e. the image of the signal band is not directly on top of the signal band but slightly shifted, e.g. by setting OSR such that the image is at least 100 kHz away from the signal band   
         f_nyquist = lo_shift+sampling_rate/2
-        r_max = SRDAC / (2 *f_nyquist) # maximum allowable OSR
+        r_max = SRDAC / (2*relaxfactor_OSR *f_nyquist) # maximum allowable OSR
         for OSR in np.arange(int(np.floor(r_max)),1,-1):
             r = SRDAC / OSR
             if SRDAC % r == 0:

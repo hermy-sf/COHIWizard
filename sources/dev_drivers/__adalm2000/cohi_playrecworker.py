@@ -383,13 +383,13 @@ class playrec_worker(QObject):
                                 ffmpeg_process.stdin.write(aux1.astype(np.float16))
                             
                             #write data from ffmpeg stdout to ADALM2000
-                            print(f"ffmpeg_process.stdout.read(ADALM_blocksize* 4) {ADALM_blocksize* 4}")
+                            #print(f"ffmpeg_process.stdout.read(ADALM_blocksize* 4) {ADALM_blocksize* 4}")
                             raw = ffmpeg_process.stdout.read(ADALM_blocksize)
                             samples = np.frombuffer(raw, dtype=np.float32)
-                            print(f"ffmpeg_process.stdout.read(ADALM_blocksize* 4) samples: {samples}, len(samples): {len(samples)}")
+                            #print(f"ffmpeg_process.stdout.read(ADALM_blocksize* 4) samples: {samples}, len(samples): {len(samples)}")
                             if samples.size == 0:
                                 continue
-                            print("ADALM push command reached")
+                            #print("ADALM push command reached")
                             ao.push([samples])  # Mono-Ausgabe auf ADALM2000
 
                             ffmpeg_process.stdin.flush()
