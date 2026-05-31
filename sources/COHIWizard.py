@@ -614,7 +614,21 @@ class core_v(QObject):
             if not "ffmpeg_path" in list(self.m["metadata"].keys()):
                 no_ffmpeg_path = True
             if not "documentation" in self.m["metadata"]:
-                no_documentation = True 
+                no_documentation = True
+            no_relaxfactor_OSR = False
+            if not "relaxfactor_OSR" in self.m["metadata"]:
+                self.relaxfactor_OSR = 1.2
+                self.m["metadata"]["relaxfactor_OSR"] = self.relaxfactor_OSR
+                no_relaxfactor_OSR = True
+            else:
+                self.relaxfactor_OSR = float(self.m["metadata"]["relaxfactor_OSR"])
+            no_volumefactor = False
+            if not "volumefactor" in self.m["metadata"]:
+                self.volumefactor = 1
+                self.m["metadata"]["volumefactor"] = self.volumefactor
+                no_volumefactor = True
+            else:
+                self.volumefactor = float(self.m["metadata"]["volumefactor"])
         except:
             print("cannot get config_wizard.yaml metadata, write a new initial config file")
             self.m["metadata"] = {"last_path": self.standardpath}
@@ -659,6 +673,16 @@ class core_v(QObject):
             yaml.dump(self.m["metadata"], stream)
             stream.close()
             no_ffmpeg_path = False
+
+        if no_relaxfactor_OSR:
+            stream = open("config_wizard.yaml", "w")
+            yaml.dump(self.m["metadata"], stream)
+            stream.close()
+
+        if no_volumefactor:
+            stream = open("config_wizard.yaml", "w")
+            yaml.dump(self.m["metadata"], stream)
+            stream.close()
 
         ###TODO: re-organize, there should be no access to gui elements of other modules
         self.m["HostAddress"] = self.gui.lineEdit_IPAddress.text() #TODO: Remove after transfer of playrec

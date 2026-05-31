@@ -65,6 +65,7 @@ class playrec_worker(QObject):
         self.stopix = False
         #changelog Adaptation rec Nickel: increase DATABLOCKSIZE for ADALM2000 to improve performance, as the USB transfer can handle larger blocks and this reduces the overhead of frequent transfers; the optimal block size may depend on the specific use case and system performance, so it may require some experimentation to find the best value
         self.DATABLOCKSIZE_BASIC = 4096*1024*4 # this is the maximum successful size before pusherthread error max TX buffersize exceeded
+        
         self.DATASHOWSIZE = 1024
         
         self.mutex = QMutex()
@@ -146,12 +147,36 @@ class playrec_worker(QObject):
 
 
     def pipe_reader_thread(self, stdout_pipe, buffer_size):
+        t0 = time.perf_counter()
+        bytes_read = 0
+        cnt = 0
         try:
             while True:
                 chunk = stdout_pipe.read(buffer_size)
                 if not chunk:
                     break
                 self.chunk_queue.put(chunk)  # non-blocking push into queue
+
+                bytes_read += len(chunk)
+
+                if bytes_read > 100_000_000:
+                    t1 = time.perf_counter()
+
+                    print(
+                        "ffmpeg output rate:",
+                        bytes_read/(t1-t0)/1e6,
+                        "MB/s"
+                    )
+
+                    bytes_read = 0
+                    t0 = time.perf_counter()
+
+                cnt += 1
+                if cnt % 5 == 0:
+                    print(
+                        "reader queue:",
+                        self.chunk_queue.qsize()
+                    )
         except Exception as e:
             print(f"Reader thread cannot read further data, probably EOF: {e}")
         finally:
@@ -177,16 +202,23 @@ class playrec_worker(QObject):
     #         print(f"Pusher thread error: {e}")
 
     def pusher_thread(self, ao):
+        push_count = 0
         try:
             #changelog Adaptation rec Nickel: use array.array for more efficient conversion of byte data to int16 samples, see https://docs.python.org/3/library/array.html#array.array.frombytes
             samples_raw = array.array('h')
+            
             while True:
                 chunk = self.chunk_queue.get()
                 #chunk = self.chunk_queue.get()*self.test_volume_prescaler ### Test volume correction acc suggestion T. Nickel
                 if chunk is None:
                     break  # EOF
             #    samples = (5*np.frombuffer(chunk, dtype=np.float32)).tolist()
-                
+                push_count += 1
+                if push_count % 5 == 0:
+                    print(
+                        "queue:",
+                        self.chunk_queue.qsize()
+                    )
                 #samples_raw = np.frombuffer(chunk, dtype=np.int16).tolist()
                 del samples_raw[:]
                 #samples_raw.frombytes(chunk)
@@ -210,9 +242,12 @@ class playrec_worker(QObject):
                     t0 = time.perf_counter()
                     ao.pushRaw(0, samples_raw)
                     t1 = time.perf_counter()
-
-                    if t1 - t0 > 0.01:
-                        print(f"pushRaw: {(t1-t0)*1000:.1f} ms")
+                    print(
+                        len(samples_raw)/(t1-t0)/1e6,
+                        "MS/s"
+                    )
+                    # if t1 - t0 > 0.01:
+                    #     print(f"pushRaw: {(t1-t0)*1000:.1f} ms")
         except Exception as e:
             print(f"Pusher thread error: {e}")
 
