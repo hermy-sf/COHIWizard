@@ -162,21 +162,15 @@ class playrec_worker(QObject):
                 if bytes_read > 100_000_000:
                     t1 = time.perf_counter()
 
-                    print(
-                        "ffmpeg output rate:",
-                        bytes_read/(t1-t0)/1e6,
-                        "MB/s"
-                    )
+                    #print("ffmpeg output rate:",bytes_read/(t1-t0)/1e6,"MB/s")
 
                     bytes_read = 0
                     t0 = time.perf_counter()
 
                 cnt += 1
                 if cnt % 5 == 0:
-                    print(
-                        "reader queue:",
-                        self.chunk_queue.qsize()
-                    )
+                    #print("reader queue:",self.chunk_queue.qsize())
+                    pass
         except Exception as e:
             print(f"Reader thread cannot read further data, probably EOF: {e}")
         finally:
@@ -215,10 +209,8 @@ class playrec_worker(QObject):
             #    samples = (5*np.frombuffer(chunk, dtype=np.float32)).tolist()
                 push_count += 1
                 if push_count % 5 == 0:
-                    print(
-                        "queue:",
-                        self.chunk_queue.qsize()
-                    )
+                    #print("queue:",self.chunk_queue.qsize())
+                    pass
                 #samples_raw = np.frombuffer(chunk, dtype=np.int16).tolist()
                 del samples_raw[:]
                 #samples_raw.frombytes(chunk)
@@ -227,7 +219,8 @@ class playrec_worker(QObject):
                 t1 = time.perf_counter()
 
                 if t1 - t0 > 0.005:
-                    print(f"frombytes: {(t1-t0)*1000:.1f} ms")
+                    #print(f"frombytes: {(t1-t0)*1000:.1f} ms")
+                    pass
 
 
 
@@ -242,10 +235,7 @@ class playrec_worker(QObject):
                     t0 = time.perf_counter()
                     ao.pushRaw(0, samples_raw)
                     t1 = time.perf_counter()
-                    print(
-                        len(samples_raw)/(t1-t0)/1e6,
-                        "MS/s"
-                    )
+                    #print(len(samples_raw)/(t1-t0)/1e6,"MS/s")
                     # if t1 - t0 > 0.01:
                     #     print(f"pushRaw: {(t1-t0)*1000:.1f} ms")
         except Exception as e:
@@ -444,8 +434,8 @@ class playrec_worker(QObject):
                 return()
         #ADALM_blocksize = self.DATABLOCKSIZE 
         preset_volume *= self.volumefactor
-        print(f"ADALM2000 <<<<<<<<<<<<< oooooo >>>>>>>>>>>> format: {format}")
-        print(f"playloop: BitspSample: {format[2]}; wFormatTag: {format[0]}; Align: {format[1]}")
+        #print(f"ADALM2000 <<<<<<<<<<<<< oooooo >>>>>>>>>>>> format: {format}")
+        #print(f"playloop: BitspSample: {format[2]}; wFormatTag: {format[0]}; Align: {format[1]}")
         self.JUNKSIZE = self.DATABLOCKSIZE/2
 
         if True: #not TEST:
@@ -737,7 +727,7 @@ class playrec_worker(QObject):
             #formatlist: [formattag blockalign bitpsample]
             if format[0] == 1:
                 data[lauf] = np.float32(dataraw[0]/8388608)
-                print(f"dataraw: {dataraw[0]} lauf: {lauf}")
+                #print(f"dataraw: {dataraw[0]} lauf: {lauf}")
             else:
                 data[lauf] = dataraw[0]
         return data

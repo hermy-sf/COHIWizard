@@ -70,7 +70,8 @@ class SDR_control(QObject):
                           "max_IFREQ": 100000000,
                           "min_IFREQ": 0,
                           "resolutions": [8],
-                          "connection_type": "USB"}
+                          "connection_type": "USB",
+                          "volume_mode": "mean"}
         #connection type USB_Vethernet is virtual, as the device in reality is USB but communication occurs via TCP to IP 127.0.0.1
         return(device_ID_dict)
 

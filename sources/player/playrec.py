@@ -4,6 +4,7 @@ Created on Feb 24 2024
 #@author: scharfetter_admin
 """
 #from pickle import FALSE, TRUE #intrinsic
+from statistics import mode
 import time
 #from datetime import timedelta
 #from socket import socket, AF_INET, SOCK_STREAM
@@ -88,6 +89,7 @@ class playrec_m(QObject):
         self.mdl["SDRcontrol"] = None
         self.mdl["device_ID_dict"] = {}
         self.mdl["REC_AGC"] = False
+        self.mdl["volume_mode"] = "mean" #default, may be changed by device driver, e.g. to "crest" for stemlabcontrol
         #os.path.isdir(os.getcwd)
 
 class playrec_c(QObject):
@@ -254,6 +256,8 @@ class playrec_c(QObject):
         :rtype: bool, str
         """
         device_ID_dict =self.stemlabcontrol.identify()
+        if "volume_mode" in device_ID_dict:
+            self.m["volume_mode"] = device_ID_dict["volume_mode"]
 
         errorstate = False
         value = ""
@@ -1177,6 +1181,13 @@ class playrec_v(QObject):
         self.gui.radioButton_LO_bias.setEnabled(False)
         self.m["AGC"] = True
         self.m["REC_AGC"] = False
+        # # TEST: new initialization of metadata from yaml:
+
+        # testkey = dict()
+        # currkey = ""
+        # for curr_key in self.m["metadata"]: testkey[curr_key] = self.m["metadata"][curr_key]
+        # # now all keys from metadata are in testkey, can check for existence of certain keys and set values accordingly
+
         try:
             stream = open("config_wizard.yaml", "r")
             self.metadata = yaml.safe_load(stream)
@@ -2240,6 +2251,43 @@ class playrec_v(QObject):
         #self.gui.gridLayout_10,[13,11,1,2],[-1,-1,-1,-1]
         #layout.addWidget(plot_widget, 0, 0)
 
+    def calc_volume(self, data, normfactor, refvol,mode):
+        """_calculate the signal volume from the data segment and return it for presentation in the volume indicator
+        the calculation depends on 'mode': if set to 'mean', then 1.5 * RMS value is taken. if set to 'crest' and the crest factor of the signal exceeds 3
+        then 1.5 * RMS * crest_factor/3 is returned. This method turned out to be necessary for certain device drivers (like the ADALM2000) in order
+        to suppress parasitic signal distortions once the crest factor is too high.
+        The method is purely heuristic and may stll be suboptimal. Further tests are pending.
+
+        :param: data: data segment from which the volume is calculated
+        :type: numpy array
+        :param: normfactor: normalization factor depending on the bit depth of the audio data
+        :type: int
+        :param: refvol: reference volume for presentation in the volume indicator           
+        :type: float    
+        :param: mode: mode of volume calculation, either "mean" or "crest"
+        :type: str
+        :raises [none]: [none]
+        :return: errorstate, value; errorstate is False if calculation was successful, True else; value is the calculated volume if errorstate is False, else an error message
+        :rtype: tuple (Boolean, float or str)
+        """       
+        errorstate = False
+        value = ""
+        if mode == "mean":
+            value = 1.5*np.std(np.abs(data))/normfactor/refvol
+        elif mode == "crest":
+            crest_factor = np.max(np.abs(data)) / np.std(data)
+            if crest_factor > 3:
+                value = 1.5*np.std(np.abs(data))/normfactor/refvol*crest_factor/3
+            else:
+                value = 1.5*np.std(np.abs(data))/normfactor/refvol
+            print(f"crest-factor: {crest_factor}")
+        else:
+            self.logger.error("calc_volume: invalid mode")
+            errorstate = True
+            value = "invalid mode for volume calculation"
+            print(f"volume: {value}")
+        return errorstate, value
+
     def showRFdata(self):
         """_take over datasegment from player loop worker and caluclate from there the signal volume and present it in the volume indicator
         read gain value and present it in the player Tab on the 'progressbar' Widget 'progressBar_volume'
@@ -2316,7 +2364,20 @@ class playrec_v(QObject):
             else:
                 span =103
             refvol = 0.71
-            vol = 1.5*np.std(np.abs(cv))/normfactor/refvol
+            #vol = 1.5*np.std(np.abs(cv))/normfactor/refvol
+            ########## TODO TODO TODO Nickel
+            #mode = "crest"
+            #mode = "mean"
+            if "volume_mode" in self.m["metadata"]:
+                mode = self.m["metadata"]["volume_mode"] # volume mode defined in metadata of file, has priority over volume mode defined in device_ID_dict
+            else:
+                mode = self.m["volume_mode"] #default volume mode if defined in device_ID_dict but not in metadata, otherwise default is "mean"
+            errorstate, vol = self.calc_volume(cv, normfactor, refvol, mode)
+            print(f"volume-mode: {mode}")
+            if errorstate:
+                self.logger.error(f"showRFdata: error in calc_volume: {vol}")
+                return False
+
             if np.std(np.abs(cv)) == 0:
                 print({f"************std = {np.std(np.abs(cv))}"})
             if vol == 0:
@@ -2360,7 +2421,7 @@ class playrec_v(QObject):
                     cgain = cgain + 20*np.log10(autocal_factor)
                     self.gui.verticalSlider_Gain.setProperty("value", int(np.round(cgain + self.GAINOFFSET)))
                     time.sleep(0.1)
-                    #print(f"self.mgain: {self.m['gain']}, autocal-factor: {autocal_factor}, targetvol: {self.m['AGC_targetvolume']}, curr vol: {vol}, dBvol: {dBvol}")
+                    print(f"self.mgain: {self.m['gain']}, autocal-factor: {autocal_factor}, targetvol: {self.m['AGC_targetvolume']}, curr vol: {vol}, dBvol: {dBvol}")
                 else:
                     deltagain = 3
                     #determine difference from target gain: 
@@ -2369,7 +2430,7 @@ class playrec_v(QObject):
                     #correct gain: 
                     cgain += deltagain * loss
                     self.gui.verticalSlider_Gain.setProperty("value", int(np.round(cgain + self.GAINOFFSET)))
-                    #print(f"cgain: {cgain}, loss: {loss}, targetvol: {self.m['AGC_targetvolume']}, curr vol: {vol}, dBvol: {dBvol}")
+                    print(f"cgain: {cgain}, loss: {loss}, targetvol: {self.m['AGC_targetvolume']}, curr vol: {vol}, dBvol: {dBvol}")
 
         else:
             av = np.abs(cv)/normfactor  #TODO rescale according to scaler from formattag
