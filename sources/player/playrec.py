@@ -4,6 +4,7 @@ Created on Feb 24 2024
 #@author: scharfetter_admin
 """
 #from pickle import FALSE, TRUE #intrinsic
+from statistics import mode
 import time
 #from datetime import timedelta
 #from socket import socket, AF_INET, SOCK_STREAM
@@ -66,6 +67,7 @@ class playrec_m(QObject):
         self.mdl["expected_seconds"] = 0
         self.mdl["AGC"] = True
         self.mdl["Reset_AGC"] = True
+        self.mdl["skinhandler"] = []
         # Create a custom logger
         logging.getLogger().setLevel(logging.DEBUG)
         self.logger = logging.getLogger(__name__)
@@ -87,6 +89,7 @@ class playrec_m(QObject):
         self.mdl["SDRcontrol"] = None
         self.mdl["device_ID_dict"] = {}
         self.mdl["REC_AGC"] = False
+        self.mdl["volume_mode"] = "mean" #default, may be changed by device driver, e.g. to "crest" for stemlabcontrol
         #os.path.isdir(os.getcwd)
 
 class playrec_c(QObject):
@@ -96,7 +99,7 @@ class playrec_c(QObject):
 
     SigAny = pyqtSignal()
     SigRelay = pyqtSignal(str,object)
-    SigEOFStart = pyqtSignal()
+    SigEOFStart = pyqtSignal() #?? ever used ? TODO check and remove if not required
     SigActivateOtherTabs = pyqtSignal(str,str,object)
     SigTimertick = pyqtSignal()
 
@@ -253,6 +256,8 @@ class playrec_c(QObject):
         :rtype: bool, str
         """
         device_ID_dict =self.stemlabcontrol.identify()
+        if "volume_mode" in device_ID_dict:
+            self.m["volume_mode"] = device_ID_dict["volume_mode"]
 
         errorstate = False
         value = ""
@@ -331,6 +336,10 @@ class playrec_c(QObject):
         """        
         errorstate = False
         value = ""
+        #self.st = self.et
+        self.st = time.time()
+        self.et = time.time()
+        self.logger.debug(f"999 playrec play manager timing segment etime: {self.et-self.st} s: PRW segment 1:play_manager start")
 
         if self.m["playthreadActive"]:
             self.logger.debug("playthread is active, no action") 
@@ -356,6 +365,10 @@ class playrec_c(QObject):
         errorstate, value = self.stemlabcontrol.set_play()
         if errorstate:
             self.playrec_c.errorhandler(value)
+        self.st = self.et
+        self.et = time.time()
+        self.logger.debug(f"999 playrec play manager timing segment etime: {self.et-self.st} s: PRW segment 2: sdr_control accomplished")
+
         self.m["modality"] = "play"
     ######################  END change for general devicedrivers
     
@@ -393,7 +406,10 @@ class playrec_c(QObject):
         # e.g. for fl2k: start fl2k_tcp and then launch connected data_messenger
         # in self.SDR#control.sdrserverstart(self.m["sdr_configparams"])
         # statt stemlabcontrol wird eine generelle Instanz SDRcontrol  gestartet
-        
+        self.st = self.et
+        self.et = time.time()
+        self.logger.debug(f"999 playrec play manager timing segment etime: {self.et-self.st} s: PRW segment 3: call tworker start ")
+
         if self.m["TEST"] is False:
             self.m["sdr_configparams"]["TEST"] = False
             errorstate, process = self.stemlabcontrol.sdrserverstart(self.m["sdr_configparams"])
@@ -413,6 +429,10 @@ class playrec_c(QObject):
             else:
                 errorstate = True  #TODO TODO TODO: better errorhandling and messaging with errorstate, value and errorhandler
                 value = "Cannot configure SDR socket. Please check your STEMLAB connection."
+            self.st = self.et
+            self.et = time.time()
+            self.logger.debug(f"999 playrec play manager timing segment etime: {self.et-self.st} s: PRW SUBsegment 3A: play_tstarter start actually called")
+
         else:
             self.m["sdr_configparams"]["TEST"] = True
             ################TODO TODO TODO: for test only, remove later
@@ -423,10 +443,15 @@ class playrec_c(QObject):
             # if not self.play_tstarter():
             #     return False
     ######################  END: change for general devicedrivers
+        self.st = self.et
+        self.et = time.time()
+        self.logger.debug(f"999 playrec play manager timing segment etime: {self.et-self.st} s: PRW segment : playrecworker started")
 
-            self.logger.info("stemlabcontrols activated")
+
+        self.logger.info("stemlabcontrols activated")
         # errorstate = True
         # value = "dummy error for testing"
+        
         self.SigRelay.emit("cexex_playrec",["listhighlighter",0])
         return(errorstate,value)
 
@@ -487,6 +512,11 @@ class playrec_c(QObject):
         :return: _False if error, True on succes_
         :rtype: _Boolean_
         """        
+        #self.st = time.time()
+        self.st = self.et
+        self.et = time.time()
+        self.logger.debug(f"999 playrec tworker segment etime: {self.et-self.st} s: TWKR segment 0: tstarter reached")
+
         errorstate = False
         value = ""
         device_ID_dict =self.stemlabcontrol.identify()
@@ -554,6 +584,9 @@ class playrec_c(QObject):
 
 
 ######################  END: change for general devicedrivers
+        self.st = self.et
+        self.et = time.time()
+        self.logger.debug(f"999 playrec tworker segment etime: {self.et-self.st} s: TWKR segment 1: setup thread")
 
         self.playrec_tworker.moveToThread(self.playthread)
         self.playrec_tworker.set_timescaler(self.m["timescaler"])
@@ -587,8 +620,8 @@ class playrec_c(QObject):
         self.playrec_tworker.SigInfomessage.connect(self.infosigmanager)
         self.playrec_tworker.SigFinished.connect(self.recloopmanager)
         self.playrec_tworker.SigError.connect(self.errorsigmanager)
-        self.playrec_tworker.SigNextfile.connect(self.nextfilemanager)
-        self.SigEOFStart.connect(self.EOF_manager)
+        self.playrec_tworker.SigNextfile.connect(self.nextfilemanager) #?? ever used ? TODO check and remove if not required
+        self.SigEOFStart.connect(self.EOF_manager) #?? ever used ? TODO check and remove if not required
         self.playrec_tworker.SigFinished.connect(self.playrec_tworker.deleteLater)
         if watchdogflag:
             # stop watchdog
@@ -606,6 +639,10 @@ class playrec_c(QObject):
             self.playrec_tworker.SigBufferOverflow.connect(
                                          lambda: self.SigRelay.emit("cexex_playrec",["indicate_bufoverflow",0])) #TODO reactivate
         self.playthread.start()
+        self.st = self.et
+        self.et = time.time()
+        self.logger.debug(f"999 playrec tworker segment etime: {self.et-self.st} s: TWKR segment 2: thread started")
+
         if self.playthread.isRunning():
             self.m["playthreadActive"] = True
             self.SigRelay.emit("cm_all_",["playthreadActive",self.m["playthreadActive"]])  ###TODO: geht nicht
@@ -623,6 +660,9 @@ class playrec_c(QObject):
             errorstate = True
             value = "STEMLAB data transfer thread could not be started, please check if STEMLAB is connected correctly"
 
+        self.st = self.et
+        self.et = time.time()
+        self.logger.debug(f"999 playrec tworker segment etime: {self.et-self.st} s: TWKR segment 4: tstarter job accomplished")
 
         return(errorstate,value)
 
@@ -824,37 +864,6 @@ class playrec_c(QObject):
             self.logger.info("EOF-manager: player has been stopped")
             time.sleep(0.5)
             return
-        #if (os.path.isfile(self.m["my_dirname"] + '/' + self.m["wavheader"]['nextfilename']) == True and self.m["wavheader"]['nextfilename'] != "" ): #TODO delete after tests 23-12-2024: 
-        ###TODO TODO TODO: remove after testing 26-12-2024r
-        #if False:
-        #if (os.path.isfile(os.path.join(self.m["my_dirname"], self.m["wavheader"]['nextfilename'])) and self.m["wavheader"]['nextfilename'] != "" ):
-            # if not self.TESTFILELISTCONTINUOUS:
-            #     ###TODO TODO TODO: obsolete, nextfile is handled by tworker
-            #     # play next file in nextfile-list
-            #     #self.m["f1"] = self.m["my_dirname"] + '/' + self.m["wavheader"]['nextfilename'] TODO: delete after tests 23-12-2024
-            #     self.m["f1"] = os.path.join(self.m["my_dirname"], self.m["wavheader"]['nextfilename'])
-            #     self.m["my_filename"] = Path(self.m["f1"]).stem
-            #     ####TODO geht nicht
-            #     #self.SigRelay.emit("cm_all_",["f1",self.m["my_dirname"] + '/' + self.m["wavheader"]['nextfilename']])
-            #     #self.SigRelay.emit("cm_all_",["my_filename",self.m["my_filename"]])####TODO geht nicht
-            #     self.m["wavheader"] = WAVheader_tools.get_sdruno_header(self,self.m["f1"])
-            #     self.m["wavheader"]['nextfilename'] = self.m["wavheader"]['nextfilename'].rstrip()
-            #     time.sleep(0.02)
-            #     errorstate,value = self.play_tstarter()
-            #     if errorstate:
-            #         self.errorhandler(value)
-            #     time.sleep(0.02)
-            #     self.m["fileopened"] = True
-            #     #self.SigRelay.emit("cm_all_",["fileopened",True])####TODO geht nicht
-            #     #TODO: self.my_filename + self.ext müssen updated werden, übernehmen aus open file
-            #     #self.SigRelay.emit("cexex_all_",["updateGUIelements",0])####TODO geht nicht
-            #     self.SigRelay.emit("cexex_playrec",["updateotherGUIelements",0])
-            #     self.SigRelay.emit("cexex_playrec",["updatecurtime",0])
-            #     #self.logger.info("fetch nextfile")
-            #     print(f"playrec namechange after nextfile test, filename: {self.m['my_filename']}")
-            # else:
-            #     print("automatic nextfile treatment, no nextfilehandling necessary")
-            #    pass
         
         if self.m["Buttloop_pressed"]:
             time.sleep(0.1)
@@ -988,9 +997,6 @@ class playrec_c(QObject):
         if self.m["playthreadActive"] is False:
             self.m["fileopened"] = False ###CHECK
             self.SigRelay.emit("cm_all_",["fileopened",False]) #TODO: funktioniert nicht
-            #self.SigRelay.emit("cexex_playrec",["reset_GUI",0]) #TODO remove after tests
-            #self.SigRelay.emit("cexex_playrec",["reset_playerbuttongroup",0])
-            #return
         else:
             self.playrec_tworker.stop_loop()
         if self.m["TEST"] is False:
@@ -1001,8 +1007,6 @@ class playrec_c(QObject):
         self.SigRelay.emit("cexex_playrec",["reset_GUI",0])
         #TODO TODO TODO: activate other tabs
         self.SigActivateOtherTabs.emit("Player","activate",[])
-        #self.SigRelay.emit("cexex_win",["reset_GUI",0]) #TODO remove after tests, may not be connected with _c
-        #print("STOP pressed")
 
     def jump_1_byte(self):             #increment current time in playtime window and update statusbar
         """
@@ -1136,7 +1140,20 @@ class playrec_v(QObject):
     def init_playrec_ui(self):
 
         self.gui.playrec_radioButtonpushButton_write_logfile.clicked.connect(self.togglelogfilehandler)
-        self.gui.playrec_radioButtonpushButton_write_logfile.setChecked(True)
+        self.standardpath = os.getcwd()  #TODO: this is a core variable in core model
+        try:
+            stream = open("config_wizard.yaml", "r")
+            self.m["metadata"] = yaml.safe_load(stream)
+            stream.close()
+            self.ismetadata = True
+            
+        except:
+            self.ismetadata = False
+        try:
+            self.gui.playrec_radioButtonpushButton_write_logfile.setChecked(self.m["metadata"]["logfilehandler"])    
+        except:
+            self.gui.playrec_radioButtonpushButton_write_logfile.setChecked(True)
+        
 
         self.gui.pushButton_Loop.setChecked(False)
         self.gui.pushButton_Loop.clicked.connect(self.Buttloopmanager)
@@ -1164,6 +1181,13 @@ class playrec_v(QObject):
         self.gui.radioButton_LO_bias.setEnabled(False)
         self.m["AGC"] = True
         self.m["REC_AGC"] = False
+        # # TEST: new initialization of metadata from yaml:
+
+        # testkey = dict()
+        # currkey = ""
+        # for curr_key in self.m["metadata"]: testkey[curr_key] = self.m["metadata"][curr_key]
+        # # now all keys from metadata are in testkey, can check for existence of certain keys and set values accordingly
+
         try:
             stream = open("config_wizard.yaml", "r")
             self.metadata = yaml.safe_load(stream)
@@ -1173,10 +1197,12 @@ class playrec_v(QObject):
                     self.m["REC_AGC"] = True
         except:
             pass
-
-        self.gui.radioButton_AGC.setEnabled(True)
-        self.gui.radioButton_AGC.setChecked(True)
-        self.gui.radioButton_AGC.clicked.connect(self.activate_AGC)
+        try:
+            self.gui.radioButton_AGC.setEnabled(True)
+            self.gui.radioButton_AGC.setChecked(True)
+            self.gui.radioButton_AGC.clicked.connect(self.activate_AGC)
+        except:
+            pass
         #self.gui.pushButton_Play.setIcon(QIcon("./core/ressources/icons/play_v4.PNG"))
         self.gui.pushButton_Play.clicked.connect(self.cb_Butt_toggleplay)
         self.gui.pushButton_Stop.clicked.connect(self.playrec_c.cb_Butt_STOP)
@@ -1350,6 +1376,20 @@ class playrec_v(QObject):
             self.logger.setLevel(logging.NOTSET)
             self.SigRelay.emit("cexex_all_",["logfilehandler",False])
 
+        self.standardpath = os.getcwd()  #TODO: this is a core variable in core model
+        try:
+            stream = open("config_wizard.yaml", "r")
+            self.m["metadata"] = yaml.safe_load(stream)
+            stream.close()
+            self.ismetadata = True
+        except:
+            self.ismetadata = False
+            return
+        self.m["metadata"]["logfilehandler"] = self.gui.playrec_radioButtonpushButton_write_logfile.isChecked()
+        stream = open("config_wizard.yaml", "w")
+        yaml.dump(self.m["metadata"], stream)
+        stream.close()
+        
     def sdrdevice_changehandler(self):
         QTimer.singleShot(0, self.process_combobox_change)
 
@@ -1610,6 +1650,8 @@ class playrec_v(QObject):
         self.gui.label_Filename_Player.setText(self.m["my_filename"] + self.m["ext"])
 
     def reset_GUI(self):
+        #self.playrec_c.cb_Butt_STOP()   ### remove after tests 28-06-2026
+        #self.cb_Butt_STOP()
         self.gui.listWidget_playlist.clear()
         self.gui.listWidget_sourcelist.clear()
         self.gui.label_Filename_Player.setText("")
@@ -1618,17 +1660,10 @@ class playrec_v(QObject):
         self.gui.label_Filename_Player.setText('')
 
         if self.m["playlist_active"] == True:
-        #     self.gui.pushButton_act_playlist.setChecked(True)
-        #     self.gui.listWidget_sourcelist.setEnabled(True)
-        #     self.gui.listWidget_playlist.setEnabled(True)
-        #     self.m["playlist_active"] = True
-        # else:
             self.gui.pushButton_act_playlist.setChecked(False)
             self.gui.listWidget_sourcelist.setEnabled(False)
             self.gui.listWidget_playlist.setEnabled(False)
             self.m["playlist_active"] = False
-
-        #self.SigActivateOtherTabs.emit("Player","activate",[])
   
     def addplaylistitem(self):
         item = QtWidgets.QListWidgetItem()
@@ -1641,7 +1676,6 @@ class playrec_v(QObject):
         for x in os.listdir(self.m["my_dirname"]):
             if x.endswith(".wav"):
                 if True: #x != (self.m["my_filename"] + self.m["ext"]): #TODO: obsolete old form when automatically loading opened file to playlist
-                    #resfilelist.append(x) #TODO: used ?????????
                     _item=self.gui.listWidget_sourcelist.item(ix)
                     _item.setText(x)
                     fnt = _item.font()
@@ -1763,8 +1797,6 @@ class playrec_v(QObject):
         """
         self.m["playprogress"] = self.gui.ScrollBar_playtime.value()
         self.playrec_c.jump_to_position_c()
-        #self.m["QTMAINWINDOWparent"]
-        #self.gui.ScrollBar_playtime.mousePressEvent = self.m["QTMAINWINDOWparent"].scrollbar_mousePressEvent
 
     def toggleUTC(self):
         if self.gui.checkBox_UTC.isChecked():
@@ -1779,7 +1811,6 @@ class playrec_v(QObject):
             self.m["TEST"] = False
 
     def cb_Butt_toggle_playlist(self):
-        #system_state = sys_state.get_status()
         if self.m["playlist_active"] == False:
             self.gui.pushButton_act_playlist.setChecked(True)
             self.gui.listWidget_sourcelist.setEnabled(True)
@@ -1806,18 +1837,14 @@ class playrec_v(QObject):
 
         self.logger.info("playlist_update: playlist updated")
         time.sleep(0.001)
-        #system_state = sys_state.get_status()
         #get all items of playlist Widget and write them to system_state["playlist"]
         lw = self.gui.listWidget_playlist
         # let lw haven elements in it.
         self.m["playlist"] = []
         for x in range(lw.count()):
             item = lw.item(x)
-            #playlist.append(lw.item(x))
             self.m["playlist"].append(item.text())
-        #self.m["playlist"] = self.m["playlist"]
         self.m["playlist_len"] = self.gui.listWidget_playlist.count()
-        #self.SigRelay.emit("cm_playrec",["playlist",self.m["playlist"]])
 
     def cb_setgain(self):
         '''
@@ -1841,7 +1868,6 @@ class playrec_v(QObject):
             lw = self.gui.listWidget_playlist
             item = lw.item(_index)
             item.setBackground(QtGui.QColor("lightgreen"))  #TODO: shift to resampler view ???? why ???
-    #item.setBackground(QtGui.QColor("lightgreen"))
 
     def cb_Butt_toggleplay(self):
         """ 
@@ -1853,6 +1879,11 @@ class playrec_v(QObject):
         :param: none
         :type: none
         """
+        #self.st = self.et
+        self.st = time.time()
+        self.et = time.time()
+        self.logger.debug(f"999 playrec timing segment etime: {self.et-self.st} s: playrec timing base start")
+        #print(f"6C segment etime: {et-st} s: relay and updateGUIs of all modules")
         self.playlist_update()
         self.update_LO_bias()
         #TODO TODO TODO: inactivate other tabs
@@ -1877,7 +1908,6 @@ class playrec_v(QObject):
                         ###RESET playgroup
                         self.reset_playerbuttongroup()
                         self.reset_LO_bias()
-                        #sys_state.set_status(system_state)
                         return False
 
                 self.gui.radioButton_LO_bias.setEnabled(False)
@@ -1889,7 +1919,6 @@ class playrec_v(QObject):
                     #TODO TODO TODO: OBSOLETE ? check if this is ever reached ? self.m["fileopened" is False is a condition that this branch is reched !
                     # restore automatic call of fileopen in this case
                     self.reset_playerbuttongroup()
-                    #sys_state.set_status(system_state)
                     return False
                 if not self.playrec_c.LO_bias_checkbounds():
                     self.reset_playerbuttongroup()
@@ -1901,6 +1930,10 @@ class playrec_v(QObject):
             self.m["timescaler"] = self.m["wavheader"]['nSamplesPerSec']*self.m["wavheader"]['nBlockAlign']
 
             errorstate, value = self.playrec_c.checkSTEMLABrates()
+            self.st = self.et
+            self.et = time.time()
+            self.logger.debug(f"999 playrec timing segment etime: {self.et-self.st} s: Segment 2: checked STEMlab rates")
+
             #if not self.playrec_c.checkSTEMLABrates():
             if errorstate:
                 self.playrec_c.errorhandler(value)
@@ -1913,7 +1946,14 @@ class playrec_v(QObject):
             if self.m["playthreadActive"] == True:
                 #self.playrec_c.playrec_tworker.pausestate = False
                 self.playrec_c.playrec_tworker.set_pause(False)
+            self.st = self.et
+            self.et = time.time()
+            self.logger.debug(f"999 playrec timing segment etime: {self.et-self.st} s: Segment 3: call play_manager")
             errorstate, value = self.playrec_c.play_manager()
+            self.st = self.et
+            self.et = time.time()
+            self.logger.debug(f"999 playrec timing segment etime: {self.et-self.st} s: Segment 4: play_manager call accomplished")
+
             if errorstate:
                 self.playrec_c.errorhandler(value)
             self.m["pausestate"] = False
@@ -1926,6 +1966,10 @@ class playrec_v(QObject):
             if self.m["playthreadActive"] == True:
                 #self.playrec_c.playrec_tworker.pausestate = True
                 self.playrec_c.playrec_tworker.set_pause(True)
+        self.st = self.et
+        self.et = time.time()
+        self.logger.debug(f"999 playrec timing segment etime: {self.et-self.st} s: relay and updateGUIs of all modules")
+
         if self.m["errorf"]:
             #auxi.standard_errorbox(self.m["errortxt"])
             return False
@@ -1936,9 +1980,7 @@ class playrec_v(QObject):
         '''
         Returns: nothing
         '''
-        #system_state = sys_state.get_status()
         self.playrec_c.cb_Butt_STOP()
-        #self.timertick.stoptick()
         self.SigRelay.emit("cexex_xcore",["stoptick",0])
         self.playrec_c.stemlabcontrol.RPShutdown(self.m["sdr_configparams"])
         #TODO TODO TODO: check if it would also be fine to instantiate the stemlabcontrol object only here in the player
@@ -2113,7 +2155,6 @@ class playrec_v(QObject):
         """
 
         """
-        #system_state = sys_state.get_status()
         self.gui.pushButton_Play.setIcon(QIcon("./core/ressources/icons/play_v4.PNG"))
         self.gui.pushButton_Play.setChecked(False)
         self.gui.pushButton_Loop.setChecked(False)
@@ -2122,8 +2163,6 @@ class playrec_v(QObject):
         self.gui.Label_Recindicator.setStyleSheet(('background-color: rgb(255,255,255)'))
         self.m["playthreadActive"] = False
         self.SigRelay.emit("cm_all_",["playthreadActive",self.m["playthreadActive"]])
-        #self.activate_tabs(["View_Spectra","Annotate","Resample","YAML_editor","WAV_header"])
-        #self.setactivity_tabs("Player","activate",[])
         self.SigActivateOtherTabs.emit("Player","activate",[])
         self.m["fileopened"] = False ###CHECK
         self.SigRelay.emit("cm_all_",["fileopened",False])
@@ -2162,12 +2201,7 @@ class playrec_v(QObject):
 
     def canvasbuild(self,gui):
         """
-        sets up a canvas to which graphs can be plotted
-        Use: calls the method auxi.generate_canvas with parameters self.gui.gridlayoutX to specify where the canvas 
-        should be placed, the coordinates and extensions in the grid and a reference to the QMainwidget Object
-        generated by __main__ during system startup. This object is relayed via signal to all modules at system initialization 
-        and is automatically available (see rxhandler method)
-        the reference to the canvas object is written to self.cref
+        sets up a canvas to which the monitoring spectrum is plottet
         :param : gui
         :type : QMainWindow
         :raises [ErrorType]: [ErrorDescription]
@@ -2177,10 +2211,28 @@ class playrec_v(QObject):
         # self.cref = auxi.generate_canvas(self,self.gui.gridLayout_10,[13,11,1,2],[-1,-1,-1,-1],gui)
         # self.cref["ax"].tick_params(axis='both', which='major', labelsize=6)
         self.plot_widget = pg.PlotWidget()
-        if self.m["metadata"]["skinindex"] == 0:
-            self.gui.gridLayout_10.addWidget(self.plot_widget,13,11,1,2)
-        else:    
-            self.gui.gridLayout_10.addWidget(self.plot_widget,13,12,1,2)
+        #print(f'#################################### skinhandler: {self.m["skinhandler"][0].reorganize_canvas}')
+        
+        self.m["skinhandler"][0].reorganize_canvas(gui.gui,self.plot_widget)
+       
+        #TODO: remove after tests 08-05-2026
+        # if self.m["metadata"]["skinindex"] == 0:
+        #     self.m["skinhandler"][0].reorganize_canvas(gui.gui,self.plot_widget)
+        #     #self.gui.gridLayout_10.addWidget(self.plot_widget,13,11,1,2)
+        # elif self.m["metadata"]["skinindex"] == 1:
+        #     self.m["skinhandler"][0].reorganize_canvas(gui.gui,self.plot_widget)
+        #     #self.gui.gridLayout_10.addWidget(self.plot_widget,13,12,1,2)
+        # elif self.m["metadata"]["skinindex"] == 2: 
+        #     self.m["skinhandler"][0].reorganize_canvas(gui.gui,self.plot_widget)   
+        #     #self.gui.gridLayout_10.addWidget(self.plot_widget,10,12,3,2)
+        # elif self.m["metadata"]["skinindex"] == 3:    
+        #     self.m["skinhandler"][0].reorganize_canvas(gui.gui,self.plot_widget)
+        #     #self.gui.gridLayout_10.addWidget(self.plot_widget,8,13,3,2)
+        # else: #default take skin 1
+        #     self.m["skinhandler"][0].reorganize_canvas(gui,self.plot_widget)
+        #     #self.gui.gridLayout_10.addWidget(self.plot_widget,13,12,1,2)
+
+
         self.plot_widget.setMinimumSize(QSize(200, 0))
         self.plot_widget.getAxis('left').setStyle(tickFont=pg.QtGui.QFont('Arial', 6))
         self.plot_widget.getAxis('bottom').setStyle(tickFont=pg.QtGui.QFont('Arial', 6))
@@ -2199,10 +2251,47 @@ class playrec_v(QObject):
         #self.gui.gridLayout_10,[13,11,1,2],[-1,-1,-1,-1]
         #layout.addWidget(plot_widget, 0, 0)
 
+    def calc_volume(self, data, normfactor, refvol,mode):
+        """_calculate the signal volume from the data segment and return it for presentation in the volume indicator
+        the calculation depends on 'mode': if set to 'mean', then 1.5 * RMS value is taken. if set to 'crest' and the crest factor of the signal exceeds 3
+        then 1.5 * RMS * crest_factor/3 is returned. This method turned out to be necessary for certain device drivers (like the ADALM2000) in order
+        to suppress parasitic signal distortions once the crest factor is too high.
+        The method is purely heuristic and may stll be suboptimal. Further tests are pending.
+
+        :param: data: data segment from which the volume is calculated
+        :type: numpy array
+        :param: normfactor: normalization factor depending on the bit depth of the audio data
+        :type: int
+        :param: refvol: reference volume for presentation in the volume indicator           
+        :type: float    
+        :param: mode: mode of volume calculation, either "mean" or "crest"
+        :type: str
+        :raises [none]: [none]
+        :return: errorstate, value; errorstate is False if calculation was successful, True else; value is the calculated volume if errorstate is False, else an error message
+        :rtype: tuple (Boolean, float or str)
+        """       
+        errorstate = False
+        value = ""
+        if mode == "mean":
+            value = 1.5*np.std(np.abs(data))/normfactor/refvol
+        elif mode == "crest":
+            crest_factor = np.max(np.abs(data)) / np.std(data)
+            if crest_factor > 3:
+                value = 1.5*np.std(np.abs(data))/normfactor/refvol*crest_factor/3
+            else:
+                value = 1.5*np.std(np.abs(data))/normfactor/refvol
+            print(f"crest-factor: {crest_factor}")
+        else:
+            self.logger.error("calc_volume: invalid mode")
+            errorstate = True
+            value = "invalid mode for volume calculation"
+            print(f"volume: {value}")
+        return errorstate, value
+
     def showRFdata(self):
         """_take over datasegment from player loop worker and caluclate from there the signal volume and present it in the volume indicator
         read gain value and present it in the player Tab on the 'progressbar' Widget 'progressBar_volume'
-        Parameters: a = length form top to 0dB tick
+        Parameters: a = length from top to 0dB tick
         b = length between -80 and 0 dB ticks
         c = length between bottom and -80dB tick
         a+b+c = total length of the indicator and hence of the progress-bar volume 
@@ -2212,7 +2301,7 @@ class playrec_v(QObject):
         """
         AGC = 1
         scal_NEW = True #Updating, remove after tests
-        if self.m["metadata"]["skinindex"] == 1:
+        if self.m["metadata"]["skinindex"] >= 1:
             scal_Rescaling = True 
         else:
             scal_Rescaling = False
@@ -2225,23 +2314,19 @@ class playrec_v(QObject):
         #     return
         self.m["gain"] = self.playrec_c.playrec_tworker.get_gain()
         #print(f"get gain in showRFdata gain: {self.m['gain']}")
-        self.logger.debug("gain from tworker gain to showRFdata: %f",self.m["gain"])
+        #self.logger.debug("gain from tworker gain to showRFdata: %f",self.m["gain"])
         data = self.playrec_c.playrec_tworker.get_data()
         if len(data) < 256: # skip data monitoring if len(data) < 8, coding for the need of extra fast processing
             #print(f"showRDdata: len(data) = {len(data)} < 256, no data shown")
             return
         #tracking error detector removed, appears in old main module
         s = len(data)
-        #time.sleep(1)
         #print(f"############### playrec recloop data: {data[0]}")
         nan_ix = [i for i, x in enumerate(data) if np.isnan(x)]
         if np.any(np.isnan(data)):
             self.logger.error("show RFdata: NaN found in data, length: %i ,maxval: %f , avg: %f" , len(nan_ix),  np.max(data), np.median(data))
             self.m["stopstate"] = True
-            #time.sleep(1)
             data[nan_ix] = 1e-8*np.ones(len(nan_ix))
-            #sys_state.set_status(system_state)
-            #return(False)
         cv = (data[0:s-1:2].astype(np.float32) + 1j * data[1:s:2].astype(np.float32))*self.m["gain"]
         if self.m["wavheader"]['wFormatTag'] == 1:
             normfactor = int(2**int(self.m["wavheader"]['nBitsPerSample']-1))-1
@@ -2249,7 +2334,6 @@ class playrec_v(QObject):
             normfactor = 1 #TODO:future system state
         else:
             auxi.standard_errorbox("wFormatTag is neither 1 nor 3; unsupported Format, this file cannot be processed")
-            #sys_state.set_status(system_state)
             return False
         
         ####TODO: check spectrum for debugging
@@ -2280,7 +2364,20 @@ class playrec_v(QObject):
             else:
                 span =103
             refvol = 0.71
-            vol = 1.5*np.std(np.abs(cv))/normfactor/refvol
+            #vol = 1.5*np.std(np.abs(cv))/normfactor/refvol
+            ########## TODO TODO TODO Nickel
+            #mode = "crest"
+            #mode = "mean"
+            if "volume_mode" in self.m["metadata"]:
+                mode = self.m["metadata"]["volume_mode"] # volume mode defined in metadata of file, has priority over volume mode defined in device_ID_dict
+            else:
+                mode = self.m["volume_mode"] #default volume mode if defined in device_ID_dict but not in metadata, otherwise default is "mean"
+            errorstate, vol = self.calc_volume(cv, normfactor, refvol, mode)
+            print(f"volume-mode: {mode}")
+            if errorstate:
+                self.logger.error(f"showRFdata: error in calc_volume: {vol}")
+                return False
+
             if np.std(np.abs(cv)) == 0:
                 print({f"************std = {np.std(np.abs(cv))}"})
             if vol == 0:
@@ -2324,7 +2421,7 @@ class playrec_v(QObject):
                     cgain = cgain + 20*np.log10(autocal_factor)
                     self.gui.verticalSlider_Gain.setProperty("value", int(np.round(cgain + self.GAINOFFSET)))
                     time.sleep(0.1)
-                    #print(f"self.mgain: {self.m['gain']}, autocal-factor: {autocal_factor}, targetvol: {self.m['AGC_targetvolume']}, curr vol: {vol}, dBvol: {dBvol}")
+                    print(f"self.mgain: {self.m['gain']}, autocal-factor: {autocal_factor}, targetvol: {self.m['AGC_targetvolume']}, curr vol: {vol}, dBvol: {dBvol}")
                 else:
                     deltagain = 3
                     #determine difference from target gain: 
@@ -2333,7 +2430,7 @@ class playrec_v(QObject):
                     #correct gain: 
                     cgain += deltagain * loss
                     self.gui.verticalSlider_Gain.setProperty("value", int(np.round(cgain + self.GAINOFFSET)))
-                    #print(f"cgain: {cgain}, loss: {loss}, targetvol: {self.m['AGC_targetvolume']}, curr vol: {vol}, dBvol: {dBvol}")
+                    print(f"cgain: {cgain}, loss: {loss}, targetvol: {self.m['AGC_targetvolume']}, curr vol: {vol}, dBvol: {dBvol}")
 
         else:
             av = np.abs(cv)/normfactor  #TODO rescale according to scaler from formattag
@@ -2420,7 +2517,6 @@ class playrec_v(QObject):
             # guarantee integer multiple of nBlockalign, > 0, <= filesize
             if increment != -1 and increment != 1 or self.m["timechanged"] == True:
                 if self.m["fileopened"] and self.m["playthreadActive"] is True:
-                    #print(f'increment curtime cond seek cur file open: {system_state["f1"]}')
                     try:
                         self.prfilehandle = self.playrec_c.playrec_tworker.get_fileHandle()
                         
@@ -2493,6 +2589,7 @@ class playrec_v(QObject):
             # else:
             #     self.norepeat = False   
         LObiasraw = self.gui.lineEdit_LO_bias.text().lstrip(" ")
+        #print(f"#################### update_LO_bias: LObiasraw: {LObiasraw}")
         if len(LObiasraw) < 1:
             return False
         LObias_sign = 1
@@ -2548,11 +2645,13 @@ class playrec_v(QObject):
         :return: none
         :rtype: none
         """
-        if self.gui.radioButton_AGC.isChecked() is True:
-            self.m["AGC"] = True
-        else:
+        try:
+            if self.gui.radioButton_AGC.isChecked() is True:
+                self.m["AGC"] = True
+            else:
+                self.m["AGC"] = False
+        except:
             self.m["AGC"] = False
-
 
     def toggle_LO_bias(self):
         """ Purpose: toggle status of the radiobuttongoup for LO bias setting; 
@@ -2575,7 +2674,7 @@ class playrec_v(QObject):
             self.gui.lineEdit_LO_bias.setStyleSheet("background-color: yellow")
 
 
-    def editHostAddress(self):     #TODO Check if this is necessary, rename to cb_.... ! 
+    def editHostAddress(self):     #TODO Check if this is necessary 
         ''' 
         Purpose: Callback for edidHostAddress Lineedit item
         activate Host IP address field and enable saving mode
@@ -2601,8 +2700,6 @@ class playrec_v(QObject):
         :return: none
         :rtype: none
         """
-        #system_state = sys_state.get_status()
-        #self.HostAddress = self.gui.Conf_lineEdit_IPAddress.text()
         self.m["HostAddress"] = self.gui.lineEdit_IPAddress.text()
         #print("IP address read")
         try:

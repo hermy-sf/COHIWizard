@@ -71,7 +71,8 @@ class SDR_control(QObject):
                           "max_IFREQ": 62500000,
                           "min_IFREQ": 0,
                           "resolutions": [16, 24, 32],
-                          "connection_type": "ethernet"}
+                          "connection_type": "ethernet",
+                          "volume_mode": "mean"}
         return(device_ID_dict)
 
     def set_play(self):

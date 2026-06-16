@@ -1,4 +1,4 @@
-#Version 2.2.0
+#Version 2.2.4
 # -*- coding: utf-8 -*-logfile
 # For reducing to RFCorder: disable all modules except resample in the config_modules.yaml file
 #
@@ -23,13 +23,9 @@ import datetime as ndatetime
 from datetime import datetime
 from pathlib import Path
 from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtWidgets import QApplication #TODO: Webengine aktivieren für pdf-Anzeigen
-# from PyQt5.QtWebEngineWidgets import QWebEngineView
-# from PyQt5.QtWebEngineWidgets import QWebEngineSettings
-# from PyQt5.QtCore import QUrl
+from PyQt5.QtWidgets import QApplication
 from PyQt5.QtWidgets import QMainWindow, QWidget, QApplication, QHBoxLayout, QLabel, QSizePolicy, QDesktopWidget, QProgressDialog, QDockWidget
 from PyQt5.QtGui import QGuiApplication, QCursor
-# from PyQt5.QtGui import QFont, QFontMetrics
 
 from PyQt5.QtCore import QTimer, QObject, QThread, pyqtSignal, QSize, Qt
 from PyQt5.QtGui import QFont, QIcon, QFontMetrics
@@ -39,8 +35,10 @@ import importlib
 from PyQt5.QtWidgets import *
 import logging
 import platform
+import math
 from icons import Logos
 from zeroconf import Zeroconf, ServiceBrowser
+import subprocess
 
 class starter(QMainWindow):
     """instantiates the MainWindow, instantiates a auxiliary gui object for the
@@ -73,13 +71,25 @@ class starter(QMainWindow):
         #from core import COHIWizard_GUI_v10_scrollhv
         #self.gui = COHIWizard_GUI_v10_scrollhv.Ui_MainWindow()
         #TODO: import correct skin, use dynamic import
-        if skinindex == 0:
-            from core import COHIWizard_GUI_v10_scrollhv_skin_0
-            self.gui = COHIWizard_GUI_v10_scrollhv_skin_0.Ui_MainWindow()
-        else:
-            from core import COHIWizard_GUI_v10_scrollhv_skin_1
-            self.gui = COHIWizard_GUI_v10_scrollhv_skin_1.Ui_MainWindow()
-            
+        self.maxsize = 20
+
+        module_name = f"COHIWizard_GUI_v10_scrollhv_skin_{skinindex}"
+        full_module = f"core.{module_name}"
+        try:
+            imported_module = importlib.import_module(full_module)
+            self.gui = imported_module.Ui_MainWindow()
+            # import player handler for maxsize
+            player_module_name = f"playerskinhandler_{skinindex}"
+            player_full_module = f"player.{player_module_name}"
+            player_imported = importlib.import_module(player_full_module)
+            self.maxsize = player_imported.skinhandler.maxsize()
+        except ImportError:
+            # default to skin 1
+            imported_module = importlib.import_module("core.COHIWizard_GUI_v10_scrollhv_skin_1")
+            self.gui = imported_module.Ui_MainWindow()
+            player_imported = importlib.import_module("player.playerskinhandler_1")
+            self.maxsize = player_imported.skinhandler.maxsize()
+
         self.gui.setupUi(self)
         self.iconButtons = []
         self.widgets_with_font = []
@@ -95,6 +105,7 @@ class starter(QMainWindow):
             hnew = int(wnew / aspectratio_opt)
 
         self.resize(wnew, hnew)
+
 
     def resizeEvent(self, event):
         """resize event handler for the main window, handles resizing widgets based on size of MainWindow
@@ -137,9 +148,10 @@ class starter(QMainWindow):
         self.resize_actor()
 
     def trigger_resize_event(self):
+        """DUMMY function ???"""
         #print("################>>>>>>>>>>>>>>>trigger resize<<<<<<<<<<<<<<<####################")
         old_size = self.size()
-        self.resize(old_size.width() + 1, old_size.height())
+        #self.resize(old_size.width() + 1, old_size.height())
         self.resize(old_size)
 
     def resize_actor(self):
@@ -162,7 +174,7 @@ class starter(QMainWindow):
             # font.setPixelSize(font_size)
             # widget.setFont(font)
             min_size=11
-            max_size=20
+            max_size=self.maxsize
             self.fit_font_to_widget(widget, min_size, max_size)
 
     def fit_font_to_widget(self, widget, min_size=8, max_size=100):
@@ -213,7 +225,7 @@ class starter(QMainWindow):
             return
         """Finde alle Widgets, die einen Font haben und Text anzeigen"""
         # Optional: nur bestimmte Klassen einbeziehen
-        font_classes = (QPushButton, QLabel, QLineEdit, QCheckBox, QComboBox, QRadioButton,QTimeEdit, QTableWidgetItem, QProgressBar)
+        font_classes = (QPushButton, QLabel, QLineEdit, QCheckBox, QComboBox, QRadioButton,QTimeEdit, QTableWidgetItem, QProgressBar, QListWidget, QListWidgetItem)
 
         self.widgets_with_font = [
             w for w in self.findChildren(QWidget)
@@ -226,130 +238,130 @@ from PyQt5.QtWidgets import QLabel, QVBoxLayout, QScrollArea
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtCore import QEvent
 
-class PdfViewer(QWidget):
-    def __init__(self, pdf_path, parent=None):
-        super().__init__(parent)
+# class PdfViewer(QWidget):
+#     def __init__(self, pdf_path, parent=None):
+#         super().__init__(parent)
 
-        self.doc = fitz.open(str(pdf_path))
-        self.zoom_factor = 1
+#         self.doc = fitz.open(str(pdf_path))
+#         self.zoom_factor = 1
 
-        self.page_labels = []
+#         self.page_labels = []
 
-        layout = QVBoxLayout(self)
+#         layout = QVBoxLayout(self)
 
-        self.scroll = QScrollArea(self)
-        self.scroll.setWidgetResizable(True)
+#         self.scroll = QScrollArea(self)
+#         self.scroll.setWidgetResizable(True)
 
-        self.container = QWidget()
-        self.vbox = QVBoxLayout(self.container)
+#         self.container = QWidget()
+#         self.vbox = QVBoxLayout(self.container)
 
-        self.scroll.setWidget(self.container)
-        layout.addWidget(self.scroll)
-        self.scroll.viewport().installEventFilter(self)
-        # Platzhalter für Seiten
-        for _ in self.doc:
-            lbl = QLabel()
-            lbl.setAlignment(Qt.AlignCenter)
-            self.page_labels.append(lbl)
-            self.vbox.addWidget(lbl)
+#         self.scroll.setWidget(self.container)
+#         layout.addWidget(self.scroll)
+#         self.scroll.viewport().installEventFilter(self)
+#         # Platzhalter für Seiten
+#         for _ in self.doc:
+#             lbl = QLabel()
+#             lbl.setAlignment(Qt.AlignCenter)
+#             self.page_labels.append(lbl)
+#             self.vbox.addWidget(lbl)
 
-        #self.fit_to_width()
+#         #self.fit_to_width()
 
 
-    def eventFilter(self, obj, event):
-        if obj is self.scroll.viewport() and event.type() == QEvent.Wheel:
-            if event.modifiers() & Qt.ControlModifier:
-                if event.angleDelta().y() > 0:
-                    self.zoom_factor *= 1.1
-                else:
-                    self.zoom_factor /= 1.1
+#     def eventFilter(self, obj, event):
+#         if obj is self.scroll.viewport() and event.type() == QEvent.Wheel:
+#             if event.modifiers() & Qt.ControlModifier:
+#                 if event.angleDelta().y() > 0:
+#                     self.zoom_factor *= 1.1
+#                 else:
+#                     self.zoom_factor /= 1.1
 
-                self.zoom_factor = max(0.2, min(self.zoom_factor, 5.0))
-                self.render_pages()
-                return True   # Event VERBRAUCHT
-        return super().eventFilter(obj, event)
+#                 self.zoom_factor = max(0.2, min(self.zoom_factor, 5.0))
+#                 self.render_pages()
+#                 return True   # Event VERBRAUCHT
+#         return super().eventFilter(obj, event)
     
-    def showEvent(self, event):
-        super().showEvent(event)
-        if not hasattr(self, "_initial_fit_done"):
-            self._initial_fit_done = True
-            self.fit_to_width()
+#     def showEvent(self, event):
+#         super().showEvent(event)
+#         if not hasattr(self, "_initial_fit_done"):
+#             self._initial_fit_done = True
+#             self.fit_to_width()
 
 
-    def render_pages(self):
-        for i, page in enumerate(self.doc):
-            matrix = fitz.Matrix(self.zoom_factor, self.zoom_factor)
-            pix = page.get_pixmap(matrix=matrix)
+#     def render_pages(self):
+#         for i, page in enumerate(self.doc):
+#             matrix = fitz.Matrix(self.zoom_factor, self.zoom_factor)
+#             pix = page.get_pixmap(matrix=matrix)
 
-            img = QImage(
-                pix.samples,
-                pix.width,
-                pix.height,
-                pix.stride,
-                QImage.Format_RGB888
-            )
+#             img = QImage(
+#                 pix.samples,
+#                 pix.width,
+#                 pix.height,
+#                 pix.stride,
+#                 QImage.Format_RGB888
+#             )
 
-            self.page_labels[i].setPixmap(QPixmap.fromImage(img))
+#             self.page_labels[i].setPixmap(QPixmap.fromImage(img))
 
-    def fit_to_width(self):
-        page = self.doc.load_page(0)
-        view_width = self.scroll.viewport().width()
-        page_width = page.rect.width
+#     def fit_to_width(self):
+#         page = self.doc.load_page(0)
+#         view_width = self.scroll.viewport().width()
+#         page_width = page.rect.width
 
-        self.zoom_factor = (view_width - 20) / page_width
-        self.render_pages()
+#         self.zoom_factor = (view_width - 20) / page_width
+#         self.render_pages()
 
-    def wheelEvent(self, event):
-        if event.modifiers() & Qt.ControlModifier:
-            if event.angleDelta().y() > 0:
-                self.zoom_factor *= 1.1
-            else:
-                self.zoom_factor /= 1.1
+#     def wheelEvent(self, event):
+#         if event.modifiers() & Qt.ControlModifier:
+#             if event.angleDelta().y() > 0:
+#                 self.zoom_factor *= 1.1
+#             else:
+#                 self.zoom_factor /= 1.1
 
-            self.zoom_factor = max(0.2, min(self.zoom_factor, 5.0))
-            self.render_pages()
-        else:
-            super().wheelEvent(event)
+#             self.zoom_factor = max(0.2, min(self.zoom_factor, 5.0))
+#             self.render_pages()
+#         else:
+#             super().wheelEvent(event)
 
     # def resizeEvent(self, event):
     #     super().resizeEvent(event)
     #     self.fit_to_width()
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if hasattr(self, "_initial_fit_done"):
-            self.fit_to_width()
+    # def resizeEvent(self, event):
+    #     super().resizeEvent(event)
+    #     if hasattr(self, "_initial_fit_done"):
+    #         self.fit_to_width()
 
 
-class PdfViewer_old(QWidget):
-    def __init__(self, pdf_path, parent=None):
-        super().__init__(parent)
+# class PdfViewer_old(QWidget):
+#     def __init__(self, pdf_path, parent=None):
+#         super().__init__(parent)
 
-        self.doc = fitz.open(str(pdf_path))
+#         self.doc = fitz.open(str(pdf_path))
 
-        layout = QVBoxLayout(self)
-        scroll = QScrollArea(self)
-        scroll.setWidgetResizable(True)
+#         layout = QVBoxLayout(self)
+#         scroll = QScrollArea(self)
+#         scroll.setWidgetResizable(True)
 
-        container = QWidget()
-        vbox = QVBoxLayout(container)
+#         container = QWidget()
+#         vbox = QVBoxLayout(container)
 
-        for page in self.doc:
-            pix = page.get_pixmap()
-            img = QImage(
-                pix.samples,
-                pix.width,
-                pix.height,
-                pix.stride,
-                QImage.Format_RGB888
-            )
-            lbl = QLabel()
-            lbl.setPixmap(QPixmap.fromImage(img))
-            lbl.setAlignment(Qt.AlignCenter)
-            vbox.addWidget(lbl)
+#         for page in self.doc:
+#             pix = page.get_pixmap()
+#             img = QImage(
+#                 pix.samples,
+#                 pix.width,
+#                 pix.height,
+#                 pix.stride,
+#                 QImage.Format_RGB888
+#             )
+#             lbl = QLabel()
+#             lbl.setPixmap(QPixmap.fromImage(img))
+#             lbl.setAlignment(Qt.AlignCenter)
+#             vbox.addWidget(lbl)
 
-        scroll.setWidget(container)
-        layout.addWidget(scroll)
+#         scroll.setWidget(container)
+#         layout.addWidget(scroll)
 
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
@@ -357,15 +369,15 @@ from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from PyQt5.QtCore import QUrl
 from pathlib import Path
 
-class PdfViewer_2(QWidget):
-    def __init__(self, pdf_path: Path):
-        super().__init__()
+# class PdfViewer_2(QWidget):
+#     def __init__(self, pdf_path: Path):
+#         super().__init__()
 
-        layout = QVBoxLayout(self)
-        self.view = QWebEngineView(self)
-        layout.addWidget(self.view)
+#         layout = QVBoxLayout(self)
+#         self.view = QWebEngineView(self)
+#         layout.addWidget(self.view)
 
-        self.view.setUrl(QUrl.fromLocalFile(str(pdf_path)))
+#         self.view.setUrl(QUrl.fromLocalFile(str(pdf_path)))
 
 
 class core_m(QObject):
@@ -561,7 +573,10 @@ class core_v(QObject):
         self.gui.Mainwindowreference = gui
         self.gui.actionFile_open.triggered.connect(self.cb_open_file)
         self.gui.actionOverwrite_header.triggered.connect(self.send_overwrite_header)
-        self.gui.actionopen_pdf.triggered.connect(self.open_pdf)
+        try:
+            self.gui.actionopen_pdf.triggered.connect(self.open_pdf)
+        except:
+            print("no pdf reading option available, old skin") 
         #
         self.gui.Mainwindowreference.SigResize.connect(self.resizehandler)
         ###TODO: re-organize, there should be no access to gui elements of other modules
@@ -599,7 +614,21 @@ class core_v(QObject):
             if not "ffmpeg_path" in list(self.m["metadata"].keys()):
                 no_ffmpeg_path = True
             if not "documentation" in self.m["metadata"]:
-                no_documentation = True 
+                no_documentation = True
+            no_relaxfactor_OSR = False
+            if not "relaxfactor_OSR" in self.m["metadata"]:
+                self.relaxfactor_OSR = 1.2
+                self.m["metadata"]["relaxfactor_OSR"] = self.relaxfactor_OSR
+                no_relaxfactor_OSR = True
+            else:
+                self.relaxfactor_OSR = float(self.m["metadata"]["relaxfactor_OSR"])
+            no_volumefactor = False
+            if not "volumefactor" in self.m["metadata"]:
+                self.volumefactor = 1
+                self.m["metadata"]["volumefactor"] = self.volumefactor
+                no_volumefactor = True
+            else:
+                self.volumefactor = float(self.m["metadata"]["volumefactor"])
         except:
             print("cannot get config_wizard.yaml metadata, write a new initial config file")
             self.m["metadata"] = {"last_path": self.standardpath}
@@ -607,9 +636,18 @@ class core_v(QObject):
             self.m["metadata"]["STM_IP_address"] = "000.000.000.000"
             #auxi.standard_infobox("configuration file does not yet exist, a basic file will be generated. Please configure the STEMLAB IP address before using the Player")
             self.m["metadata"]["recording_path"] = os.path.join(self.m["metadata"]["rootpath"], "out")
-            self.m["metadata"]["skinindex"] = 1
+            screen = QGuiApplication.primaryScreen()
+            physical_size = screen.physicalSize()
+            diagonal_inches = math.sqrt(physical_size.width()**2 + physical_size.height()**2) / 25.4
+            if diagonal_inches <= 7:
+                self.m["metadata"]["skinindex"] = 2
+            else:
+                self.m["metadata"]["skinindex"] = 1
+            self.m["metadata"]["autoskin"] = True
+            self.m["metadata"]["logfilehandler"] = True
             self.m["metadata"]["HIRES_ffmpeg"] = True 
             self.m["metadata"]["REC_AGC"] = False 
+            self.m["metadata"]["dontshowadalm2000"] = False 
             self.m["metadata"]["AGC_targetvolume"] = 0.4
             # base_dir = Path(__file__).resolve().parent #TODO make part of the configuration
             # doc_dir = base_dir.parent / "documentation"
@@ -635,6 +673,16 @@ class core_v(QObject):
             yaml.dump(self.m["metadata"], stream)
             stream.close()
             no_ffmpeg_path = False
+
+        if no_relaxfactor_OSR:
+            stream = open("config_wizard.yaml", "w")
+            yaml.dump(self.m["metadata"], stream)
+            stream.close()
+
+        if no_volumefactor:
+            stream = open("config_wizard.yaml", "w")
+            yaml.dump(self.m["metadata"], stream)
+            stream.close()
 
         ###TODO: re-organize, there should be no access to gui elements of other modules
         self.m["HostAddress"] = self.gui.lineEdit_IPAddress.text() #TODO: Remove after transfer of playrec
@@ -665,6 +713,9 @@ class core_v(QObject):
         self.core_c.SigRelay.connect(self.rxhandler)
         ###TODO: re-organize, there should be no access to gui elements of other modules
         self.gui.playrec_pushButton_recordingpath.clicked.connect(self.core_c.recording_path_setter)
+        # if self.m["metadata"]["skinindex"] == 2 or self.m["metadata"]["skinindex"] == 3:
+        #     self.gui.pushButton_Fileopen.clicked.connect(self.gui.actionFile_open.trigger)
+        #     self.gui.menubar.setVisible(False)
         self.updateConfigElements()
         self.firsttick = True
         self.timethread = QThread()
@@ -675,12 +726,14 @@ class core_v(QObject):
         self.timertick.SigFinished.connect(self.timertick.deleteLater)
         self.timethread.finished.connect(self.timethread.deleteLater)
         self.timertick.SigTick.connect(self.updatetimer)
-        self.timethread.start()
+        #self.timethread.start()
         if self.timethread.isRunning():
             self.timethreaddActive = True #TODO:future system state
 
 
-    #TODO: make IP address editor easier to handle, test method
+
+
+    #TODO: make IP address editor easier to handle in manual mode, test method
     # def eventFilter(self, source, event):
     #     if (event.type() == Qt.KeyPress and
     #         event.key() == Qt.Key_Tab and
@@ -710,40 +763,33 @@ class core_v(QObject):
             errorstate = True
             value = f"PDF manual not found at {pdf_path}"
             return errorstate, value    
+        
+        if sys.platform.startswith("linux"):
+            subprocess.Popen(["xdg-open", str(pdf_path)])
+    ###############TODO TODO TODO TEsten !
+        elif sys.platform.startswith("win"):
+            os.startfile(str(pdf_path))
 
-        self.pdf_viewer = PdfViewer(pdf_path)
-        self.pdf_viewer.setWindowTitle("COHIWizard Manual")
-        screen = QGuiApplication.screenAt(QCursor.pos())
-        geom = screen.availableGeometry()
-        width  = int(geom.width() * 0.7)
-        height = int(geom.height() * 0.7)
-        self.pdf_viewer.resize(width, height)
-        self.pdf_viewer.move(
-            geom.center() - self.pdf_viewer.rect().center()
-        )
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(pdf_path)])
 
-        #self.pdf_viewer.setGeometry(geom)
-        #self.pdf_viewer.resize(800, 600)
-        self.pdf_viewer.show()
+        else:
+            raise RuntimeError(f"Unsupported OS: {sys.platform}")
+        ###############
+
+        # self.pdf_viewer = PdfViewer(pdf_path)
+        # self.pdf_viewer.setWindowTitle("COHIWizard Manual")
+        # screen = QGuiApplication.screenAt(QCursor.pos())
+        # geom = screen.availableGeometry()
+        # width  = int(geom.width() * 0.7)
+        # height = int(geom.height() * 0.7)
+        # self.pdf_viewer.resize(width, height)
+        # self.pdf_viewer.move(
+        #     geom.center() - self.pdf_viewer.rect().center()
+        # )
+
+        # self.pdf_viewer.show()
         return errorstate, value
-        # if not errorstate:
-        #     pdf_path = Path(value)
-        # else:  
-            
-        #     errorstate = True
-        #     value = "No documentation_pdf entry in config_wizard.yaml found"
-        #     auxi.standard_errorbox(value)
-        #     return errorstate, value
-        # base_dir = Path(__file__).resolve().parent #TODO make part of the configuration
-        # doc_dir = base_dir.parent / "documentation" 
-        # pdf_path = doc_dir / "UserManual_COHIWizard_v2.x_en.pdf"
-        # pdf_path = (Path(__file__).resolve().parent.parent /
-        #         "documentation" /
-        #         "UserManual_COHIWizard_v2.x_en.pdf")
-
-        # if not pdf_path.exists():
-        #     raise FileNotFoundError(pdf_path)
-        #     pdf_path = Path(self.m["rootpath"]) / "core" / "COHIWizard_manual.pdf"
 
 
     def resizehandler(self, label, size):
@@ -781,6 +827,16 @@ class core_v(QObject):
         self.worker.start()
 
     def on_search_finished(self,devicelist):
+        """ 
+        Takes action when the search for IP addresses of connected STEMLABs is accomplished: 
+        generates and displays list of devices found
+        if at least one device is found, fills in the first IP address found into the IP address line edit field. Terminates DeviceSearchWorker thread 
+        and takes over the found address via self.editHostAddress_action()
+        :param: devicelist
+        :type: list
+        :raises: none
+        :return: none
+        """
         print("on_search_finished: +++++++ Found Red Pitayas:", devicelist)
         if len(devicelist) > 0:
             self.gui.lineEdit_IPAddress.setText(devicelist[0][1])
@@ -803,33 +859,20 @@ class core_v(QObject):
 
     def editHostAddress(self):     #TODO Check if this is necessary, rename to cb_.... ! 
         ''' 
-        Purpose: slot function for the edidHostAddress Lineedit item
-        activate Host IP address field and enable saving mode
+        Purpose: 
         Returns: nothing
         '''
-        ## ## Bevore toggling IP editing, scan for existing STEMLAB, run arp query
-        ## redpitaya_ouis = ["00:26:32", "3c:2c:30", "b8:27:eb"]
+        """ 
+        slot function for the the pushbutton_IP button
+        to start auto-detection of connected Red Pitaya STEMLABs        
+        :param: none
+        :raises: none
+        :return: none
+        """
 
-        ## # initialize UDP-Broadcast-Packet, in order to cause ARP-Requests
-        ## auxi().trigger_linklocal_arp()
-        ## # identify connected STEMLABs
-        ## devices = auxi().discover_linklocal_devices(filter_oui=redpitaya_ouis)
-
-        ## if devices:
-        ##     print("Gefundene Red Pitayas:")
-        ##     for ip, mac in devices:
-        ##         print(f"{ip}  →  {mac}")
-        ## else:
-        ##     print("Keine Red Pitayas gefunden.")
 
         #Find connected red pitaya and return its IP/MAC
 
-        # zeroconf = Zeroconf()
-        # listener = RPListener()
-        # browser = ServiceBrowser(zeroconf, "_http._tcp.local.", listener)
-        # time.sleep(2)  # kurze Wartezeit für Antworten
-        # zeroconf.close()
-        # print("Found Red Pitayas:", listener.devices)
         if self.gui.lineEdit_IPAddress.isReadOnly():
             self.start_device_search()
         else:
@@ -838,6 +881,14 @@ class core_v(QObject):
         #self.editHostAddress_action()
 
     def editHostAddress_action(self):
+        """ 
+        change function of the IP Address button to editing mode
+            enable IP address line
+            disable Button for editing address 
+        :param: none
+        :raises: none
+        :return: none
+        """
         self.gui.lineEdit_IPAddress.setEnabled(True)
         self.gui.lineEdit_IPAddress.setReadOnly(False)
         self.gui.pushButton_IP.clicked.connect(self.set_IP) ####TODO: send identified IP to self.set_IP for auto-preset
@@ -1491,7 +1542,7 @@ def dynamic_import_from_config(config,sub_module,logger):
             logger.debug(f"dynamic import: Successfully imported {module} from {full_module_path}.")
             #print(f"Successfully imported {module} from {full_module_path}.")
         except ModuleNotFoundError as e:
-            print(f"dynamic import Error importing {module} from {directory}: {e}")
+            #print(f"dynamic import Error importing {module} from {directory}: {e}")
             logger.debug(f"dynamic import: Error importing {module} from {directory}: {e}")
     return imported_modules
 
@@ -1515,13 +1566,29 @@ if __name__ == '__main__':
         QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
     #print("v13")
     app = QApplication([])
-    wiz_config = load_config_from_yaml("config_wizard.yaml")
+    screen = QGuiApplication.primaryScreen()
+    physical_size = screen.physicalSize()
+    diagonal_inches = math.sqrt(physical_size.width()**2 + physical_size.height()**2) / 25.4
+
+    try:
+        wiz_config = load_config_from_yaml("config_wizard.yaml")
+        # Get display diagonal size in inches
+        if not "skinindex" in wiz_config:
+            skinindex = 1
+            wiz_config["skinindex"]
+        if not "autoskin" in wiz_config:
+            wiz_config["autoskin"] = True
+        if diagonal_inches <= 7 and wiz_config["autoskin"] == True:
+            skinindex = 2
+        else:
+            skinindex = wiz_config["skinindex"]
+    except:
+        if diagonal_inches <= 7:
+            skinindex = 2
+        else:
+            skinindex = 1
+        print("could not load wizard configuration, set skinindex to default value 1")
     
-    if wiz_config == None:
-        skinindex = 1
-    else:    
-        skinindex = wiz_config["skinindex"] ##########TODO CHECK
-    gui = starter(skinindex)
     #print(f"__main__: gui = {gui} gui.gui = {gui.gui}")
     from auxiliaries import WAVheader_tools
     from auxiliaries import auxiliaries as auxi
@@ -1530,42 +1597,56 @@ if __name__ == '__main__':
     
     #instantiate core module
     time.sleep(0.01)
-    xcore_m = core_m()
-    xcore_c = core_c(xcore_m)
-    xcore_v = core_v(gui,xcore_c,xcore_m) # self.gui wird in xcore_v gestartet 
+
 
     config = load_config_from_yaml("config_modules.yaml")
-    #TODO TODO TODO: generalize: get from config !
 
+    
+    logging.getLogger().setLevel(logging.DEBUG)
+    initial_logger = logging.getLogger(__name__)
     sub_module = "modules"
     mod_base = {'player':'playrec'}
     config['modules'] = {**mod_base, **config['modules']}
     #print(f"config file content: {config}")
     widget_base = {'player': 'Player'}
     config['module_names'] = {**widget_base, **config['module_names']}
-    loaded_modules = dynamic_import_from_config(config,sub_module,xcore_v.logger)
+    #loaded_modules = dynamic_import_from_config(config,sub_module,xcore_v.logger)
+    loaded_modules = dynamic_import_from_config(config,sub_module,initial_logger)
     #print(f"__main__ first if NEW: {loaded_modules}")
-
-    gui.show()
 
     list_mvct_directories = list(config['modules'].keys())
     #get list of corresponding mvct modules
     list_mvct_modules = list(config['modules'].values())
     #add dict of widget modules to config
     aux_dict = {}
+    skin_dict = {}
     for ix in range(len(list_mvct_directories)):
 
         aux_dict[list_mvct_directories[ix]] = list_mvct_directories[ix] + "_widget_skin_" + str(skinindex)
+        skin_dict[list_mvct_directories[ix]] = list_mvct_directories[ix] + "skinhandler_" + str(skinindex)
     config["widget"] = aux_dict
-    #print(f"__main__ 2nd if NEW: config, aux_dict: {config['widget']}")
-    
+    config["skinhandler"] = skin_dict
     #get list of corresponding widget modules
     list_widget_modules = list(config['widget'].values())
+    list_skin_modules = list(config['skinhandler'].values())
+    loaded_widget_modules = dynamic_import_from_config(config,"widget",initial_logger)
+    loaded_skin_modules = dynamic_import_from_config(config,"skinhandler",initial_logger)
 
-    loaded_widget_modules = dynamic_import_from_config(config,"widget",xcore_v.logger)
-    #print(loaded_widget_modules)
+    
+    # startup gui and core module
+    gui = starter(skinindex)
+    xcore_m = core_m()
+    xcore_c = core_c(xcore_m)
+    xcore_v = core_v(gui,xcore_c,xcore_m) # self.gui wird in xcore_v gestartet 
+    gui.show()
+    #print(f"__main__ 2nd if NEW: config, aux_dict: {config['widget']}")
+    
+    ################# replace all xcore_v.logger calls by initial_logger until skinhandlers are running, then switch to xcore_v.logger
+    # loaded_widget_modules = dynamic_import_from_config(config,"widget",xcore_v.logger)
+    # loaded_skin_modules = dynamic_import_from_config(config,"skinhandler",xcore_v.logger)
 
     tabui = []
+    skinhandler = []
     tab_widget = []
     for ix in range(len(list_mvct_directories)):
         try:
@@ -1575,25 +1656,46 @@ if __name__ == '__main__':
                 #dummy operation, because Player UI already exists
                 tab_widget.append([])
                 tabui.append([])
-                pass
+                try:
+                    skinhandler.append(getattr(loaded_skin_modules[list_skin_modules[ix]],"skinhandler"))
+                except:
+                    skinhandler.append([])
+                    pass
             else:
                 #generate new Widget, name it, label it , carry out its setupUi method, except for player,
                 #  whose UI already exists in form of xcore.gui and whose Tab also already exists
+                try:
+                    skinhandler.append(getattr(loaded_skin_modules[list_skin_modules[ix]],"skinhandler"))
+                except:
+                    skinhandler.append([])
+                    pass
                 tabui.append(getattr(loaded_widget_modules[list_widget_modules[ix]], "Ui_" + list_widget_modules[ix].replace("_skin_" + str(skinindex),""))())
                 tab_widget.append(QtWidgets.QWidget())
                 tab_widget[ix].setWindowTitle(mod_name)
                 tab_widget[ix].setObjectName("tab_" + mod_name)
                 tab_widget[ix].setWindowIconText(mod_name)
                 tabui[ix].setupUi(tab_widget[ix])
+                ################## TODO: this cannot be done before starting GUI, because tabWidget does not exist before that; check if skinhandlers can be started before GUI is started, then this code can be shifted to the skinhandler loop above
                 a = gui.gui.tabWidget.addTab(tab_widget[ix], "")
                 gui.gui.tabWidget.setTabText(a,mod_name)
             #print(f"Successfully created tab for {mod_name}.")
         except AttributeError as e:
             #print(f"Error creating tab for {mod_name}: {e}")
-            xcore_v.logger.error(f"__main__: Error creating tab for {mod_name}: {e}")
+            #xcore_v.logger.error(f"__main__: Error creating tab for {mod_name}: {e}")
+            initial_logger.error(f"__main__: Error creating tab for {mod_name}: {e}")
 
     #access elements of tabUI_Player via tabUI_Player instance ! not gui.gui.
     #app.aboutToQuit.connect(win.stop_worker)    #graceful thread termination on app exit
+
+    # call skinhandler for screen size
+    try:
+        skinhandler[0].resize_ui(gui)
+        skinhandler[0].redirect_ui_items(gui.gui)
+
+    except:
+        print("no skinhandler found, no skin operations carried out")
+        pass
+
     tab_dict = {}
     tab_dict["list"] = ["xcore"]
     tab_dict["tabname"] = ["xcore"]
@@ -1620,10 +1722,6 @@ if __name__ == '__main__':
             #print(f"Error creating model, control, view for {mod_name}: {e}")
             xcore_v.logger.error(f"__main__: Error creating model, control, view for {mod_name}: {e}")
 
-    # #TODO TODO TODO TODO TODO TODO TODO difficult to find, poor programming style, look for other connection (via relaying ?)
-    #tab_c[list_mvct_modules.index("resample")].SigUpdateGUIelements.connect(tab_v[list_mvct_modules.index("resample")].updateGUIelements)
-    # replaced by         self.resample_c.SigUpdateGUIelements.connect(self.updateGUIelements) in resample_v
-# TODO Test after 21-11-2024
     if 'view_spectra' in list_mvct_modules:
         xcore_v.SigUpdateOtherGUIs.connect(tab_v[list_mvct_modules.index("view_spectra")].updateGUIelements)
         #xcore_v.SigUpdateOtherGUIs.emit()
@@ -1684,11 +1782,13 @@ if __name__ == '__main__':
     xcore_v.connect_init()
     # enable relaying startup settings to all modules if required
     xcore_v.updateConfigElements() 
+    xcore_v.SigRelay.emit("cm_all_",["skinhandler",skinhandler])
     xcore_v.SigRelay.emit("cexex_all_",["canvasbuild",gui])   # communicate reference to gui instance to all modules which instanciate a canvas with auxi.generate_canvas(self,gridref,gridc,gridt,gui)
+
     xcore_v.SigRelay.emit("cm_all_",xcore_v.m["rootpath"])
     xcore_v.SigRelay.emit("cm_all_",["Mainwindowreference",gui])
     xcore_v.SigRelay.emit("cexex_all_",["resizeaction",gui])
-    #gui.resize_initialize()
+    xcore_v.SigRelay.emit("cexex_playrec",["reset_playerbuttongroup",0])    #gui.resize_initialize()
     # gui.find_widgets_with_font()
     # gui.find_icon_buttons()
     #gui.resize_actor()
@@ -1702,7 +1802,8 @@ if __name__ == '__main__':
     except:
         xcore_v.logger.debug("startup Tab not defined in configuration file config_wizard.yaml")
         xcore_v.gui.tabWidget.setCurrentIndex(0)
-    print("COHIWIzard Version 2.2.0 , 25-12-2025, (C) Hermann Scharfetter")
+    xcore_v.timethread.start()
+    print("COHIWIzard Version 2.2.4 , 08-05-2026, (C) Hermann Scharfetter")
 
 
 

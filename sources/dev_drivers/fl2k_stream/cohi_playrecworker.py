@@ -146,7 +146,7 @@ class playrec_worker(QObject):
         ffmpeg_file_path = os.path.join(os.getcwd(),"ffmpeg-master-latest-win64-gpl-shared/bin", "ffmpeg.exe")
         #TODO: check evaluation criterion if appropriate
         stability_criterion = (np.mod(np.log2(tSR/sampling_rate),1) == 0) or sampling_rate < 500001
-        print(f"stability criterion: {stability_criterion}")
+        #print(f"stability criterion: {stability_criterion}")
         if not stability_criterion:
             self.SigInfomessage.emit(f"""The ratio between target sampling rate and
                                      source sampling rate ({tSR/sampling_rate}) is not a power of 2: 
@@ -159,10 +159,10 @@ class playrec_worker(QObject):
         # else:
         #     self.SigInfomessage.emit("Teststring from SigInfoMessage, SR criterion is fullfilled")
         
-        print("checking for fl2k")
+        #print("checking for fl2k")
         self.mutex.lock()
         errorstate, value = self.check_ready_fl2k()
-        print("MUTEX")
+        #print("MUTEX")
         if errorstate:
             print("no fl2k present")
             self.SigError.emit(value)
@@ -171,9 +171,26 @@ class playrec_worker(QObject):
             self.mutex.unlock()
             configuration["icorr"] = 'handle_no_fl2k'
             self.set_configparameters(configuration) 
+            #return()
+        
+            print("close file ")
+            self.set_fileclose(True)
+            #fileHandle.close()
+            #self.terminate_loop(ffmpeg_process,fl2k_process)
+            fl2k_process.terminate()
+            try:
+                fl2k_process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                print("Process did not terminate, forcefully killing it")
+                if os.name == "posix":
+                    os.killpg(os.getpgid(fl2k_process.pid), signal.SIGKILL)  # Linux/macOS
+                else:
+                    fl2k_process.kill()  # Windows
+            self.kill_orphan_fl2k()
             return()
+
         self.mutex.unlock()
-        print("past MUTEX")
+        #print("past MUTEX")
         if format[0] == 1:  #PCM
             if format[2] == 16:
                 formatstring = "s16le"
@@ -245,7 +262,7 @@ class playrec_worker(QObject):
                     stdout=subprocess.PIPE, 
                     stderr=subprocess.PIPE,
                     bufsize=10**8)
-                print(f"ffmpeg_command: {ffmpeg_cmd}")
+                #print(f"ffmpeg_command: {ffmpeg_cmd}")
             except FileNotFoundError:
                 print(f"Input file not found, probably ffmpeg path is wrong")
                 return()
@@ -335,13 +352,13 @@ class playrec_worker(QObject):
             elif format[2] == 24:
                 self.DATABLOCKSIZE = 1024*48
                 data = np.empty(self.DATABLOCKSIZE, dtype=np.float32)
-        print(f"playloop: BitspSample: {format[2]}; wFormatTag: {format[0]}; Align: {format[1]}")
+        #print(f"playloop: BitspSample: {format[2]}; wFormatTag: {format[0]}; Align: {format[1]}")
         self.JUNKSIZE = self.DATABLOCKSIZE/2
         for ix,filename in enumerate(filenames):
             fileHandle = open(filename, 'rb')
             if format[2] == 24:
                 fileHandle.seek(212, 1)
-                print(f"set read offset to 24 bit 216")
+                #print(f"set read offset to 24 bit 216")
                 #fileHandle.seek(bit24offset, 1)
             else:
                 fileHandle.seek(216, 1)
@@ -375,7 +392,7 @@ class playrec_worker(QObject):
             self.SigNextfile.emit(filename)
             true_filesize = os.stat(filename).st_size
             bit24offset = int(true_filesize - int(np.floor(true_filesize/6))*6)
-            print(f"24 bit fileoffset calculated from end {bit24offset} <----------------------------")
+            #print(f"24 bit fileoffset calculated from end {bit24offset} <----------------------------")
             self.set_fileHandle(fileHandle)
             format = self.get_formattag()
             data_blocksize = self.DATABLOCKSIZE
@@ -464,7 +481,7 @@ class playrec_worker(QObject):
                                 else:
                                     print("############# NaN NaN NaN NaN in showdata ################")
                             else:
-                                print(f"REMOVE_playrecworker_fl2k: gain = {gain}, preset_volume = {preset_volume}, std(data: {np.std(np.abs(data[0:2:self.DATASHOWSIZE-1]))})")
+                                #print(f"REMOVE_playrecworker_fl2k: gain = {gain}, preset_volume = {preset_volume}, std(data: {np.std(np.abs(data[0:2:self.DATASHOWSIZE-1]))})")
                                 #self.set_data( preset_volume * gain * data[0:self.DATASHOWSIZE])
                                 #self.set_data( data[0:self.DATASHOWSIZE])
                                 self.set_data( preset_volume * scalefactor_fl2k * data[0:self.DATASHOWSIZE])
@@ -501,7 +518,7 @@ class playrec_worker(QObject):
                             else:
                                 #self.set_data(data[0:self.DATASHOWSIZE])
                                 self.set_data( preset_volume * scalefactor_fl2k * data[0:self.DATASHOWSIZE])
-                                print(f"REMOVE_playrecworker_fl2k: gain = {gain}, preset_volume = {preset_volume}, std(data: {np.std(np.abs(data[0:self.DATASHOWSIZE-1:2]))})")
+                                #print(f"REMOVE_playrecworker_fl2k: gain = {gain}, preset_volume = {preset_volume}, std(data: {np.std(np.abs(data[0:self.DATASHOWSIZE-1:2]))})")
                             self.SigIncrementCurTime.emit()
                             gain = self.get_gain()
                             count = 0

@@ -18,6 +18,7 @@ import libm2k
 import threading
 import queue
 import yaml
+import array
 
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -62,23 +63,42 @@ class playrec_worker(QObject):
 
         super().__init__(*args, **kwargs)
         self.stopix = False
-        self.DATABLOCKSIZE_BASIC = 4096*256#4096*256*32
+        #changelog Adaptation rec Nickel: increase DATABLOCKSIZE for ADALM2000 to improve performance, as the USB transfer can handle larger blocks and this reduces the overhead of frequent transfers; the optimal block size may depend on the specific use case and system performance, so it may require some experimentation to find the best value
+        self.DATABLOCKSIZE_BASIC = 4096*1024*4 # this is the maximum successful size before pusherthread error max TX buffersize exceeded
+        
         self.DATASHOWSIZE = 1024
         
         self.mutex = QMutex()
         self.stemlabcontrol = stemlabcontrolinst
         self.output_chunks = []
-        self.chunk_queue = queue.Queue(maxsize=10)  # Buffer size = 10 blocks
+        #changelog Adaptation rec Nickel: maxsize increased to 200
+        self.chunk_queue = queue.Queue(maxsize=200)  # Buffer size = 10 blocks
+        
         configpath = os.path.join(os.getcwd(), "config_wizard.yaml")
         try:
             stream = open(configpath, "r")
             metadata = yaml.safe_load(stream)
             stream.close()
             self.ffmpeg_path = metadata["ffmpeg_path"]
+            try: 
+                self.relaxfactor_OSR = float(metadata["relaxfactor_OSR"])
+            except:
+                self.relaxfactor_OSR = 1.2
+            try: 
+                self.volumefactor = float(metadata["volumefactor"])
+            except:
+                self.volumefactor = 1
+                
+
         except FileNotFoundError:
             print(f"cohi_playrecworker for ADALM initialization failed: Configuration file {configpath} not found, using default ffmpeg path")
             self.ffmpeg_path = "ffmpeg"
 
+        # Try test volume correction acc suggestion T. Nickel  , see also changed line before ao.push in pusher_thread  
+        # self.test_volume_prescaler = 1
+        # if "test_volume_prescaler" in metadata:
+        # print(f"test_volume_prescaler found in config file, using value {metadata['test_volume_prescaler']} for test volume correction")
+        #     self.test_volume_prescaler = metadata["test_volume_prescaler"]
 
     def set_filename(self,_value):
         self.__slots__[0] = _value
@@ -127,32 +147,99 @@ class playrec_worker(QObject):
 
 
     def pipe_reader_thread(self, stdout_pipe, buffer_size):
+        t0 = time.perf_counter()
+        bytes_read = 0
+        cnt = 0
         try:
             while True:
                 chunk = stdout_pipe.read(buffer_size)
                 if not chunk:
                     break
                 self.chunk_queue.put(chunk)  # non-blocking push into queue
+
+                bytes_read += len(chunk)
+
+                if bytes_read > 100_000_000:
+                    t1 = time.perf_counter()
+
+                    #print("ffmpeg output rate:",bytes_read/(t1-t0)/1e6,"MB/s")
+
+                    bytes_read = 0
+                    t0 = time.perf_counter()
+
+                cnt += 1
+                if cnt % 5 == 0:
+                    #print("reader queue:",self.chunk_queue.qsize())
+                    pass
         except Exception as e:
             print(f"Reader thread cannot read further data, probably EOF: {e}")
         finally:
             self.chunk_queue.put(None)  # Signal: EOF
 
+    # def pusher_thread(self, ao):
+    #     try:
+    #         while True:
+    #             chunk = self.chunk_queue.get()
+    #             #chunk = self.chunk_queue.get()*self.test_volume_prescaler ### Test volume correction acc suggestion T. Nickel
+    #             if chunk is None:
+    #                 break  # EOF
+    #         #    samples = (5*np.frombuffer(chunk, dtype=np.float32)).tolist()
+    #             samples_raw = np.frombuffer(chunk, dtype=np.int16).tolist()
+    #             if ao == None:
+    #                 #TODO TODO TODO: throw error and return to caller
+    #                 print(f"pusher thread chunk begin: {chunk[:10]}... end: {chunk[-10:]}")
+    #             else:
+    #                 #   ao.push(0, samples)
+    #                 ao.pushRaw(0, samples_raw)
+
+    #     except Exception as e:
+    #         print(f"Pusher thread error: {e}")
+
     def pusher_thread(self, ao):
+        push_count = 0
         try:
+            #changelog Adaptation rec Nickel: use array.array for more efficient conversion of byte data to int16 samples, see https://docs.python.org/3/library/array.html#array.array.frombytes
+            samples_raw = array.array('h')
+            
             while True:
                 chunk = self.chunk_queue.get()
+                #chunk = self.chunk_queue.get()*self.test_volume_prescaler ### Test volume correction acc suggestion T. Nickel
                 if chunk is None:
                     break  # EOF
-                samples = np.frombuffer(chunk, dtype=np.float32).tolist()
+            #    samples = (5*np.frombuffer(chunk, dtype=np.float32)).tolist()
+                push_count += 1
+                if push_count % 5 == 0:
+                    #print("queue:",self.chunk_queue.qsize())
+                    pass
+                #samples_raw = np.frombuffer(chunk, dtype=np.int16).tolist()
+                del samples_raw[:]
+                #samples_raw.frombytes(chunk)
+                t0 = time.perf_counter()
+                samples_raw.frombytes(chunk)
+                t1 = time.perf_counter()
+
+                if t1 - t0 > 0.005:
+                    #print(f"frombytes: {(t1-t0)*1000:.1f} ms")
+                    pass
+
+
+
                 if ao == None:
                     #TODO TODO TODO: throw error and return to caller
                     print(f"pusher thread chunk begin: {chunk[:10]}... end: {chunk[-10:]}")
                 else:
-                    ao.push(0, samples)
+                    #   ao.push(0, samples)
+                    #changelog Adaptation rec Nickel: use pushRaw for more efficient data transfer of int16 samples to ADALM2000, see https://analogdevicesinc.github.io/libm2k/py-api-docs/analog_out.html#libm2k.AnalogOut.pushRaw
+                    #ao.pushRaw(0, samples_raw)
+
+                    t0 = time.perf_counter()
+                    ao.pushRaw(0, samples_raw)
+                    t1 = time.perf_counter()
+                    #print(len(samples_raw)/(t1-t0)/1e6,"MS/s")
+                    # if t1 - t0 > 0.01:
+                    #     print(f"pushRaw: {(t1-t0)*1000:.1f} ms")
         except Exception as e:
             print(f"Pusher thread error: {e}")
-
 
     def gen_ffmpeg_cmd(self, ffmpeg_path, SRAdalm = 2500000, sampling_rate = 1250000 , lo_shift = 1125000, preset_volume = 1):
         """generates ffmpeg command for reading from stdin, complex modulation to target RF band
@@ -191,7 +278,8 @@ class playrec_worker(QObject):
             "[part_re][part_im]amix=inputs=2:duration=shortest[out]",
             #"-map", "[out]", "-c:a", "pcm_s8", "-f", "caf", "-"
             #"-map", "[out]", "-c:a", "pcm_f32le", "-f", "caf", str(outfile)
-            "-map", "[out]", "-c:a", "pcm_f32le", "-f", "f32le", "pipe:1"  # Schreibe in die Standardausgabe (stdout)
+            #"-map", "[out]", "-c:a", "pcm_f32le", "-f", "f32le", "pipe:1"  # Schreibe in die Standardausgabe (stdout)
+            "-map", "[out]", "-c:a", "pcm_s16le", "-f", "s16le", "pipe:1"  # Schreibe in die Standardausgabe (stdout)
             ]
 
         return ffmpeg_cmd
@@ -201,6 +289,7 @@ class playrec_worker(QObject):
         f_nyquist = (lo_shift+sampling_rate/2))
         OSR is tha value which divides SRDAC such that 
         (1) SRDAC/OSR >= 2 * f_nyquist
+        #TODO: make OSR less, such that the aliasing prüblem identified by T Nickel is mitigated, i.e. the image of the signal band is not directly on top of the signal band but slightly shifted, e.g. by setting OSR such that the image is at least 100 kHz away from the signal band
         (2) r = SRDAC/OSR is integer, ideally r is an integer multiple of sampling_rate 
 
         :param SRDAC: sampling rate of the ADALM DAC (clock)
@@ -213,13 +302,15 @@ class playrec_worker(QObject):
         :return: oversampling rate OSR
 
         """
+        relaxfactor_OSR = self.relaxfactor_OSR # 1.2 # 1.2 #relaxation factor for OSR to mitigate aliasing problem identified by T Nickel, i.e. the image of the signal band is not directly on top of the signal band but slightly shifted, e.g. by setting OSR such that the image is at least 100 kHz away from the signal band   
         f_nyquist = lo_shift+sampling_rate/2
-        r_max = SRDAC / (2 *f_nyquist) # maximum allowable OSR
+        r_max = SRDAC / (2*relaxfactor_OSR *f_nyquist) # maximum allowable OSR
         for OSR in np.arange(int(np.floor(r_max)),1,-1):
             r = SRDAC / OSR
             if SRDAC % r == 0:
+                print(f"= SRDAC % r == 0 ==============reasmplingfactor: {SRDAC/OSR/sampling_rate}, OSR: {OSR}, lo_shift: {lo_shift}, sampling_rate: {sampling_rate}, f_nyquist: {f_nyquist}")
                 break
-            print(f"lo_shift: {lo_shift}, sampling_rate: {sampling_rate}, f_nyquist: {f_nyquist}")
+            print(f"===============reasmplingfactor: {SRDAC/OSR/sampling_rate}, OSR: {OSR}, lo_shift: {lo_shift}, sampling_rate: {sampling_rate}, f_nyquist: {f_nyquist}")
         return OSR
 
 
@@ -281,7 +372,8 @@ class playrec_worker(QObject):
             ao.setOversamplingRatio(channel, int(OSR)) ### TODO: set oversampling ratio according band requirements; 
             #For MW we could live with a value between 15 and 20 
             ao.enableChannel(channel, True)
-            ao.setKernelBuffersCount(0, 32)
+            #changelog Adaptation rec Nickel: number of kernel buffers increased to 128 to improve performance and mitigate pusher thread error max TX buffersize exceeded, see https://analogdevicesinc.github.io/libm2k/py-api-docs/analog_out.html#libm2k.AnalogOut.setKernelBuffersCount
+            ao.setKernelBuffersCount(0, 128)
             ao.setCyclic(False)
 
         elif not TEST:
@@ -302,16 +394,17 @@ class playrec_worker(QObject):
         if format[0] == 1:  #PCM
             if format[2] == 16:
                 formatstring = "s16le"
-                preset_volume = 10
+                #changelog Adaptation rec Nickel:use preset volume 5 instead of 10
+                preset_volume = 5
                 self.DATABLOCKSIZE = self.DATABLOCKSIZE_BASIC
                 data = np.empty(self.DATABLOCKSIZE, dtype=np.int16)
             elif format[2] == 24:   #24 bit PCM
                 #formatstring = "f32le"
                 formatstring = "s24le"
-                preset_volume = 200
+                preset_volume = 100
                 self.DATABLOCKSIZE = 4096*256*24 #former 1024*48
                 data = np.empty(self.DATABLOCKSIZE, dtype=np.float32)
-            elif format[2] == 32:
+            elif format[2] == 16:
                 formatstring = "s32le"  #32 bit PCM 
                 preset_volume = 1
                 self.DATABLOCKSIZE = self.DATABLOCKSIZE_BASIC
@@ -340,9 +433,9 @@ class playrec_worker(QObject):
                     libm2k.contextClose(ctx)
                 return()
         #ADALM_blocksize = self.DATABLOCKSIZE 
-
-        print(f"ADALM2000 <<<<<<<<<<<<< oooooo >>>>>>>>>>>> format: {format}")
-        print(f"playloop: BitspSample: {format[2]}; wFormatTag: {format[0]}; Align: {format[1]}")
+        preset_volume *= self.volumefactor
+        #print(f"ADALM2000 <<<<<<<<<<<<< oooooo >>>>>>>>>>>> format: {format}")
+        #print(f"playloop: BitspSample: {format[2]}; wFormatTag: {format[0]}; Align: {format[1]}")
         self.JUNKSIZE = self.DATABLOCKSIZE/2
 
         if True: #not TEST:
@@ -460,7 +553,8 @@ class playrec_worker(QObject):
                             aux1 = gain*data[0:size]
                             ffmpeg_process.stdin.write(aux1.astype(np.float16))
                         # write block to ffmpeg stdin which processes and sends to further processing pipe via stdout
-                        ffmpeg_process.stdin.flush()
+                        #changelog Adaptation rec Nickel: do not apply stdin.flush() after every block, as this can cause significant performance degradation, see https://stackoverflow.com/questions/10823479/why-is-flush-causing-slowdown-when-writing-to-a-subprocess-pipe-in-python
+                        #ffmpeg_process.stdin.flush()
 
                     except BlockingIOError:
                         print("Blocking data socket error in playloop worker")
@@ -633,7 +727,7 @@ class playrec_worker(QObject):
             #formatlist: [formattag blockalign bitpsample]
             if format[0] == 1:
                 data[lauf] = np.float32(dataraw[0]/8388608)
-                print(f"dataraw: {dataraw[0]} lauf: {lauf}")
+                #print(f"dataraw: {dataraw[0]} lauf: {lauf}")
             else:
                 data[lauf] = dataraw[0]
         return data
