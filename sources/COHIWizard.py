@@ -233,7 +233,8 @@ class starter(QMainWindow):
         ]
 
 
-import fitz  # PyMuPDF
+#import fitz  # PyMuPDF
+#
 from PyQt5.QtWidgets import QLabel, QVBoxLayout, QScrollArea
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtCore import QEvent
