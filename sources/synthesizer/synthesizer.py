@@ -785,6 +785,7 @@ class modulate_worker_ffmpeg(QObject):
                 print(f"schroeder_phase_active from config_wizard.yaml: {schroeder_phase_active}")
         except:
             self.ismetadata = False
+            print(f"config_wizard.yaml not found, using default settings for schroeder_phase_active: {schroeder_phase_active}")
    
         N = len(frequencies)  # Anzahl der Frequenzkomponenten
         phases = np.array([-np.pi * k * (k - 1) / N for k in range(1, N + 1)])
@@ -793,6 +794,7 @@ class modulate_worker_ffmpeg(QObject):
             print(f"schroeder_phase_active is set to False, using zero phases instead of Schroeder phases")
             phases *= 0
 
+        #
         #convert to delays
         delays = np.zeros(len(phases))
         for i in range(len(phases)):
