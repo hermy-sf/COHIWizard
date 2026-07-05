@@ -216,7 +216,7 @@ class modulate_worker(QObject):
         """
         self.__path = os.path.dirname(os.getcwd())
         configpath = os.path.join(self.__path, "config_wizard.yaml")
-
+        schroeder_phase_active = True
         try:
             stream = open("config_wizard.yaml", "r")
             self.metadata = yaml.safe_load(stream)
@@ -774,7 +774,7 @@ class modulate_worker_ffmpeg(QObject):
 
         self.__path = os.path.dirname(os.getcwd())  # TODO: this is a core variable in core model
         configpath = os.path.join(self.__path, "config_wizard.yaml")
-
+        schroeder_phase_active = True
         try:
             stream = open("config_wizard.yaml", "r")
             self.metadata = yaml.safe_load(stream)
