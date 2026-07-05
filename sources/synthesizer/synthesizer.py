@@ -214,9 +214,30 @@ class modulate_worker(QObject):
         - t: Zeitvektor
         - signal: Multisinus-Signal
         """
+        self.__path = os.path.dirname(os.getcwd())
+        configpath = os.path.join(self.__path, "config_wizard.yaml")
+
+        try:
+            stream = open("config_wizard.yaml", "r")
+            self.metadata = yaml.safe_load(stream)
+            stream.close()
+            self.ismetadata = True
+            if "schroeder_phase_active" in self.metadata:
+                schroeder_phase_active = self.metadata["schroeder_phase_active"]
+                print(f"schroeder_phase_active from config_wizard.yaml: {schroeder_phase_active}")
+        except:
+            self.ismetadata = False
+
+
         N = len(frequencies)  # Anzahl der Frequenzkomponenten
+
         phases = np.array([-np.pi * k * (k - 1) / N for k in range(1, N + 1)])
+        if self.ismetadata and not schroeder_phase_active:
+            print(f"schroeder_phase_active is set to False, using zero phases instead of Schroeder phases")
+            phases *= 0
         phases = phases - np.ones(len(phases)) * phases[0]  # subtract first phase --> first carrier is reference with zero phase
+
+
         return phases
 
 
@@ -749,9 +770,29 @@ class modulate_worker_ffmpeg(QObject):
         :return: phases: Array of Schröder phases
         :rtype: np.ndarray
         """
+
+
+        self.__path = os.path.dirname(os.getcwd())  # TODO: this is a core variable in core model
+        configpath = os.path.join(self.__path, "config_wizard.yaml")
+
+        try:
+            stream = open("config_wizard.yaml", "r")
+            self.metadata = yaml.safe_load(stream)
+            stream.close()
+            self.ismetadata = True
+            if "schroeder_phase_active" in self.metadata:
+                schroeder_phase_active = self.metadata["schroeder_phase_active"]
+                print(f"schroeder_phase_active from config_wizard.yaml: {schroeder_phase_active}")
+        except:
+            self.ismetadata = False
+   
         N = len(frequencies)  # Anzahl der Frequenzkomponenten
         phases = np.array([-np.pi * k * (k - 1) / N for k in range(1, N + 1)])
         phases = phases - np.ones(len(phases)) * phases[0]  # subtract first phase --> first carrier is reference with zero phase
+        if self.ismetadata and not schroeder_phase_active:
+            print(f"schroeder_phase_active is set to False, using zero phases instead of Schroeder phases")
+            phases *= 0
+
         #convert to delays
         delays = np.zeros(len(phases))
         for i in range(len(phases)):
