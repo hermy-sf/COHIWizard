@@ -1213,10 +1213,6 @@ class modulate_worker_ffmpeg(QObject):
 #                "[0:a]aformat=sample_fmts=dbl:channel_layouts=stereo,aresample=osr=" + str(sample_rate) +
                 ",pan=mono|c0=.5*c0+.5*c1" +
                 ",volume=0.8" +
-                # ",lowpass=f=" + str(cutoff_freq) +
-                # ",lowpass=f=" + str(cutoff_freq) +
-                # ",lowpass=f=" + str(cutoff_freq) +
-                # ",lowpass=f=" + str(cutoff_freq) +
                 "[mono_lp];"
                 # 2. Sinus-Generator, Cosinus über Allpassfilter (biquad)
                 "sine=frequency=" + str(abs(lo_shift)) + ":sample_rate=" + str(sample_rate) + ":d=" + str(total_duration_sec) + ", aformat=sample_fmts=dbl[sine_base0];"
@@ -2072,6 +2068,7 @@ class synthesizer_v(QObject):
         self.gui.pushButton_importProject.clicked.connect(self.import_m3u)    
         self. gui.synthesizer_radioBut_no2GBsplitting.toggled.connect(self.setno2GBsplitting)
         self. gui.synthesizer_radioBut_SuppressPlaylistinfo.toggled.connect(self.setsuppressplaylistinfo)
+        self.gui.synthesizer_radioBut_ShowPlaytimes.toggled.connect(self.show_playtime_overview)
         self.gui.verticalSlider_Gain.valueChanged.connect(self.setgain)
         self.previous_value = self.gui.spinBox_numcarriers.value()
         self.RecBW_update()
@@ -2164,6 +2161,87 @@ class synthesizer_v(QObject):
         else:
             self.gui.synthesizer_radioBut_SuppressPlaylistinfo.setEnabled(True)
             self.NOPLAYLISTUPDATE = False
+
+    def show_playtime_overview(self):
+        """Show a popup with progress bars for playtime of all active carriers.
+        Each bar is scaled in minutes and colour-coded against the target recording length.
+        generated 07-07 by Claude Cowork
+        """
+        if not self.gui.synthesizer_radioBut_ShowPlaytimes.isChecked():
+            return
+
+        self.gui.label_audioset_name.setText("Calculating playtimes, please wait ...")
+        self.gui.label_audioset_name.setStyleSheet("background-color: #ADD8E6; color: black;")
+        QApplication.processEvents()
+
+        total_reclength_s = self.get_reclength()
+        if total_reclength_s <= 0:
+            total_reclength_s = 1
+        total_reclength_min = total_reclength_s / 60.0
+
+        num_carriers = len(self.readFileList)
+
+        dialog = QDialog()
+        dialog.setWindowTitle("Playtime overview")
+        dialog.setMinimumWidth(500)
+        outer = QVBoxLayout(dialog)
+
+        for c_ix in range(num_carriers):
+            duration = 0.0
+            ix = 0
+            for fname in self.readFileList[c_ix]:
+                try:
+                    file_path = self.readFilePath[c_ix][ix] + "/" + fname
+                except Exception:
+                    ix += 1
+                    continue
+                if file_path.find("http://") >= 0 or file_path.find("https://") >= 0:
+                    err, aux = self.get_stream_duration(file_path)
+                    if not err:
+                        duration += aux
+                else:
+                    try:
+                        info = sf.info(file_path)
+                        duration += info.frames / info.samplerate
+                    except Exception:
+                        pass
+                ix += 1
+
+            duration_min = duration / 60.0
+            fill_pct = (duration_min / total_reclength_min) * 100.0 if total_reclength_min > 0 else 0.0
+
+            try:
+                freq_label = f"{self.m['carrierarray'][c_ix]:.3f} kHz"
+            except Exception:
+                freq_label = f"Carrier {c_ix}"
+
+            row = QHBoxLayout()
+            lbl = QLabel(f"{freq_label}  ({duration_min:.1f} min)")
+            lbl.setMinimumWidth(180)
+            bar = QProgressBar()
+            bar.setOrientation(Qt.Horizontal)
+            bar.setMinimum(0)
+            bar.setMaximum(int(total_reclength_min * 10))
+            bar.setValue(min(int(duration_min * 10), int(total_reclength_min * 10)))
+            bar.setFormat(f"{duration_min:.1f} / {total_reclength_min:.1f} min")
+            if fill_pct > 100:
+                bar.setStyleSheet("QProgressBar::chunk { background-color: red; }")
+            elif fill_pct > 90:
+                bar.setStyleSheet("QProgressBar::chunk { background-color: yellow; }")
+            else:
+                bar.setStyleSheet("QProgressBar::chunk { background-color: green; }")
+            row.addWidget(lbl)
+            row.addWidget(bar)
+            outer.addLayout(row)
+
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        outer.addWidget(close_btn)
+
+        self.gui.label_audioset_name.setText("")
+        self.gui.label_audioset_name.setStyleSheet("background-color: #FFFFFF; color: black;")
+        self.gui.synthesizer_radioBut_ShowPlaytimes.setChecked(False)
+        dialog.exec_()
 
     def customcarrier_handler(self):
         """handles further settings when custom table
@@ -4323,236 +4401,3 @@ class TableDialog(QDialog):
             self.table.removeRow(selected_row)
 
 
-
-# playlist = m3u8.loads(playlist_content)
-# for segment in playlist.segments:
-
-#     print(segment.uri)
-
-#     #Zugriffe:
-# playlist.segments[1].uri
-# playlist.segments[1].duration
-# playlist.segments[1].title
-
-# #playlist.segments[1].playlist_type
-# playlist.segments[1].media_sequence
-
-
-#TODO: 
-# test = WAVheader_tools.get_sdruno_header(self,self.m["f1"],'audio')
-# import numpy as np
-# from scipy.signal import iirnotch, lfilter_zi, lfilter
-
-# def design_notch_filter(fn, BN, fs):
-#     """
-#     Entwirft einen Notch-Filter bei Mittenfrequenz fn mit Bandbreite BN.
-
-#     Parameters:
-#     - fn: Mittenfrequenz des Notch-Filters (Hz)
-#     - BN: Notch-Bandbreite (Hz)
-#     - fs: Abtastrate (Hz)
-
-#     Returns:
-#     - b, a: Notch-Filterkoeffizienten
-#     """
-#     Q = fn / BN  # Berechnung des Qualitätsfaktors Q
-#     b, a = iirnotch(fn / (fs / 2), Q)
-#     return b, a
-
-# def process_block(input_block, b, a, zi_real, zi_imag):
-#     """
-#     Filtert einen Datenblock mit dem Notch-Filter und verwendet den Filterzustand.
-
-#     Parameters:
-#     - input_block: Block von komplexen Daten (1D-Array)
-#     - b, a: Notch-Filterkoeffizienten
-#     - zi_real, zi_imag: Filterzustände für Real- und Imaginärteil
-
-#     Returns:
-#     - Gefilterter Block von komplexen Daten (1D-Array)
-#     - Neuer Filterzustand für den nächsten Block
-#     """
-#     # Filterung des Realteils und Aktualisierung des Filterzustands
-#     filtered_real, zi_real = lfilter(b, a, np.real(input_block), zi=zi_real)
-    
-#     # Filterung des Imaginärteils und Aktualisierung des Filterzustands
-#     filtered_imag, zi_imag = lfilter(b, a, np.imag(input_block), zi=zi_imag)
-    
-#     # Rückgabe des gefilterten komplexen Signals und des neuen Zustands
-#     filtered_block = filtered_real + 1j * filtered_imag
-#     return filtered_block, zi_real, zi_imag
-
-# def notch_filter_file(input_file, output_file, fn, BN, fs, block_size=1024):
-#     """
-#     Liest ein komplexes Zeit-Signal blockweise, filtert es mit einem Notch-Filter
-#     und speichert das Ergebnis in eine Datei. Der Filterzustand wird zwischen
-#     den Blöcken gespeichert.
-
-#     Parameters:
-#     - input_file: Pfad zur Eingabedatei (komplexe Rohdaten im Binary-Format).
-#     - output_file: Pfad zur Ausgabedatei (gefilterte Daten).
-#     - fn: Mittenfrequenz des Notch-Filters (Hz).
-#     - BN: Bandbreite des Notch-Filters (Hz).
-#     - fs: Abtastrate des Signals (Hz).
-#     - block_size: Anzahl der Samples pro Block (Standard: 1024).
-#     """
-#     # Entwerfen des Notch-Filters
-#     b, a = design_notch_filter(fn, BN, fs)
-    
-#     # Initialisierung des Filterzustands (zi) für Real- und Imaginärteil
-#     zi_real = lfilter_zi(b, a) * 0  # Nullinitialisierung
-#     zi_imag = lfilter_zi(b, a) * 0
-
-#     # Öffne die Input- und Output-Dateien im Binärmodus
-#     with open(input_file, 'rb') as f_in, open(output_file, 'wb') as f_out:
-#         while True:
-#             # Blockweises Lesen der Daten
-#             input_block = np.fromfile(f_in, dtype=np.complex64, count=block_size)
-            
-#             # Wenn keine Daten mehr vorhanden sind, beenden
-#             if len(input_block) == 0:
-#                 break
-
-#             # Filtere den Datenblock und aktualisiere den Filterzustand
-#             filtered_block, zi_real, zi_imag = process_block(input_block, b, a, zi_real, zi_imag)
-
-#             # Schreibe den gefilterten Block in die Ausgabedatei
-#             filtered_block.astype(np.complex64).tofile(f_out)
-
-# # Beispielaufruf
-# input_file = 'input_signal.dat'   # Pfad zur Eingabedatei
-# output_file = 'filtered_signal.dat' # Pfad zur Ausgabedatei
-# fs = 1000.0  # Abtastrate in Hz
-# fn = 60.0    # Mittenfrequenz des Notch-Filters in Hz
-# BN = 1.0     # Bandbreite des Notch-Filters in Hz
-# block_size = 4096  # Größe der zu lesenden Blöcke
-
-# notch_filter_file(input_file, output_file, fn, BN, fs, block_size)
-
-
-    # def read_audio_stream(self,url, block_size_samples, sample_rate=44100, channels=2, dtype="float32"):
-    #     # Berechne die Blockgröße in Bytes (pro Block)
-    #     block_size_bytes = block_size_samples * channels * np.dtype(dtype).itemsize
-
-    #     # ffmpeg-Befehl vorbereiten
-    #     # ffmpeg_command =  "ffmpeg-master-latest-win64-gpl/bin/ffmpeg -y -i " + output_file +  " -c:a libmp3lame -qscale:a 2 " + true_tempfile
-    #     self.m["user_agent"]
-    #     ffmpeg_command = [
-    #         self.m["ffmpeg_path"] + "ffmpeg",
-    #         "-user_agent", self.m["user_agent"],
-    #         "-i", url,
-    #         "-f", "f32le",          # Rohformat: 32-Bit Float, Little Endian
-    #         "-ac", str(channels),   # Kanäle
-    #         "-ar", str(sample_rate),# Abtastrate
-    #         "-"
-    #     ]
-
-    #     # ffmpeg-Prozess starten
-    #     process = subprocess.Popen(ffmpeg_command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=10**8)
-
-    #     try:
-    #         while True:
-    #             # Lese einen Block von Rohdaten
-    #             raw_audio = process.stdout.read(block_size_bytes)
-
-    #             # Überprüfen, ob der Stream endet
-    #             if not raw_audio:
-    #                 break
-
-    #             # Konvertiere Rohdaten in ein NumPy-Array
-    #             audio_block = np.frombuffer(raw_audio, dtype=dtype).reshape(-1, channels)
-
-    #             # Hier kannst du mit dem Block weiterarbeiten (z. B. speichern, analysieren, etc.)
-    #             yield audio_block
-    #     finally:
-    #         # Prozess sicher beenden
-    #         process.terminate()
-    #         process.wait()
-
-
-################### CODE for reading audio blockwise from URL
-
-
-    # def convert_to_mp3(input_file, output_file):
-    #     audio = AudioSegment.from_file(input_file)
-    #     audio.export(output_file, format="mp3", bitrate="192k")
-
-################### CODE for determining Playlength from URL
-
-# import subprocess
-# import re
-
-# def get_stream_duration(url):
-#     # ffmpeg-Befehl, um die Metadaten der Datei auszulesen
-#     ffmpeg_command = [
-#         self.m["ffmpeg_path"],
-#         "ffmpeg",
-#         "-i", url,
-#         "-hide_banner"  # Verbirgt unnötige Informationen
-#     ]
-
-#     # Prozess starten und Fehlerausgabe analysieren (da ffmpeg die Metadaten dort ausgibt)
-#     process = subprocess.Popen(ffmpeg_command, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-#     stdout, stderr = process.communicate()
-
-#     # Dauer aus der ffmpeg-Ausgabe extrahieren
-#     match = re.search(r"Duration: (\d+):(\d+):(\d+\.\d+)", stderr.decode())
-#     if match:
-#         hours, minutes, seconds = map(float, match.groups())
-#         return hours * 3600 + minutes * 60 + seconds  # Dauer in Sekunden
-#     else:
-#         return None  # Keine Dauer gefunden
-
-# # Beispielaufruf
-# stream_url = "https://example.com/audio.mp3"
-# duration = get_stream_duration(stream_url)
-# if duration:
-#     print(f"Die Gesamtdauer beträgt: {duration:.2f} Sekunden")
-# else:
-#     print("Dauer konnte nicht ermittelt werden.")
-
-
-
-###########Appendix SFBUF
-
-                # with urllib.request.urlopen(request) as response:
-                #     # write stream to local temp file and open with sf.Soundfile, return soundfile object 
-                #     #output_file = "local_temp.aud"
-                #     output_file = Path(file_path).stem + ".aud"
-                #     ### only for pydub: ### 
-                #     true_tempfile = Path(file_path).stem + ".mp3"
-                #     ### only for pydub: ### 
-                #     print(f"temporary output_file: {output_file}, true temp file: {true_tempfile}")
-                #     #print(f"temporary output_file: {output_file}")
-                #     if not os.path.isfile(output_file):
-                #         with open(output_file, "wb") as f:
-                #             if checkflag:
-                #                 f.write(response.read(10000))
-                #                 print(">>>>>>>>>>>>>>>>>>>> readsoundfile write short buffer file")
-                #             else:
-                #                 f.write(response.read())
-                #                 ### only for pydub: ### self.convert_to_mp3(output_file, true_tempfile)
-                #                 ### only for pydub: ### Path(output_file).unlink()
-                #                egeg_command =  self.m["ffmpeg_path"] + "ffmpeg -user_agent " + self.m["user_agent"] + " -y -i " + output_file +  " -c:a libmp3lame -qscale:a 2 " + true_tempfile
-                #                 subprocess.run(ffmpeg_command, check=True)
-                #                 #Path(output_file).unlink()
-
-    # def is_ffmpeg_installed(self):
-    #     """check if ffmpeg is available on the system"""
-    #     try:
-    #         #check for global installation with PATH set in the OS
-    #         subprocess.run("ffmpeg -version", stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-    #         self.logger.debug(f"check for ffmpeg , installation found")
-    #         self.m["ffmpeg_path"] = ""
-    #         return True
-    #     except FileNotFoundError:
-    #         #check for local installation in ffmpeg standardpath of the COHIWIzard filesystem
-    #         self.m["ffmpeg_path"] = os.path.join(os.getcwd(), "ffmpeg-master-latest-win64-gpl", "bin")
-    #         #self.logger.debug(f"__init_ m check for ffmpeg_path: {self.mdl["ffmpeg_path"]}, file not found")
-    #         try:
-    #             subprocess.run(os.path.join(self.m["ffmpeg_path"],"ffmpeg") + " -version", stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-    #             self.logger.debug(f"check for ffmpeg_path: {self.m["ffmpeg_path"]}, file found")
-    #             return True
-    #         except FileNotFoundError:
-    #             self.logger.debug(f"check for ffmpeg_path: {self.m["ffmpeg_path"]}, file not found")
-    #             return False

@@ -25,7 +25,7 @@ def replace(file_path, text, subs, flags=0):
         file.write(file_contents)
 
     
-file_path = "./synthesizer/synthesizer_widget.py"
+file_path = "./synthesizer/synthesizer_widget_skin_1.py"
 text = "font.setPointSize(10)"
 subs = "font.setPointSize(11)"
 replace(file_path, text, subs)
