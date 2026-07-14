@@ -84,6 +84,16 @@ int  dsp_fl2k_is_running(DspFL2KHandle h);
  */
 int  dsp_fl2k_check_device(void);
 
+/*
+ * Seek the WAV file read pointer to the requested position.
+ * Thread-safe; the DSP thread performs the seek at the next block boundary
+ * and also flushes the ring buffer so output reflects the new position quickly.
+ *
+ *   byte_pos – byte offset (same coordinate as Python's file.seek())
+ *   whence   – 0 = from start of file, 1 = from current position, 2 = from end
+ */
+void dsp_fl2k_seek(DspFL2KHandle h, int64_t byte_pos, int whence);
+
 #ifdef __cplusplus
 }
 #endif

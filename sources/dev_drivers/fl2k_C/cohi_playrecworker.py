@@ -109,6 +109,9 @@ def _load_lib() -> ctypes.CDLL | None:
     lib.dsp_fl2k_check_device.restype  = Int
     lib.dsp_fl2k_check_device.argtypes = []
 
+    lib.dsp_fl2k_seek.restype  = None
+    lib.dsp_fl2k_seek.argtypes = [VoidP, ctypes.c_int64, Int]
+
     # Keep ctypes callback types alive on the lib object so they are not GC'd
     lib._MonitorCB  = MonitorCB
     lib._ProgressCB = ProgressCB
@@ -120,6 +123,29 @@ def _load_lib() -> ctypes.CDLL | None:
 
 
 _LIB = _load_lib()
+
+
+# ---------------------------------------------------------------------------
+# File-handle proxy: routes Python seek() calls to the C++ DSP engine
+# ---------------------------------------------------------------------------
+
+class _SeekProxy:
+    """Thin proxy returned by get_fileHandle().
+
+    playrec_c.jump_to_position_c() and jump_1_byte() call
+        proxy.seek(offset, whence)
+    which forwards the request to dsp_fl2k_seek() so the C++ DSP thread
+    performs the actual file seek at the next block boundary and flushes
+    the ring buffer.
+    """
+    def __init__(self, handle, lib):
+        self._handle = handle
+        self._lib    = lib
+
+    def seek(self, offset, whence=0):
+        self._lib.dsp_fl2k_seek(
+            self._handle, ctypes.c_int64(offset), ctypes.c_int(whence)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -272,6 +298,9 @@ class playrec_worker(QObject):
             return
         self._handle = handle
 
+        # Expose seek proxy so playrec_c.jump_to_position_c() / jump_1_byte() work
+        self.set_fileHandle(_SeekProxy(handle, _LIB))
+
         # ---- Configure --------------------------------------------------
         fname_array = (ctypes.c_char_p * len(filenames))(
             *[f.encode() for f in filenames]
@@ -339,6 +368,7 @@ class playrec_worker(QObject):
         _LIB.dsp_fl2k_destroy(handle)
         self._handle = None
 
+        self.set_fileHandle(None)
         self.set_fileclose(True)
         self.SigFinished.emit()
 

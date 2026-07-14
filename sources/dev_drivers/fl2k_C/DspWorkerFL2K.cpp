@@ -90,6 +90,11 @@ struct DspWorkerFL2K {
     /* Persistent buffer handed to the FL2K callback */
     std::vector<int8_t>         fl2k_buf   = std::vector<int8_t>(FL2K_BUF_LEN, 0);
 
+    /* --- seek request (set from Python, consumed by DSP thread) -- */
+    struct SeekReq { bool pending = false; int64_t pos = 0; int whence = 0; };
+    std::mutex  seek_mtx;
+    SeekReq     seek_req;
+
     /* --- control -------------------------------------------------- */
     std::atomic<bool>   running  {false};
     std::atomic<bool>   paused   {false};
@@ -212,19 +217,39 @@ void DspWorkerFL2K::run_fl2k()
     }
 
     if (!running.load(std::memory_order_acquire)) {
-        std::lock_guard<std::mutex> lk(dev_mtx);
         fl2k_close(dev);
-        dev = nullptr;
+        {
+            std::lock_guard<std::mutex> lk(dev_mtx);
+            dev = nullptr;
+        }
         return;
     }
 
-    /* fl2k_start_tx blocks until fl2k_stop_tx is called */
+    /* fl2k_start_tx is NON-BLOCKING: it spawns libosmo-fl2k's internal USB
+     * and sample-worker threads and returns immediately.
+     * We must NOT call fl2k_close() before fl2k_stop_tx() — doing so while
+     * holding dev_mtx would deadlock with dsp_fl2k_stop() / run_dsp()
+     * which also need dev_mtx to call fl2k_stop_tx().
+     * Correct sequence: wait for running==false (set by dsp_fl2k_stop or
+     * run_dsp), then call fl2k_stop_tx + fl2k_close without holding dev_mtx. */
     fl2k_start_tx(dev, fl2k_callback, this, 0);
 
-    std::lock_guard<std::mutex> lk(dev_mtx);
+    /* Spin-wait for stop signal — no mutex held, so dsp_fl2k_stop() can
+     * proceed normally while we wait here. */
+    while (running.load(std::memory_order_acquire))
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    /* Signal libosmo-fl2k's internal threads to stop */
+    fl2k_stop_tx(dev);
+
+    /* Block until libosmo-fl2k's USB and sample threads have exited */
     fl2k_close(dev);
-    dev = nullptr;
-    dev_open.store(false, std::memory_order_release);
+
+    {
+        std::lock_guard<std::mutex> lk(dev_mtx);
+        dev = nullptr;
+        dev_open.store(false, std::memory_order_release);
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -314,6 +339,27 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
 
             /* ---- inner read-and-process loop ---- */
             while (running.load(std::memory_order_acquire)) {
+
+                /* -- handle seek request from Python -- */
+                {
+                    std::lock_guard<std::mutex> slk(seek_mtx);
+                    if (seek_req.pending) {
+                        auto dir = (seek_req.whence == 0) ? std::ios::beg
+                                 : (seek_req.whence == 1) ? std::ios::cur
+                                                          : std::ios::end;
+                        f.clear();          /* reset EOF / error bits first  */
+                        f.seekg(seek_req.pos, dir);
+                        seek_req.pending = false;
+                        /* flush ring so stale samples do not play */
+                        {
+                            std::lock_guard<std::mutex> rlk(ring_mtx);
+                            ring_head  = 0;
+                            ring_tail  = 0;
+                            ring_count = 0;
+                            ring_not_full.notify_all();
+                        }
+                    }
+                }
 
                 /* -- handle pause: feed silence without advancing file -- */
                 while (paused.load(std::memory_order_acquire)
@@ -471,12 +517,7 @@ void DspWorkerFL2K::run_dsp()
     running.store(false, std::memory_order_release);
     ring_not_full.notify_all();
     ring_not_empty.notify_all();
-
-    /* Stop the fl2k transfer loop */
-    {
-        std::lock_guard<std::mutex> lk(dev_mtx);
-        if (dev) fl2k_stop_tx(dev);
-    }
+    /* run_fl2k() detects running==false and handles fl2k_stop_tx + fl2k_close */
 
     if (fin_cb) fin_cb(fin_ud);
 }
@@ -577,15 +618,13 @@ void dsp_fl2k_stop(DspFL2KHandle h)
     if (!h) return;
     auto* w = static_cast<DspWorkerFL2K*>(h);
 
+    /* Signal both threads to stop.  run_fl2k() monitors running and will
+     * call fl2k_stop_tx() + fl2k_close() itself once it sees running==false,
+     * so we must NOT call fl2k_stop_tx() here (that would race with
+     * run_fl2k() and could also deadlock if run_fl2k() holds dev_mtx). */
     w->running.store(false, std::memory_order_release);
     w->ring_not_full.notify_all();
     w->ring_not_empty.notify_all();
-
-    /* Stop fl2k hardware */
-    {
-        std::lock_guard<std::mutex> lk(w->dev_mtx);
-        if (w->dev) fl2k_stop_tx(w->dev);
-    }
 
     if (w->dsp_thr.joinable())  w->dsp_thr.join();
     if (w->fl2k_thr.joinable()) w->fl2k_thr.join();
@@ -617,4 +656,14 @@ int dsp_fl2k_check_device()
     if (r != FL2K_SUCCESS) return -1;
     fl2k_close(dev);
     return 0;
+}
+
+void dsp_fl2k_seek(DspFL2KHandle h, int64_t byte_pos, int whence)
+{
+    if (!h) return;
+    auto* w = static_cast<DspWorkerFL2K*>(h);
+    std::lock_guard<std::mutex> lk(w->seek_mtx);
+    w->seek_req.pending = true;
+    w->seek_req.pos     = byte_pos;
+    w->seek_req.whence  = whence;
 }
