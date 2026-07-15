@@ -26,6 +26,7 @@ import signal as _signal
 
 import numpy as np
 import psutil
+import yaml
 from PyQt5.QtCore import QObject, QMutex, QThread, pyqtSignal
 
 
@@ -253,6 +254,17 @@ class playrec_worker(QObject):
         self.stopix = False
         self.set_fileclose(False)
 
+        # ---- Read fl2k_C-specific settings from config_wizard.yaml -----
+        _use_agc_cpp   = False   # default: use Python-computed gain
+        _gain_corr     = 1.0     # default: no correction
+        try:
+            with open("config_wizard.yaml", "r") as _f:
+                _cfg = yaml.safe_load(_f) or {}
+            _use_agc_cpp = bool(_cfg.get("autoAGC_DspWorker", False))
+            _gain_corr   = float(_cfg.get("gain_correction_fl2k_C", 1.0))
+        except Exception as _e:
+            print(f"[fl2k_C] Could not read config_wizard.yaml: {_e}; using defaults")
+
         sampling_rate = config["irate"]
         lo_shift      = config["ifreq"]
 
@@ -309,8 +321,8 @@ class playrec_worker(QObject):
             handle,
             ctypes.c_float(tSR),
             ctypes.c_float(float(lo_shift)),
-            ctypes.c_float(float(gain)),
-            ctypes.c_int(1),        # use_agc = True
+            ctypes.c_float(float(gain * _gain_corr)),
+            ctypes.c_int(1 if _use_agc_cpp else 0),
             fname_array,
             ctypes.c_int(len(filenames)),
         )
@@ -358,9 +370,12 @@ class playrec_worker(QObject):
         while _LIB.dsp_fl2k_is_running(handle) and not self.stopix:
             # Propagate pause state
             _LIB.dsp_fl2k_set_pause(handle, 1 if self.get_pause() else 0)
-            # Propagate live gain changes
-            _LIB.dsp_fl2k_set_gain(handle, ctypes.c_float(float(self.get_gain())))
-            #This is an entry point for also updating the AGC state, if needed in the future. AGC seems static at the moment, but if we want to change it dynamically, we can add a method here to update it.
+            # When C++ AGC is active it manages gain internally; only push Python
+            # gain when running in manual mode (autoAGC_DspWorker = false).
+            if not _use_agc_cpp:
+                _LIB.dsp_fl2k_set_gain(
+                    handle, ctypes.c_float(float(self.get_gain()) * _gain_corr)
+                )
             QThread.msleep(50)
 
         # ---- Cleanup ----------------------------------------------------

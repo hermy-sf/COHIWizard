@@ -57,7 +57,10 @@ static constexpr size_t RING_BUFS  = 8;
 static constexpr size_t RING_SIZE  = (size_t)FL2K_BUF_LEN * RING_BUFS; /* ~10 MB */
 static constexpr size_t DSP_BLOCK  = 1024;   /* WAV input samples per DSP block  */
 static constexpr size_t MON_SIZE   = 1024;   /* monitoring window (float samples) */
-static constexpr float  SCALE_MON  = 32.0f;  /* matches Python preset_volume/16  */
+/* SCALE_MON must match fl2k_stream: there data = preset_volume * scalefactor_fl2k * int16
+ *   = 512 * (1/16) * int16 = 32 * int16.
+ * Here x[k].real = int16 / 32768, so we need SCALE_MON = 32 * 32768 = 1048576. */
+static constexpr float  SCALE_MON  = 1048576.0f;
 
 /* ------------------------------------------------------------------ */
 /* Internal worker struct                                              */
@@ -318,7 +321,12 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
 
             /* ---- gain / AGC state ---- */
             const float bitScale  = 127.0f;
-            float current_gain    = bitScale * gainValue.load();
+            /* fl2k_stream-equivalent: Python gain G is applied to raw int16 before ffmpeg;
+             * ffmpeg applies volume=512, amix normalises by /2 → effective factor = 256*127.
+             * Non-AGC path uses this same factor so the Python AGC gain value produces
+             * the same clipping behaviour as fl2k_stream. */
+            const float GAIN_SCALE = 256.0f * bitScale;  /* = 32512 */
+            float current_gain    = gainValue.load() * GAIN_SCALE;
             float peak_hold       = 0.1f;
 
             /* ---- buffers ---- */
@@ -430,10 +438,12 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
                 peak_hold = 0.95f * peak_hold + 0.05f * bpeak;
 
                 if (useAGC) {
+                    /* Target ~65 % of full scale (bitScale*0.65 ≈ 82) */
                     float tg = (bitScale * 0.65f) / (peak_hold + 0.0001f);
                     current_gain = 0.98f * current_gain + 0.02f * tg;
                 } else {
-                    current_gain = bitScale * gainValue.load();
+                    /* Use Python-supplied gain with fl2k_stream-equivalent boost */
+                    current_gain = gainValue.load() * GAIN_SCALE;
                 }
 
                 /* -- resample -- */
@@ -444,8 +454,7 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
                 for (unsigned int j = 0; j < nw; ++j) {
                     float c = nco_crcf_cos(vco), s = nco_crcf_sin(vco);
                     nco_crcf_step(vco);
-                    float hf = (y[j].real * c - y[j].imag * s)
-                               * current_gain * 0.24f;
+                    float hf = (y[j].real * c - y[j].imag * s) * current_gain;
                     if      (hf >  bitScale) hf =  bitScale;
                     else if (hf < -bitScale) hf = -bitScale;
                     out8[j] = static_cast<int8_t>(hf);

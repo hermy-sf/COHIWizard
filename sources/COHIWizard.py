@@ -650,6 +650,12 @@ class core_v(QObject):
             self.m["metadata"]["REC_AGC"] = False 
             self.m["metadata"]["dontshowadalm2000"] = False 
             self.m["metadata"]["AGC_targetvolume"] = 0.4
+            self.m["metadata"]["relaxfactor_OSR"] = 1.2
+            no_relaxfactor_OSR = False
+            self.m["metadata"]["volumefactor"] = 1
+            no_volumefactor = False
+            self.m["metadata"]["autoAGC_DspWorker"] = False
+            self.m["metadata"]["gain_correction_fl2k_C"] = 0.2
             # base_dir = Path(__file__).resolve().parent #TODO make part of the configuration
             # doc_dir = base_dir.parent / "documentation"
             doc_dir = os.path.join(os.fspath(Path(self.m["rootpath"]).parent),  "documentation")
