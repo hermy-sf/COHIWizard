@@ -278,7 +278,8 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
     uint16_t numChannels   = 2;
     std::string nextFile;
     ChunkHeader chunk;
-
+    printf("##################### Processing WAV file: %s\n", path.c_str());
+    printf("##################### shiftFreq: %f\n", shiftFreq);
     while (f.read(reinterpret_cast<char*>(&chunk), sizeof(chunk))
            && running.load(std::memory_order_acquire))
     {
@@ -315,7 +316,7 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
 
             /* ---- set up liquiddsp resampler + NCO ---- */
             float upRate  = targetRate / (float)sampleRate;
-            msresamp_crcf resamp = msresamp_crcf_create(upRate, 60.0f);
+            msresamp_crcf resamp = msresamp_crcf_create(upRate, 100.0f);
             nco_crcf      vco    = nco_crcf_create(LIQUID_VCO);
             nco_crcf_set_frequency(vco, 2.f * M_PIf * shiftFreq / targetRate);
 
