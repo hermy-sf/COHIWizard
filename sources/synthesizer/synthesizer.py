@@ -55,7 +55,7 @@ class modulate_worker(QObject):
         __slots__: Dictionary with parameters
     :return : none
     """
-    __slots__ = ["carrier_frequencies", "playlists","sample_rate","block_size","cutoff_freq","modulation_depth","output_base_name","exp_num_samples","progress","logger","combined_signal_block","LO_freq","gain", "method_object","silence_duration","filesize_limit","ffmpeg_path","synthesizer_temp_path","autolevel"]
+    __slots__ = ["carrier_frequencies", "playlists","sample_rate","block_size","cutoff_freq","modulation_depth","output_base_name","exp_num_samples","progress","logger","combined_signal_block","LO_freq","gain", "method_object","silence_duration","filesize_limit","ffmpeg_path","synthesizer_temp_path","autolevel","playlist_continuation_mode"]
     SigFinished = pyqtSignal()
     SigPupdate = pyqtSignal()
     SigMessage = pyqtSignal(str)
@@ -146,7 +146,12 @@ class modulate_worker(QObject):
         self.__slots__[18] = _value
     def get_autolevel(self):
         return(self.__slots__[18])
-    
+    def set_playlist_continuation_mode(self,_value):
+        self.__slots__[19] = _value
+    def get_playlist_continuation_mode(self):
+        val = self.__slots__[19]
+        return val if isinstance(val, int) else 0
+
     def modulate_terminate(self):
         print("modulate terminate received")
         self.stopix = True
@@ -310,7 +315,7 @@ class modulate_worker(QObject):
         return expected_max_amp, expected_RMS_amp
 
 
-    def read_and_process_audio_blockwise(self, file_list, carrier_freq, target_sample_rate, ref_block_size, modulation_depth, zi, sample_offset, current_file_index, file_handles, audio_gain, silence, cumulative_time,sos, phase):
+    def read_and_process_audio_blockwise(self, file_list, carrier_freq, target_sample_rate, ref_block_size, modulation_depth, zi, sample_offset, current_file_index, file_handles, audio_gain, silence, cumulative_time,sos, phase, playlist_continuation_mode=0):
         """
         Read and process audio blockwise from the current file in the file_list, keeping the file handle open.
         Process only one block and move to the next file when the current one is finished.
@@ -441,8 +446,20 @@ class modulate_worker(QObject):
 
             return modulated_block, zi, sample_offset, current_file_index, audio_gain, silence, cumulative_time
         
+        if playlist_continuation_mode == 2 and len(file_list) > 0:
+            # Playlist exhausted — restart from beginning (Mode 2)
+            for handle in list(file_handles.values()):
+                try:
+                    handle.close()
+                except Exception:
+                    pass
+            file_handles.clear()
+            return self.read_and_process_audio_blockwise(
+                file_list, carrier_freq, target_sample_rate, ref_block_size, modulation_depth,
+                zi, sample_offset, 0, file_handles, audio_gain, False, 0, sos, phase,
+                playlist_continuation_mode=0)
         return None, zi, sample_offset, current_file_index, audio_gain, silence, cumulative_time
-        
+
     def process_multiple_carriers_blockwise(self, carrier_frequencies, playlists, sample_rate, block_size, cutoff_freq, modulation_depth, output_base_name, exp_num_samples, phases):
         """_summary_
         Process audio from multiple playlists blockwise, each corresponding to a different carrier frequency.
@@ -469,6 +486,8 @@ class modulate_worker(QObject):
         self.set_progress(0)
         self.logger.debug(f"process_multiple_carriers_blockwise; carrier_frequencies:{carrier_frequencies}")
         self.stopix = False
+        playlist_continuation_mode = self.get_playlist_continuation_mode()
+        self.logger.debug(f"process_multiple_carriers_blockwise: playlist_continuation_mode={playlist_continuation_mode}")
         max_file_size = self.get_filesize_limit() #2 * 1024**3  # 2 GB in bytes
         self.logger.debug(f"process_multiple_carriers_blockwise: max filesize set to: {max_file_size}")
         self.logger.debug(f"process_multiple_carriers_blockwise: expected overall filesize: {4*exp_num_samples}")
@@ -515,18 +534,21 @@ class modulate_worker(QObject):
                 if self.stopix is True:
                     break
                 #print(f">>>>>>>>>>>>> process mult carr block, carrier_freq: {carrier_freq}, phase {phase}: silence: {silence} ")
-                modulated_block, new_zi, sample_offsets[i], current_file_indices[i], audio_gain[i], silence[i], cumulative_time[i] = self.read_and_process_audio_blockwise(playlists[i], carrier_freq*1000, sample_rate, block_size, modulation_depth, zi, sample_offsets[i], current_file_indices[i], file_handles[i], audio_gain[i], silence[i], cumulative_time[i],sos, phase)
+                modulated_block, new_zi, sample_offsets[i], current_file_indices[i], audio_gain[i], silence[i], cumulative_time[i] = self.read_and_process_audio_blockwise(playlists[i], carrier_freq*1000, sample_rate, block_size, modulation_depth, zi, sample_offsets[i], current_file_indices[i], file_handles[i], audio_gain[i], silence[i], cumulative_time[i],sos, phase, playlist_continuation_mode)
                 #self.logger.debug(f"slow process_multiple_carriers_blockwies: Schröder phase : {phase} @ sampling rate: {sample_rate} and and silence_duration: {silence[i]}, carrier_freq: {carrier_freq}")
 
                 if modulated_block is None: #--> end of Playlist has been reached
-                    self.logger.debug(f"process mult carr block: make dummy carrier at {carrier_freq} ")
-
-                    # TODO: generate unmodulated carrier  block
-                    # audio_block = np.zeros(block_size)
-                    # modulated_block = self.modulate_signal(self,audio_block, carrier_freq*1000, sample_rate, sample_offsets[i], modulation_depth, phase)
-                    # self.logger.debug(f"process mult carr block: make dummy carrier at {carrier_freq} ")
-
-                    continue
+                    self.logger.debug(f"process mult carr block: playlist ended at {carrier_freq}, continuation_mode={playlist_continuation_mode}")
+                    if playlist_continuation_mode == 1:
+                        # Mode 1: keep unmodulated carrier running
+                        audio_block = np.zeros(block_size)
+                        modulated_block = self.modulate_signal(audio_block, carrier_freq*1000, sample_rate, sample_offsets[i], modulation_depth, phase)
+                        sample_offsets[i] += len(modulated_block)
+                        zis[i] = new_zi
+                        self.logger.debug(f"process mult carr block: unmodulated carrier at {carrier_freq}")
+                    else:
+                        # Mode 0: carrier off; Mode 2: reset handled in read_and_process_audio_blockwise, this is its fallback
+                        continue
                 # Dynamically adjust combined signal block size based on modulated block size
 
                 if combined_signal_block is None or len(combined_signal_block) < len(modulated_block):
@@ -651,7 +673,7 @@ class modulate_worker_ffmpeg(QObject):
         __slots__: Dictionary with parameters
     :return : none
     """
-    __slots__ = ["carrier_frequencies", "playlists","sample_rate","block_size","cutoff_freq","modulation_depth","output_base_name","exp_num_samples","progress","logger","combined_signal_block","LO_freq","gain", "method_object","silence_duration","filesize_limit","ffmpeg_path","synthesizer_temp_path", "autolevel"]
+    __slots__ = ["carrier_frequencies", "playlists","sample_rate","block_size","cutoff_freq","modulation_depth","output_base_name","exp_num_samples","progress","logger","combined_signal_block","LO_freq","gain", "method_object","silence_duration","filesize_limit","ffmpeg_path","synthesizer_temp_path", "autolevel","playlist_continuation_mode"]
     SigFinished = pyqtSignal()
     SigPupdate = pyqtSignal()
     SigMessage = pyqtSignal(str)
@@ -750,11 +772,16 @@ class modulate_worker_ffmpeg(QObject):
         self.__slots__[18] = _value
     def get_autolevel(self):
         return(self.__slots__[18])
-    
+    def set_playlist_continuation_mode(self,_value):
+        self.__slots__[19] = _value
+    def get_playlist_continuation_mode(self):
+        val = self.__slots__[19]
+        return val if isinstance(val, int) else 0
+
     def modulate_terminate(self):
         print("modulate terminate received")
         self.stopix = True
-    
+
     def generate_multisine_delays(self,frequencies,sampling_rate,alignment=4):
         """
         Generates Schröder phases for a multisine signal and convert them to delays in Samples.
@@ -830,7 +857,7 @@ class modulate_worker_ffmpeg(QObject):
 
         self.SigFinished.emit()
 
-    def process_and_concat_audio(self,input_files, output_path, sample_rate=44100, fc_lp=4500, silence_duration=4.0, autolevel_flag=False, max_duration_sec=None):
+    def process_and_concat_audio(self,input_files, output_path, sample_rate=44100, fc_lp=4500, silence_duration=4.0, autolevel_flag=False, max_duration_sec=None, pad_to_duration=None):
         """ concatenate multiple audio files with silence in between
         :param input_files: list of input files
         :type input_files: list
@@ -890,11 +917,20 @@ class modulate_worker_ffmpeg(QObject):
             else:
                 concat_parts.append(f"[s{i // 2}]")
 
-        filter_concat = (
-            ";".join(filters) + ";" + 
-            "".join(concat_parts) + 
-            f"concat=n={len(concat_parts)}:v=0:a=1[out]"
-        )
+        if pad_to_duration is not None:
+            # Mode 1: pad audio with silence up to pad_to_duration so carrier stays alive
+            filter_concat = (
+                ";".join(filters) + ";" +
+                "".join(concat_parts) +
+                f"concat=n={len(concat_parts)}:v=0:a=1[concat_out];"
+                f"[concat_out]apad=whole_dur={pad_to_duration}[out]"
+            )
+        else:
+            filter_concat = (
+                ";".join(filters) + ";" +
+                "".join(concat_parts) +
+                f"concat=n={len(concat_parts)}:v=0:a=1[out]"
+            )
 
 
 
@@ -915,6 +951,33 @@ class modulate_worker_ffmpeg(QObject):
         #print("Running FFmpeg command:\n", " ".join(cmd))
         subprocess.run(cmd, check=True)
         self.logger.debug("audio cat completed")
+
+    def _prepare_playlist_for_concat(self, input_files, total_duration_sec, max_duration, playlist_continuation_mode):
+        """Return (expanded_file_list, concat_max_duration, pad_to_duration) for process_and_concat_audio.
+
+        Mode 0: no change.
+        Mode 1: pad audio to total_duration_sec so the unmodulated carrier persists.
+        Mode 2: repeat file list until total_duration_sec is covered; limit concat output.
+        """
+        concat_max_duration = max_duration
+        pad_to_duration = None
+        if playlist_continuation_mode == 2 and len(input_files) > 0:
+            playlist_dur = 0
+            for fp in input_files:
+                if fp.find("http://") >= 0 or fp.find("https://") >= 0:
+                    playlist_dur += 60
+                else:
+                    try:
+                        info = sf.info(fp)
+                        playlist_dur += info.frames / info.samplerate
+                    except Exception:
+                        playlist_dur += 60
+            n_repeats = max(1, int(np.ceil(total_duration_sec / max(playlist_dur, 1))) + 1)
+            input_files = input_files * n_repeats
+            concat_max_duration = total_duration_sec if max_duration is None else min(max_duration, total_duration_sec)
+        elif playlist_continuation_mode == 1:
+            pad_to_duration = total_duration_sec
+        return input_files, concat_max_duration, pad_to_duration
 
     def get_aligned_block(self, filename, block_size, alignment, safety_margin):
         """reads a block of data from the end of a file, aligned to a specified byte boundary
@@ -1104,20 +1167,22 @@ class modulate_worker_ffmpeg(QObject):
         :param exp_num_samples: expected number of samples #NEEDED ???
         :type exp_num_samples: int #NEEDED ???
         """
-        AUTOLEVEL = self.get_autolevel() #automatic level control of concatenated audio; takes longer time; 
+        AUTOLEVEL = self.get_autolevel() #automatic level control of concatenated audio; takes longer time;
         # carrier frequencies ist eine liste aller LO-Offsets in kHz !
         # playlists[i][j] ist eine 2-Dim liste mit den vollen Pfaden der Audio Files, [i] ist der carrierindex, [j] ist der Audioindex einer Audioserie des carriers i
         self.set_progress(0)
         self.logger.debug(f"process_multiple_carriers_ffmpeg; carrier_frequencies:{carrier_frequencies}")
         #print(f"process_multiple_carriers_ffmpeg; carrier_frequencies:{carrier_frequencies}")
         self.stopix = False
+        playlist_continuation_mode = self.get_playlist_continuation_mode()
+        self.logger.debug(f"process_multiple_carriers_ffmpeg_hires: playlist_continuation_mode={playlist_continuation_mode}")
         max_file_size = self.get_filesize_limit() #2 * 1024**3  # 2 GB in bytes
         self.logger.debug(f"max filesize set to: {max_file_size}")
         self.logger.debug(f"process_multiple_carriers_ffmpeg: expected overall filesize: {4*exp_num_samples}")
         #print(f"process_multiple_carriers_ffmpeg: expected overall filesize: {4*exp_num_samples}")
         abs_carrier_frequencies = carrier_frequencies * 1000 + np.ones(len(carrier_frequencies)) * self.get_LO_freq()
-        self.logger.debug(f"absolute carrier frequencies: {abs_carrier_frequencies}") 
-        alignment = 4                                                              
+        self.logger.debug(f"absolute carrier frequencies: {abs_carrier_frequencies}")
+        alignment = 4
         delays, phases = self.generate_multisine_delays(abs_carrier_frequencies,sample_rate,alignment)
         self.logger.debug(f"Schröder phases before %: {phases} and delays: {delays} @ sampling rate: {sample_rate} and frequencies: {abs_carrier_frequencies} and silence_duration: {silence_duration}")
         phases = phases%(np.pi/2)
@@ -1149,14 +1214,16 @@ class modulate_worker_ffmpeg(QObject):
             self.logger.debug(f"debug process_multiple_carriers_ffmpeg, output-file-name: {output_IQ_filename}")
             # generate concatenated autio file for carrier #
             audio_sample_rate = 41100 #TODO: shift definition to more central location
-            self.SigMessage.emit(f"concatenate playlist @ f {str(np.ceil((carrier_frequencies[ix] + self.get_LO_freq()/1000)))}")                
+            self.SigMessage.emit(f"concatenate playlist @ f {str(np.ceil((carrier_frequencies[ix] + self.get_LO_freq()/1000)))}")
 
             if str(output_base_name).find("preview_temp_000") > 0:
                 max_duration = 20
                 self.logger.debug(f"max duration during concat: {max_duration} s")
             else:
                 max_duration = None
-            self.process_and_concat_audio(playlists[ix], temp_wav_cat_file, audio_sample_rate, cutoff_freq, silence_duration, AUTOLEVEL, max_duration)
+            input_files_for_concat, concat_max_duration, concat_pad_duration = \
+                self._prepare_playlist_for_concat(playlists[ix], total_duration_sec, max_duration, playlist_continuation_mode)
+            self.process_and_concat_audio(input_files_for_concat, temp_wav_cat_file, audio_sample_rate, cutoff_freq, silence_duration, AUTOLEVEL, concat_max_duration, concat_pad_duration)
             self.logger.debug(f"proc. mult. carr. ffmpeg: carrier: {carrier_frequencies[ix]} Hz, LO_freq: {self.get_LO_freq()} Hz")
             #configure allpass for sin/cos shift
             a90 = (np.tan(np.pi * abs(lo_shift) / sample_rate) - 1) / (np.tan(np.pi * abs(lo_shift) / sample_rate) + 1)
@@ -1365,20 +1432,22 @@ class modulate_worker_ffmpeg(QObject):
         :param exp_num_samples: expected number of samples #NEEDED ???
         :type exp_num_samples: int #NEEDED ???
         """
-        AUTOLEVEL = self.get_autolevel() #automatic level control of concatenated audio; takes longer time; 
+        AUTOLEVEL = self.get_autolevel() #automatic level control of concatenated audio; takes longer time;
         # carrier frequencies ist eine liste aller LO-Offsets in kHz !
         # playlists[i][j] ist eine 2-Dim liste mit den vollen Pfaden der Audio Files, [i] ist der carrierindex, [j] ist der Audioindex einer Audioserie des carriers i
         self.set_progress(0)
         self.logger.debug(f"process_multiple_carriers_ffmpeg; carrier_frequencies:{carrier_frequencies}")
         #print(f"process_multiple_carriers_ffmpeg; carrier_frequencies:{carrier_frequencies}")
         self.stopix = False
+        playlist_continuation_mode = self.get_playlist_continuation_mode()
+        self.logger.debug(f"process_multiple_carriers_ffmpeg: playlist_continuation_mode={playlist_continuation_mode}")
         max_file_size = self.get_filesize_limit() #2 * 1024**3  # 2 GB in bytes
         self.logger.debug(f"max filesize set to: {max_file_size}")
         self.logger.debug(f"process_multiple_carriers_ffmpeg: expected overall filesize: {4*exp_num_samples}")
         #print(f"process_multiple_carriers_ffmpeg >>: expected overall filesize: {4*exp_num_samples}")
         abs_carrier_frequencies = carrier_frequencies * 1000 + np.ones(len(carrier_frequencies)) * self.get_LO_freq()
-        self.logger.debug(f"absolute carrier frequencies: {abs_carrier_frequencies}") 
-        alignment = 4                                                              
+        self.logger.debug(f"absolute carrier frequencies: {abs_carrier_frequencies}")
+        alignment = 4
         delays, phases = self.generate_multisine_delays(abs_carrier_frequencies,sample_rate,alignment)
         self.logger.debug(f"Schröder phases before %: {phases} and delays: {delays} @ sampling rate: {sample_rate} and frequencies: {abs_carrier_frequencies} and silence_duration: {silence_duration}")
         phases = phases%(np.pi/2)
@@ -1406,14 +1475,16 @@ class modulate_worker_ffmpeg(QObject):
             self.logger.debug(f"debug process_multiple_carriers_ffmpeg, output-file-name: {output_IQ_filename}")
             # generate concatenated autio file for carrier #
             audio_sample_rate = 41100 #TODO: shift definition to more central location
-            self.SigMessage.emit(f"concatenate playlist @ f {str(np.ceil((carrier_frequencies[ix] + self.get_LO_freq()/1000)))}")                
+            self.SigMessage.emit(f"concatenate playlist @ f {str(np.ceil((carrier_frequencies[ix] + self.get_LO_freq()/1000)))}")
 
             if str(output_base_name).find("preview_temp_000") > 0:
                 max_duration = 20
                 self.logger.debug(f"max duration during concat: {max_duration} s")
             else:
                 max_duration = None
-            self.process_and_concat_audio(playlists[ix], temp_wav_cat_file, audio_sample_rate, cutoff_freq, silence_duration, AUTOLEVEL, max_duration)
+            input_files_for_concat, concat_max_duration, concat_pad_duration = \
+                self._prepare_playlist_for_concat(playlists[ix], total_duration_sec, max_duration, playlist_continuation_mode)
+            self.process_and_concat_audio(input_files_for_concat, temp_wav_cat_file, audio_sample_rate, cutoff_freq, silence_duration, AUTOLEVEL, concat_max_duration, concat_pad_duration)
             self.logger.debug(f"proc. mult. carr. ffmpeg: carrier: {carrier_frequencies[ix]} Hz, LO_freq: {self.get_LO_freq()} Hz")
             #configure allpass for sin/cos shift
             a90 = (np.tan(np.pi * abs(lo_shift) / sample_rate) - 1) / (np.tan(np.pi * abs(lo_shift) / sample_rate) + 1)
@@ -2656,6 +2727,12 @@ class synthesizer_v(QObject):
         self.modulate_worker.set_silence_duration(self.gui.spinBox_pauseseconds.value())
         print(f"set SILENCEPAUSE: {self.gui.spinBox_pauseseconds.value()}")
         self.logger.debug(f"set SILENCEPAUSE: {self.gui.spinBox_pauseseconds.value()}")
+        try:
+            playlist_continuation_mode = int(self.m["metadata"]["playlist_continuation_mode"])
+        except Exception:
+            playlist_continuation_mode = 0
+        self.modulate_worker.set_playlist_continuation_mode(playlist_continuation_mode)
+        self.logger.debug(f"set playlist_continuation_mode: {playlist_continuation_mode}")
         if self.NO2GBSPLITTING:
             self.modulate_worker.set_filesize_limit(2**10 * 1024**3)  # 1024 GB in bytes
         else:
@@ -3252,7 +3329,11 @@ class synthesizer_v(QObject):
 
         """
         total_reclength = self.get_reclength()
-        progfract = duration/total_reclength * 100
+        print(f"show_fillprogress: duration: {duration}, total_reclength: {total_reclength}")
+        if duration == None or total_reclength == 0:
+            progfract = 0
+        else:
+            progfract = duration/total_reclength * 100
 
         self.gui.progressBar_fillPlaylist.setValue(min(100,int(np.floor(progfract))))
         if progfract > 100:

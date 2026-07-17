@@ -656,6 +656,7 @@ class core_v(QObject):
             no_volumefactor = False
             self.m["metadata"]["autoAGC_DspWorker"] = False
             self.m["metadata"]["gain_correction_fl2k_C"] = 0.2
+            self.m["metadata"]["playlist_continuation_mode"] = 1
             # base_dir = Path(__file__).resolve().parent #TODO make part of the configuration
             # doc_dir = base_dir.parent / "documentation"
             doc_dir = os.path.join(os.fspath(Path(self.m["rootpath"]).parent),  "documentation")

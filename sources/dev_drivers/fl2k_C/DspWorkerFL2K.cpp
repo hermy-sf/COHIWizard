@@ -1,5 +1,6 @@
 /*
  * DspWorkerFL2K.cpp
+ * This code is a modified version of the original DspWorker.cpp in the project https://github.com/radiolab81/COHIRADIAStreamer by radiolab81. 
  *
  * COHIWizard fl2k driver – replaces ffmpeg + fl2k_file with
  *   liquiddsp (resampling + NCO mixing) + libosmo-fl2k (device I/O).
@@ -451,7 +452,7 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
                 unsigned int nw;
                 msresamp_crcf_execute(resamp, x.data(), DSP_BLOCK, y.data(), &nw);
 
-                /* -- NCO mix + clip + int8 conversion -- */
+                /* -- NCO mix + clip + int8 conversion -- this process is phase coherent, i.e. there are no phase jumps in the vco generated sine/cosine signalsbetween consecutive blocks */
                 for (unsigned int j = 0; j < nw; ++j) {
                     float c = nco_crcf_cos(vco), s = nco_crcf_sin(vco);
                     nco_crcf_step(vco);
