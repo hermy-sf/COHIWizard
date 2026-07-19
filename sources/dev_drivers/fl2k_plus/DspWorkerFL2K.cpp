@@ -1,0 +1,1074 @@
+/*
+ * DspWorkerFL2K.cpp  –  fl2k_plus variant
+ *
+ * Based on fl2k_C / DspWorker.cpp (COHIRADIAStreamer by radiolab81).
+ *
+ * Adds N AM-modulated web-radio overlay channels that are mixed into the
+ * complex IQ baseband BEFORE the main upsampler.  Each channel is fed by
+ * a local ffmpeg subprocess that writes u8 PCM audio to a UDP socket.
+ *
+ * Threading model (unchanged from fl2k_C):
+ *   DSP thread  – reads WAV file → [mix audio] → resample → NCO mix → ring buffer
+ *   FL2K thread – opens fl2k device, calls fl2k_start_tx() (non-blocking);
+ *                 the fl2k callback drains the ring buffer each ~131 ms
+ *
+ * Build:
+ *   g++ -std=c++17 -O3 -march=native -ffast-math -fPIC -shared \
+ *       DspWorkerFL2K.cpp -o libdspfl2k.so \
+ *       -lliquid -losmo-fl2k -lpthread -lm
+ */
+
+#include "DspWorkerFL2K.h"
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <cmath>
+#include <fstream>
+#include <vector>
+#include <string>
+#include <atomic>
+#include <mutex>
+#include <condition_variable>
+#include <thread>
+#include <algorithm>
+
+/* POSIX socket support for audio UDP reception */
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+
+#include <liquid/liquid.h>
+#include <osmo-fl2k.h>
+
+/* ------------------------------------------------------------------ */
+/* WAV / RIFF binary structures                                        */
+/* ------------------------------------------------------------------ */
+#pragma pack(push, 1)
+struct ChunkHeader  { char id[4]; uint32_t size; };
+struct RiffHeader   { char chunkId[4]; uint32_t chunkSize; char format[4]; };
+struct FmtStruct    {
+    uint16_t audioFormat;   /* 1 = PCM, 3 = IEEE float               */
+    uint16_t numChannels;
+    uint32_t sampleRate;
+    uint32_t byteRate;
+    uint16_t blockAlign;
+    uint16_t bitsPerSample;
+};
+struct AuxiContent  { uint8_t padding[68]; char filename[96]; };
+#pragma pack(pop)
+
+/* ------------------------------------------------------------------ */
+/* Constants                                                           */
+/* ------------------------------------------------------------------ */
+static constexpr size_t RING_BUFS  = 16;
+static constexpr size_t RING_SIZE  = (size_t)FL2K_BUF_LEN * RING_BUFS;
+static constexpr size_t DSP_BLOCK  = 8192;
+static constexpr size_t MON_SIZE   = 8192;
+static constexpr float  SCALE_MON  = 1048576.0f;
+
+/* ------------------------------------------------------------------ */
+/* AudioFifo – lock-free single-producer / single-consumer ring       */
+/* (DSP thread is the only reader AND writer, so no locking needed)   */
+/* ------------------------------------------------------------------ */
+struct AudioFifo {
+    size_t             cap;
+    std::vector<float> buf;
+    size_t             head = 0, cnt = 0;
+
+    explicit AudioFifo(size_t n = 65536) : cap(n), buf(n, 0.f) {}
+
+    void push(const float* src, size_t n) {
+        if (n == 0) return;
+        /* Drop-new policy: discard incoming overflow to preserve continuity.
+         * ffmpeg delivers at >1x speed at startup; keeping old samples avoids
+         * resampler discontinuities when the fifo is full. */
+        size_t space = cap - cnt;
+        if (n > space) n = space;
+        if (n == 0) return;
+        size_t tail  = (head + cnt) % cap;
+        size_t first = std::min(n, cap - tail);
+        std::copy(src, src + first, buf.data() + tail);
+        if (first < n)
+            std::copy(src + first, src + n, buf.data());
+        cnt += n;
+    }
+
+    /* Pop n samples into dst; zero-pad if fewer than n available.
+     * Returns number of samples actually available (rest zero-padded). */
+    size_t pop(float* dst, size_t n) {
+        size_t got   = std::min(n, cnt);
+        size_t first = std::min(got, cap - head);
+        std::copy(buf.data() + head, buf.data() + head + first, dst);
+        if (first < got)
+            std::copy(buf.data(), buf.data() + (got - first), dst + first);
+        head = (head + got) % cap;
+        cnt -= got;
+        if (got < n) std::fill(dst + got, dst + n, 0.f);
+        return got;
+    }
+
+    size_t available() const { return cnt; }
+    void   clear()           { head = cnt = 0; }
+};
+
+/* ------------------------------------------------------------------ */
+/* Internal worker struct                                              */
+/* ------------------------------------------------------------------ */
+struct DspWorkerFL2K {
+
+    /* --- main IQ configuration ------------------------------------ */
+    float              targetRate   = 10'000'000.f;
+    float              shiftFreq    = 0.f;
+    std::atomic<float> gainValue    {0.65f};
+    bool               useAGC       = true;
+    std::vector<std::string> filenames;
+
+    /* --- user callbacks ------------------------------------------- */
+    dsp_monitor_cb_t   mon_cb   = nullptr; void* mon_ud   = nullptr;
+    dsp_progress_cb_t  prog_cb  = nullptr; void* prog_ud  = nullptr;
+    dsp_finished_cb_t  fin_cb   = nullptr; void* fin_ud   = nullptr;
+    dsp_error_cb_t     err_cb   = nullptr; void* err_ud   = nullptr;
+    dsp_nextfile_cb_t  nxt_cb   = nullptr; void* nxt_ud   = nullptr;
+
+    /* --- ring buffer (DSP writes, FL2K callback reads) ------------ */
+    std::vector<int8_t>     ring       = std::vector<int8_t>(RING_SIZE, 0);
+    size_t                  ring_head  = 0;
+    size_t                  ring_tail  = 0;
+    size_t                  ring_count = 0;
+    std::mutex              ring_mtx;
+    std::condition_variable ring_not_empty;
+    std::condition_variable ring_not_full;
+    std::vector<int8_t>     fl2k_buf   = std::vector<int8_t>(FL2K_BUF_LEN, 0);
+
+    /* --- seek request --------------------------------------------- */
+    struct SeekReq { bool pending = false; int64_t pos = 0; int whence = 0; };
+    std::mutex  seek_mtx;
+    SeekReq     seek_req;
+
+    /* --- control -------------------------------------------------- */
+    std::atomic<bool>   running  {false};
+    std::atomic<bool>   paused   {false};
+
+    /* --- device --------------------------------------------------- */
+    fl2k_dev_t*         dev      = nullptr;
+    std::mutex          dev_mtx;
+    std::atomic<bool>   dev_open {false};
+
+    /* --- threads -------------------------------------------------- */
+    std::thread         dsp_thr;
+    std::thread         fl2k_thr;
+
+    /* ================================================================
+     * Audio overlay channels
+     * =============================================================*/
+
+    /* Static configuration (set by dsp_fl2k_configure_audio) */
+    struct AudioChanCfg {
+        float freq_hz    = 0.f;
+        float bw_hz      = 4500.f;
+        float mod_idx    = 0.9f;
+        char  name[64]   = {};
+        int   udp_port   = -1;
+    };
+
+    /* Per-channel runtime state (created / destroyed per WAV file) */
+    struct AudioChanRT {
+        float           carrier_hz  = 0.f;
+        float           mod_idx     = 0.9f;
+        float           gain        = 0.f;
+        int             udp_fd      = -1;   /* UDP receive socket; -1 = not open */
+        bool            active      = false; /* has valid resamp + nco */
+        msresamp_rrrf   resamp      = nullptr;
+        nco_crcf        nco         = nullptr;
+        /* raw_fifo: 1 M samples ≈ 42 s @ 25 kHz. Large cap guards against the
+         * ~0.3 % systematic underdelivery seen when ffmpeg resamples a 44.1 kHz
+         * stream to 25 kHz (accumulated drift ≈ 73 samples/s). The prefill
+         * function fills this fifo before DSP start to give ~2–3 h drift margin. */
+        AudioFifo       raw_fifo{1'048'576};
+        AudioFifo       rs_fifo;    /* 65536 samples – resampled at IQ sample rate */
+        std::vector<float> a_in_buf;    /* scratch: raw samples to feed resampler */
+        std::vector<float> a_rs_buf;    /* scratch: resampler output              */
+        std::vector<float> rs_scratch;  /* scratch: pop from rs_fifo              */
+        std::vector<uint8_t> udp_recv_buf; /* scratch: UDP raw receive            */
+    };
+
+    std::vector<AudioChanCfg>  audio_cfgs;
+    std::vector<AudioChanRT>   audio_rt;    /* parallel to audio_cfgs */
+    float                      audio_rate     = 25000.f;
+    float                      audio_mix_lvl  = 1.0f;
+
+    /* --- helpers -------------------------------------------------- */
+    void write_ring(const int8_t* data, size_t n);
+    void drain_ring(int8_t* buf, size_t n);
+
+    void run_dsp();
+    void run_fl2k();
+    std::string process_file(const std::string& path);
+
+    /* Audio overlay helpers */
+    void close_audio_sockets();
+    void setup_audio_for_file(uint32_t sr);
+    void teardown_audio_for_file();
+    void mix_audio_block(liquid_float_complex* x, size_t n_iq);
+
+    static void fl2k_callback(fl2k_data_info_t* info);
+};
+
+/* ================================================================== */
+/* Ring buffer                                                         */
+/* ================================================================== */
+
+void DspWorkerFL2K::write_ring(const int8_t* data, size_t n)
+{
+    size_t written = 0;
+    while (written < n && running.load(std::memory_order_acquire)) {
+        std::unique_lock<std::mutex> lk(ring_mtx);
+        ring_not_full.wait(lk, [&] {
+            return (RING_SIZE - ring_count) >= (n - written)
+                   || !running.load(std::memory_order_relaxed);
+        });
+        if (!running.load(std::memory_order_relaxed)) break;
+
+        size_t chunk = std::min(n - written, RING_SIZE - ring_count);
+        size_t first = std::min(chunk, RING_SIZE - ring_head);
+        memcpy(ring.data() + ring_head, data + written, first);
+        if (first < chunk)
+            memcpy(ring.data(), data + written + first, chunk - first);
+        ring_head   = (ring_head + chunk) % RING_SIZE;
+        ring_count += chunk;
+        written    += chunk;
+        ring_not_empty.notify_one();
+    }
+}
+
+void DspWorkerFL2K::drain_ring(int8_t* buf, size_t n)
+{
+    static uint64_t _ring_cb_cnt      = 0;
+    static uint64_t _ring_underrun_cnt = 0;
+    ++_ring_cb_cnt;
+
+    std::lock_guard<std::mutex> lk(ring_mtx);
+    if (ring_count < n) {
+        ++_ring_underrun_cnt;
+        fprintf(stderr, "[fl2k_plus] RING UNDERRUN #%llu (cb=%llu): ring=%zu < need=%zu\n",
+                (unsigned long long)_ring_underrun_cnt,
+                (unsigned long long)_ring_cb_cnt,
+                ring_count, n);
+        memset(buf, 0, n);
+        return;
+    }
+    size_t first = std::min(n, RING_SIZE - ring_tail);
+    memcpy(buf, ring.data() + ring_tail, first);
+    if (first < n)
+        memcpy(buf + first, ring.data(), n - first);
+    ring_tail   = (ring_tail + n) % RING_SIZE;
+    ring_count -= n;
+    ring_not_full.notify_one();
+}
+
+/* ================================================================== */
+/* FL2K callback                                                       */
+/* ================================================================== */
+
+void DspWorkerFL2K::fl2k_callback(fl2k_data_info_t* info)
+{
+    auto* self = static_cast<DspWorkerFL2K*>(info->ctx);
+    if (!self) return;
+
+    if (info->device_error) {
+        self->running.store(false, std::memory_order_release);
+        if (self->err_cb) self->err_cb("fl2k device error", self->err_ud);
+        return;
+    }
+
+    info->sampletype_signed = 1;
+    uint32_t n = info->len;
+    self->drain_ring(self->fl2k_buf.data(), n);
+
+    if (info->using_zerocopy) {
+        if (info->r_buf) memcpy(info->r_buf, self->fl2k_buf.data(), n);
+    } else {
+        info->r_buf = reinterpret_cast<char*>(self->fl2k_buf.data());
+    }
+}
+
+/* ================================================================== */
+/* FL2K thread                                                         */
+/* ================================================================== */
+
+void DspWorkerFL2K::run_fl2k()
+{
+    {
+        std::lock_guard<std::mutex> lk(dev_mtx);
+        int r = fl2k_open(&dev, 0);
+        if (r != FL2K_SUCCESS) {
+            char msg[128];
+            snprintf(msg, sizeof(msg),
+                     "fl2k_open failed (code %d). Check USB connection.", r);
+            if (err_cb) err_cb(msg, err_ud);
+            running.store(false, std::memory_order_release);
+            ring_not_full.notify_all();
+            if (fin_cb) fin_cb(fin_ud);
+            return;
+        }
+        fl2k_set_sample_rate(dev, static_cast<uint32_t>(targetRate));
+        dev_open.store(true, std::memory_order_release);
+    }
+
+    if (!running.load(std::memory_order_acquire)) {
+        fl2k_close(dev);
+        { std::lock_guard<std::mutex> lk(dev_mtx); dev = nullptr; }
+        return;
+    }
+
+    fl2k_start_tx(dev, fl2k_callback, this, 0);
+
+    while (running.load(std::memory_order_acquire))
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    fl2k_stop_tx(dev);
+    fl2k_close(dev);
+    { std::lock_guard<std::mutex> lk(dev_mtx); dev = nullptr; dev_open.store(false); }
+}
+
+/* ================================================================== */
+/* Audio overlay helpers                                               */
+/* ================================================================== */
+
+void DspWorkerFL2K::close_audio_sockets()
+{
+    for (auto& rt : audio_rt) {
+        if (rt.udp_fd >= 0) {
+            ::close(rt.udp_fd);
+            rt.udp_fd = -1;
+        }
+    }
+    audio_rt.clear();
+}
+
+void DspWorkerFL2K::setup_audio_for_file(uint32_t sr)
+{
+    if (audio_rt.empty()) return;
+    float ba = audio_mix_lvl / sqrtf(static_cast<float>(audio_rt.size()));
+
+    for (size_t i = 0; i < audio_rt.size(); ++i) {
+        AudioChanRT&  rt  = audio_rt[i];
+        AudioChanCfg& cfg = audio_cfgs[i];
+
+        rt.carrier_hz = cfg.freq_hz;
+        rt.mod_idx    = cfg.mod_idx;
+        rt.gain       = ba;
+        rt.active     = (rt.udp_fd >= 0);
+        if (!rt.active) continue;
+
+        float delta_f = cfg.freq_hz - shiftFreq;
+        float nyq     = static_cast<float>(sr) * 0.5f;
+        if (fabsf(delta_f) > nyq) {
+            printf("[fl2k_plus] WARNING: audio ch[%zu] '%s' at %.0f Hz is"
+                   " %.0f Hz outside IQ Nyquist (±%.0f Hz) – carrier will alias.\n",
+                   i, cfg.name, cfg.freq_hz, fabsf(delta_f) - nyq, nyq);
+        }
+
+        /* Real resampler: audio_rate → sr */
+        float rs_ratio = static_cast<float>(sr) / audio_rate;
+        rt.resamp = msresamp_rrrf_create(rs_ratio, 60.f);
+
+        /* Complex NCO at delta_f within the baseband */
+        rt.nco = nco_crcf_create(LIQUID_VCO);
+        nco_crcf_set_frequency(rt.nco,
+                               2.f * M_PIf * delta_f / static_cast<float>(sr));
+
+        /* Pre-allocate scratch buffers.
+         * a_in_buf: we feed 64 raw samples at a time.
+         * a_rs_buf: at most 64 * ceil(rs_ratio) + 64 output samples.        */
+        static constexpr size_t N_FEED      = 64;
+        static constexpr size_t UDP_BUF_SZ  = 16384;  /* bytes per recv() call */
+        size_t rs_out_max = (size_t)(N_FEED * rs_ratio) + 64;
+        /* a_rs_buf is reused as both resampler-output AND u8→float scratch.
+         * Size must accommodate whichever use needs more space. */
+        size_t a_rs_sz = std::max(rs_out_max, UDP_BUF_SZ);
+        rt.a_in_buf.assign(N_FEED,      0.f);
+        rt.a_rs_buf.assign(a_rs_sz,     0.f);
+        rt.rs_scratch.assign(DSP_BLOCK + 64, 0.f);
+        rt.udp_recv_buf.assign(UDP_BUF_SZ,   0);
+        rt.raw_fifo.clear();
+        rt.rs_fifo.clear();
+
+        printf("[fl2k_plus] Audio ch[%zu] '%s': carrier=%.1f Hz, "
+               "delta_f=%.1f Hz, udp_port=%d, gain=%.4f, rs_ratio=%.2f\n",
+               i, cfg.name, cfg.freq_hz, delta_f, cfg.udp_port, ba, rs_ratio);
+    }
+}
+
+void DspWorkerFL2K::teardown_audio_for_file()
+{
+    for (auto& rt : audio_rt) {
+        if (rt.resamp) { msresamp_rrrf_destroy(rt.resamp); rt.resamp = nullptr; }
+        if (rt.nco)    { nco_crcf_destroy(rt.nco);         rt.nco    = nullptr; }
+        rt.active = false;
+    }
+}
+
+/*
+ * mix_audio_block – called once per DSP block, after reading IQ samples.
+ *
+ * For each active audio channel:
+ *   1. Drain all available UDP datagrams into the per-channel raw_fifo.
+ *   2. Feed raw_fifo through the resampler into rs_fifo until rs_fifo
+ *      holds at least 2*n_iq samples (prevents starvation).
+ *   3. Pop exactly n_iq samples from rs_fifo (zero-padded if empty).
+ *   4. AM-modulate with the per-channel NCO and add to x[]:
+ *        x[k] += gain * (1 + mod_idx * a[k]) * exp(j*phi_carrier)
+ *
+ * The AGC / main NCO / upsampler that follow in process_file() operate on
+ * the combined signal, so no separate power normalisation is needed here.
+ */
+void DspWorkerFL2K::mix_audio_block(liquid_float_complex* x, size_t n_iq)
+{
+    static constexpr size_t N_FEED = 64;   /* must match setup_audio_for_file */
+    static uint64_t _mix_call_cnt  = 0;
+    static uint64_t _underrun_cnt[8] = {};  /* per-channel rs_fifo underruns */
+    ++_mix_call_cnt;
+    bool _verbose = (_mix_call_cnt <= 3);
+    if (_verbose)
+        fprintf(stderr, "[fl2k_plus] mix_audio_block START call #%llu, channels=%zu\n",
+                (unsigned long long)_mix_call_cnt, audio_rt.size());
+
+    for (size_t _chi = 0; _chi < audio_rt.size(); ++_chi) {
+        auto& rt = audio_rt[_chi];
+        if (!rt.active) continue;
+
+        /* Guard against null pointers — should not happen, but avoids segfault */
+        if (!rt.resamp || !rt.nco) {
+            fprintf(stderr, "[fl2k_plus] ERROR ch[%zu]: resamp=%p nco=%p – deactivating!\n",
+                    _chi, (void*)rt.resamp, (void*)rt.nco);
+            rt.active = false;
+            continue;
+        }
+        if (_verbose)
+            fprintf(stderr, "[fl2k_plus] ch[%zu]: raw_fifo=%zu rs_fifo=%zu udp_fd=%d"
+                    " | buf sizes: udp_recv=%zu a_rs=%zu a_in=%zu rs_scratch=%zu"
+                    " | ptrs: udp_recv=%p a_rs=%p a_in=%p rs_scratch=%p resamp=%p nco=%p\n",
+                    _chi, rt.raw_fifo.available(), rt.rs_fifo.available(), rt.udp_fd,
+                    rt.udp_recv_buf.size(), rt.a_rs_buf.size(),
+                    rt.a_in_buf.size(), rt.rs_scratch.size(),
+                    (void*)rt.udp_recv_buf.data(), (void*)rt.a_rs_buf.data(),
+                    (void*)rt.a_in_buf.data(), (void*)rt.rs_scratch.data(),
+                    (void*)rt.resamp, (void*)rt.nco);
+
+        /* 1. Read all queued UDP datagrams into raw_fifo */
+        if (_verbose) fprintf(stderr, "[fl2k_plus] ch[%zu] STEP1 start\n", _chi);
+        {
+            ssize_t nr;
+            while ((nr = recv(rt.udp_fd, rt.udp_recv_buf.data(),
+                              rt.udp_recv_buf.size(), MSG_DONTWAIT)) > 0)
+            {
+                /* Convert u8 PCM (0..255, silence=128) to float [-1..1] */
+                for (ssize_t k = 0; k < nr; ++k)
+                    rt.a_rs_buf[k] = (static_cast<float>(rt.udp_recv_buf[k]) - 128.f)
+                                     / 128.f;
+                rt.raw_fifo.push(rt.a_rs_buf.data(), static_cast<size_t>(nr));
+            }
+        }
+        if (_verbose) fprintf(stderr, "[fl2k_plus] ch[%zu] STEP1 done, raw_fifo=%zu\n",
+                              _chi, rt.raw_fifo.available());
+
+        /* 2. Refill rs_fifo from raw_fifo via resampler */
+        if (_verbose) fprintf(stderr, "[fl2k_plus] ch[%zu] STEP2 start\n", _chi);
+        {
+            unsigned int _step2_iters = 0;
+            while (rt.rs_fifo.available() < 2 * n_iq
+                   && rt.raw_fifo.available() >= N_FEED)
+            {
+                size_t n_feed = std::min(rt.raw_fifo.available(), N_FEED);
+                rt.raw_fifo.pop(rt.a_in_buf.data(), n_feed);
+                unsigned int n_out = 0;
+                msresamp_rrrf_execute(rt.resamp,
+                                      rt.a_in_buf.data(),
+                                      static_cast<unsigned int>(n_feed),
+                                      rt.a_rs_buf.data(), &n_out);
+                if (_verbose && _step2_iters == 0)
+                    fprintf(stderr, "[fl2k_plus] ch[%zu] STEP2 first resamp: n_feed=%zu n_out=%u a_rs_sz=%zu\n",
+                            _chi, n_feed, n_out, rt.a_rs_buf.size());
+                rt.rs_fifo.push(rt.a_rs_buf.data(), n_out);
+                ++_step2_iters;
+            }
+        }
+        if (_verbose) fprintf(stderr, "[fl2k_plus] ch[%zu] STEP2 done, rs_fifo=%zu\n",
+                              _chi, rt.rs_fifo.available());
+
+        /* 3. Pop n_iq resampled audio samples (zero-padded if not enough) */
+        if (_verbose) fprintf(stderr, "[fl2k_plus] ch[%zu] STEP3 start, n_iq=%zu rs_scratch_sz=%zu\n",
+                              _chi, n_iq, rt.rs_scratch.size());
+        if (rt.rs_fifo.available() < n_iq && _chi < 8)
+            ++_underrun_cnt[_chi];
+        rt.rs_fifo.pop(rt.rs_scratch.data(), n_iq);
+        if (_verbose) fprintf(stderr, "[fl2k_plus] ch[%zu] STEP3 done\n", _chi);
+
+        /* 4. AM modulate and accumulate into baseband IQ */
+        if (_verbose) fprintf(stderr, "[fl2k_plus] ch[%zu] STEP4 start, x=%p n_iq=%zu\n",
+                              _chi, (void*)x, n_iq);
+        const float* a = rt.rs_scratch.data();
+        for (size_t k = 0; k < n_iq; ++k) {
+            float c = nco_crcf_cos(rt.nco);
+            float s = nco_crcf_sin(rt.nco);
+            nco_crcf_step(rt.nco);
+            /* DSB-LC AM: carrier + sidebands */
+            float am = rt.gain * (1.f + rt.mod_idx * a[k]);
+            x[k].real += am * c;
+            x[k].imag += am * s;
+        }
+        if (_verbose)
+            fprintf(stderr, "[fl2k_plus] ch[%zu] DONE\n", _chi);
+    }
+    if (_verbose)
+        fprintf(stderr, "[fl2k_plus] mix_audio_block END call #%llu\n",
+                (unsigned long long)_mix_call_cnt);
+
+    /* Periodic diagnostic: every 500 calls (~3.3 s at DSP_BLOCK=8192, SR=1250000) */
+    if (_mix_call_cnt % 500 == 0) {
+        fprintf(stderr, "[fl2k_plus] diag call=%llu underruns=[",
+                (unsigned long long)_mix_call_cnt);
+        for (size_t i = 0; i < audio_rt.size() && i < 8; ++i) {
+            if (i) fprintf(stderr, ",");
+            fprintf(stderr, "%llu", (unsigned long long)_underrun_cnt[i]);
+        }
+        fprintf(stderr, "]  fifos:");
+        for (size_t i = 0; i < audio_rt.size(); ++i) {
+            auto& rt2 = audio_rt[i];
+            if (!rt2.active) { fprintf(stderr, " ch[%zu]=off", i); continue; }
+            fprintf(stderr, " ch[%zu] raw=%zu rs=%zu", i,
+                    rt2.raw_fifo.available(), rt2.rs_fifo.available());
+        }
+        fprintf(stderr, "\n");
+    }
+}
+
+/* ================================================================== */
+/* DSP: process a single WAV file                                      */
+/* ================================================================== */
+
+std::string DspWorkerFL2K::process_file(const std::string& path)
+{
+    std::ifstream f(path, std::ios::binary);
+    if (!f) {
+        if (err_cb) err_cb(("Cannot open: " + path).c_str(), err_ud);
+        return "";
+    }
+    if (nxt_cb) nxt_cb(path.c_str(), nxt_ud);
+
+    RiffHeader riff;
+    f.read(reinterpret_cast<char*>(&riff), sizeof(riff));
+
+    uint32_t sampleRate    = 0;
+    uint16_t audioFormat   = 1;
+    uint16_t bitsPerSample = 16;
+    uint16_t numChannels   = 2;
+    std::string nextFile;
+    ChunkHeader chunk;
+
+    printf("[fl2k_plus] Processing WAV file: %s\n", path.c_str());
+    printf("[fl2k_plus] shiftFreq: %.0f Hz\n", shiftFreq);
+
+    while (f.read(reinterpret_cast<char*>(&chunk), sizeof(chunk))
+           && running.load(std::memory_order_acquire))
+    {
+        std::string tag(chunk.id, 4);
+
+        if (tag == "fmt ") {
+            FmtStruct fmt;
+            f.read(reinterpret_cast<char*>(&fmt), sizeof(fmt));
+            sampleRate    = fmt.sampleRate;
+            audioFormat   = fmt.audioFormat;
+            bitsPerSample = fmt.bitsPerSample;
+            numChannels   = fmt.numChannels;
+            long skip = (long)chunk.size - (long)sizeof(fmt);
+            if (skip > 0) f.seekg(skip, std::ios::cur);
+        }
+        else if (tag == "auxi") {
+            AuxiContent aux;
+            f.read(reinterpret_cast<char*>(&aux), sizeof(aux));
+            std::string raw(aux.filename, 96);
+            static const std::string JUNK(" \t\n\r\0\x01", 6);
+            size_t last = raw.find_last_not_of(JUNK);
+            if (last != std::string::npos)
+                nextFile = raw.substr(0, last + 1);
+            long skip = (long)chunk.size - (long)sizeof(aux);
+            if (skip > 0) f.seekg(skip, std::ios::cur);
+        }
+        else if (tag == "data") {
+
+            if (sampleRate == 0 || numChannels < 2) {
+                if (err_cb) err_cb("Invalid WAV header", err_ud);
+                break;
+            }
+
+            /* ---- set up main resampler + NCO ---- */
+            float upRate  = targetRate / static_cast<float>(sampleRate);
+            msresamp_crcf resamp = msresamp_crcf_create(upRate, 60.0f);
+            nco_crcf      vco    = nco_crcf_create(LIQUID_VCO);
+            nco_crcf_set_frequency(vco,
+                2.f * M_PIf * shiftFreq / targetRate);
+
+            /* ---- set up audio overlay channels for this file ---- */
+            setup_audio_for_file(sampleRate);
+
+            /* ---- gain / AGC state ---- */
+            const float bitScale  = 127.0f;
+            const float GAIN_SCALE = 256.0f * bitScale;
+            float current_gain    = gainValue.load() * GAIN_SCALE;
+            float peak_hold       = 0.1f;
+
+            /* ---- buffers ---- */
+            size_t outMax = (size_t)(DSP_BLOCK * upRate) + 512;
+            std::vector<liquid_float_complex> x(DSP_BLOCK), y(outMax);
+            std::vector<int16_t> rb16(DSP_BLOCK * 2);
+            std::vector<float>   rb32(DSP_BLOCK * 2);
+            std::vector<int32_t> rb32i(DSP_BLOCK * 2);
+            std::vector<uint8_t> rb24(DSP_BLOCK * 6);
+            std::vector<int8_t>  out8(outMax);
+            std::vector<float>   mon(MON_SIZE);
+
+            uint32_t dataBytesTotal = chunk.size;
+            uint32_t dataBytesRead  = 0;
+            size_t   blocksPerSec   = (size_t)(sampleRate / (float)DSP_BLOCK) + 1;
+            size_t   blockCnt       = 0;
+            size_t   monIdx         = 0;
+
+            /* ---- inner read-and-process loop ---- */
+            while (running.load(std::memory_order_acquire)) {
+
+                /* -- seek request -- */
+                {
+                    std::lock_guard<std::mutex> slk(seek_mtx);
+                    if (seek_req.pending) {
+                        auto dir = (seek_req.whence == 0) ? std::ios::beg
+                                 : (seek_req.whence == 1) ? std::ios::cur
+                                                          : std::ios::end;
+                        f.clear();
+                        f.seekg(seek_req.pos, dir);
+                        seek_req.pending = false;
+                        {
+                            std::lock_guard<std::mutex> rlk(ring_mtx);
+                            ring_head = ring_tail = ring_count = 0;
+                            ring_not_full.notify_all();
+                        }
+                    }
+                }
+
+                /* -- pause: feed silence -- */
+                while (paused.load(std::memory_order_acquire)
+                       && running.load(std::memory_order_acquire))
+                {
+                    static const int8_t zeros[4096] = {};
+                    write_ring(zeros, sizeof(zeros));
+                }
+                if (!running.load(std::memory_order_acquire)) break;
+
+                /* -- read one IQ block -- */
+                bool ok = false;
+                if (audioFormat == 1 && bitsPerSample == 16) {
+                    ok = (bool)f.read(reinterpret_cast<char*>(rb16.data()),
+                                      DSP_BLOCK * 4);
+                    if (ok)
+                        for (size_t i = 0; i < DSP_BLOCK; ++i)
+                            x[i] = { rb16[2*i] / 32768.f, rb16[2*i+1] / 32768.f };
+                }
+                else if (audioFormat == 3 && bitsPerSample == 32) {
+                    ok = (bool)f.read(reinterpret_cast<char*>(rb32.data()),
+                                      DSP_BLOCK * 8);
+                    if (ok)
+                        for (size_t i = 0; i < DSP_BLOCK; ++i)
+                            x[i] = { rb32[2*i], rb32[2*i+1] };
+                }
+                else if (audioFormat == 1 && bitsPerSample == 32) {
+                    ok = (bool)f.read(reinterpret_cast<char*>(rb32i.data()),
+                                      DSP_BLOCK * 8);
+                    if (ok)
+                        for (size_t i = 0; i < DSP_BLOCK; ++i)
+                            x[i] = { rb32i[2*i] / 2147483648.f,
+                                     rb32i[2*i+1] / 2147483648.f };
+                }
+                else if (audioFormat == 1 && bitsPerSample == 24) {
+                    ok = (bool)f.read(reinterpret_cast<char*>(rb24.data()),
+                                      DSP_BLOCK * 6);
+                    if (ok)
+                        for (size_t i = 0; i < DSP_BLOCK; ++i) {
+                            auto cvt = [](const uint8_t* b) {
+                                int32_t v = b[0] | (b[1]<<8) | (b[2]<<16);
+                                if (v >= (1<<23)) v -= (1<<24);
+                                return v / 8388608.f;
+                            };
+                            x[i] = { cvt(&rb24[6*i]), cvt(&rb24[6*i+3]) };
+                        }
+                }
+                else {
+                    char msg[128];
+                    snprintf(msg, sizeof(msg),
+                             "Unsupported WAV format: tag=%u bits=%u",
+                             audioFormat, bitsPerSample);
+                    if (err_cb) err_cb(msg, err_ud);
+                    break;
+                }
+
+                if (!ok) break;
+
+                dataBytesRead += (uint32_t)(DSP_BLOCK * numChannels
+                                            * (bitsPerSample / 8));
+
+                /* -- inject audio overlay into complex baseband -- */
+                if (!audio_rt.empty())
+                    mix_audio_block(x.data(), DSP_BLOCK);
+
+                /* -- AGC peak tracking on combined signal -- */
+                float bpeak = 0.0001f;
+                for (size_t i = 0; i < DSP_BLOCK; ++i) {
+                    float m = sqrtf(x[i].real*x[i].real + x[i].imag*x[i].imag);
+                    if (m > bpeak) bpeak = m;
+                }
+                peak_hold = 0.95f * peak_hold + 0.05f * bpeak;
+
+                if (useAGC) {
+                    float tg = (bitScale * 0.65f) / (peak_hold + 0.0001f);
+                    current_gain = 0.98f * current_gain + 0.02f * tg;
+                } else {
+                    current_gain = gainValue.load() * GAIN_SCALE;
+                }
+
+                /* -- resample to targetRate -- */
+                unsigned int nw;
+                msresamp_crcf_execute(resamp, x.data(), DSP_BLOCK, y.data(), &nw);
+
+                /* -- NCO mix → real (hf) + clip + int8 -- */
+                for (unsigned int j = 0; j < nw; ++j) {
+                    float c = nco_crcf_cos(vco), s = nco_crcf_sin(vco);
+                    nco_crcf_step(vco);
+                    float hf = (y[j].real * c - y[j].imag * s) * current_gain;
+                    if      (hf >  bitScale) hf =  bitScale;
+                    else if (hf < -bitScale) hf = -bitScale;
+                    out8[j] = static_cast<int8_t>(hf);
+                }
+
+                write_ring(out8.data(), nw);
+
+                /* -- monitoring (pre-resample input) -- */
+                size_t n_mon = std::min(MON_SIZE - monIdx, DSP_BLOCK);
+                for (size_t k = 0; k < n_mon; ++k)
+                    mon[monIdx++] = x[k].real * SCALE_MON;
+
+                ++blockCnt;
+                if (blockCnt >= blocksPerSec) {
+                    blockCnt = 0;
+                    if (mon_cb && monIdx > 0)
+                        mon_cb(mon.data(), static_cast<int>(monIdx), mon_ud);
+                    monIdx = 0;
+                    if (prog_cb && dataBytesTotal > 0)
+                        prog_cb((float)dataBytesRead / dataBytesTotal * 100.f,
+                                prog_ud);
+                }
+            } /* inner while */
+
+            /* ---- tear down per-file audio objects ---- */
+            teardown_audio_for_file();
+
+            msresamp_crcf_destroy(resamp);
+            nco_crcf_destroy(vco);
+            break;
+        }
+        else {
+            f.seekg(chunk.size, std::ios::cur);
+            if (chunk.size & 1) f.seekg(1, std::ios::cur);
+        }
+    }
+
+    return nextFile;
+}
+
+/* ================================================================== */
+/* DSP thread entry                                                    */
+/* ================================================================== */
+
+void DspWorkerFL2K::run_dsp()
+{
+    for (size_t i = 0; i < filenames.size() && running.load(); ) {
+        std::string next = process_file(filenames[i]);
+        if (!next.empty()) {
+            bool found = false;
+            for (size_t j = 0; j < filenames.size(); ++j) {
+                if (filenames[j].find(next) != std::string::npos) {
+                    i = j; found = true; break;
+                }
+            }
+            if (!found) break;
+        } else {
+            ++i;
+        }
+    }
+
+    {
+        std::unique_lock<std::mutex> lk(ring_mtx);
+        ring_not_empty.wait_for(lk, std::chrono::seconds(5),
+            [this] { return ring_count == 0 || !running.load(); });
+    }
+
+    running.store(false, std::memory_order_release);
+    ring_not_full.notify_all();
+    ring_not_empty.notify_all();
+
+    if (fin_cb) fin_cb(fin_ud);
+}
+
+/* ================================================================== */
+/* C API implementation                                                */
+/* ================================================================== */
+
+DspFL2KHandle dsp_fl2k_create()
+{
+    return new DspWorkerFL2K();
+}
+
+void dsp_fl2k_destroy(DspFL2KHandle h)
+{
+    if (!h) return;
+    dsp_fl2k_stop(h);
+    static_cast<DspWorkerFL2K*>(h)->close_audio_sockets();
+    delete static_cast<DspWorkerFL2K*>(h);
+}
+
+int dsp_fl2k_configure(DspFL2KHandle h,
+                       float target_rate, float shift_freq,
+                       float gain, int use_agc,
+                       const char** filenames, int num_files)
+{
+    if (!h) return -1;
+    auto* w = static_cast<DspWorkerFL2K*>(h);
+    w->targetRate = target_rate;
+    w->shiftFreq  = shift_freq;
+    w->gainValue.store(gain);
+    w->useAGC     = (use_agc != 0);
+    w->filenames.clear();
+    for (int i = 0; i < num_files; ++i)
+        if (filenames && filenames[i]) w->filenames.emplace_back(filenames[i]);
+    return 0;
+}
+
+int dsp_fl2k_configure_audio(DspFL2KHandle          h,
+                              const DspAudioChannel* channels,
+                              int                    n_channels,
+                              float                  audio_rate,
+                              float                  mix_level)
+{
+    if (!h) return -1;
+    auto* w = static_cast<DspWorkerFL2K*>(h);
+
+    /* Close any previously opened sockets */
+    w->close_audio_sockets();
+
+    w->audio_cfgs.clear();
+    w->audio_rate    = (audio_rate > 0.f) ? audio_rate : 25000.f;
+    w->audio_mix_lvl = (mix_level  > 0.f) ? mix_level  : 1.0f;
+
+    if (!channels || n_channels <= 0) return 0;
+
+    w->audio_cfgs.resize(n_channels);
+    w->audio_rt.resize(n_channels);
+
+    for (int i = 0; i < n_channels; ++i) {
+        DspWorkerFL2K::AudioChanCfg& cfg = w->audio_cfgs[i];
+        DspWorkerFL2K::AudioChanRT&  rt  = w->audio_rt[i];
+
+        cfg.freq_hz  = channels[i].freq_hz;
+        cfg.bw_hz    = (channels[i].bandwidth_hz > 0.f)
+                       ? channels[i].bandwidth_hz : 4500.f;
+        cfg.mod_idx  = (channels[i].mod_index > 0.f
+                        && channels[i].mod_index <= 1.f)
+                       ? channels[i].mod_index : 0.9f;
+        strncpy(cfg.name, channels[i].name, 63);
+        cfg.name[63] = '\0';
+        cfg.udp_port = channels[i].udp_port;
+
+        /* Reset mutable runtime state without reallocating the raw_fifo buffer.
+         * Moving from a default AudioChanRT{} would reset raw_fifo.cap to 65536;
+         * instead we clear the fifo in-place to keep the 1 M-sample allocation. */
+        rt.carrier_hz = 0.f; rt.mod_idx = 0.9f; rt.gain = 0.f;
+        rt.active = false; rt.resamp = nullptr; rt.nco = nullptr;
+        rt.raw_fifo.clear(); rt.rs_fifo.clear();
+        rt.a_in_buf.clear(); rt.a_rs_buf.clear();
+        rt.rs_scratch.clear(); rt.udp_recv_buf.clear();
+        rt.udp_fd = -1;
+
+        /* Open non-blocking UDP receive socket */
+        int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
+        if (fd < 0) {
+            printf("[fl2k_plus] socket() failed for ch[%d] '%s': %s\n",
+                   i, cfg.name, strerror(errno));
+            continue;
+        }
+
+        int one = 1;
+        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+
+        /* Set OS receive buffer to 512 KB per channel */
+        int rcvbuf = 524288;
+        setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
+
+        struct sockaddr_in addr{};
+        addr.sin_family      = AF_INET;
+        addr.sin_port        = htons(static_cast<uint16_t>(cfg.udp_port));
+        addr.sin_addr.s_addr = INADDR_ANY;
+
+        if (::bind(fd, reinterpret_cast<struct sockaddr*>(&addr),
+                   sizeof(addr)) != 0)
+        {
+            printf("[fl2k_plus] bind() failed for ch[%d] '%s' port %d: %s\n",
+                   i, cfg.name, cfg.udp_port, strerror(errno));
+            ::close(fd);
+            continue;
+        }
+
+        int flags = fcntl(fd, F_GETFL, 0);
+        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+        rt.udp_fd = fd;
+        printf("[fl2k_plus] ch[%d] '%s': bound UDP port %d, carrier %.1f Hz\n",
+               i, cfg.name, cfg.udp_port, cfg.freq_hz);
+    }
+
+    return 0;
+}
+
+/*
+ * dsp_fl2k_prefill_audio – drain all UDP sockets into raw_fifo for
+ * duration_ms milliseconds, polling every 100 ms.
+ *
+ * Call AFTER dsp_fl2k_configure_audio() and BEFORE dsp_fl2k_start().
+ * Fills raw_fifo from the OS kernel buffer repeatedly so the large
+ * 1 M-sample raw_fifo can accumulate several seconds of audio even
+ * though the OS socket buffer is limited to ~200 KB per socket.
+ *
+ * After the call, the raw_fifo level printed to stderr shows how many
+ * seconds of audio are buffered (≈ raw_samples / audio_rate).
+ */
+void dsp_fl2k_prefill_audio(DspFL2KHandle h, int duration_ms)
+{
+    if (!h || duration_ms <= 0) return;
+    auto* w = static_cast<DspWorkerFL2K*>(h);
+
+    constexpr int    POLL_MS  = 100;
+    constexpr size_t RBUF_SZ  = 16384;
+    std::vector<uint8_t> recv_buf(RBUF_SZ);
+    std::vector<float>   conv_buf(RBUF_SZ);
+
+    for (int elapsed = 0; elapsed < duration_ms; elapsed += POLL_MS) {
+        for (auto& rt : w->audio_rt) {
+            if (rt.udp_fd < 0) continue;
+            ssize_t nr;
+            while ((nr = ::recv(rt.udp_fd, recv_buf.data(),
+                                recv_buf.size(), MSG_DONTWAIT)) > 0) {
+                for (ssize_t k = 0; k < nr; ++k)
+                    conv_buf[k] = (static_cast<float>(recv_buf[k]) - 128.f)
+                                  / 128.f;
+                rt.raw_fifo.push(conv_buf.data(), static_cast<size_t>(nr));
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(POLL_MS));
+    }
+
+    for (size_t i = 0; i < w->audio_rt.size(); ++i) {
+        auto& rt = w->audio_rt[i];
+        if (rt.udp_fd < 0) continue;
+        float secs = rt.raw_fifo.available() / (w->audio_rate > 0 ? w->audio_rate : 25000.f);
+        fprintf(stderr,
+                "[fl2k_plus] prefill ch[%zu]: raw_fifo=%zu (%.1f s buffer, cap=%zu)\n",
+                i, rt.raw_fifo.available(), secs, rt.raw_fifo.cap);
+    }
+}
+
+void dsp_fl2k_set_monitor_cb(DspFL2KHandle h, dsp_monitor_cb_t cb, void* ud)
+{ if (h) { auto* w = static_cast<DspWorkerFL2K*>(h); w->mon_cb  = cb; w->mon_ud  = ud; } }
+
+void dsp_fl2k_set_progress_cb(DspFL2KHandle h, dsp_progress_cb_t cb, void* ud)
+{ if (h) { auto* w = static_cast<DspWorkerFL2K*>(h); w->prog_cb = cb; w->prog_ud = ud; } }
+
+void dsp_fl2k_set_finished_cb(DspFL2KHandle h, dsp_finished_cb_t cb, void* ud)
+{ if (h) { auto* w = static_cast<DspWorkerFL2K*>(h); w->fin_cb  = cb; w->fin_ud  = ud; } }
+
+void dsp_fl2k_set_error_cb(DspFL2KHandle h, dsp_error_cb_t cb, void* ud)
+{ if (h) { auto* w = static_cast<DspWorkerFL2K*>(h); w->err_cb  = cb; w->err_ud  = ud; } }
+
+void dsp_fl2k_set_nextfile_cb(DspFL2KHandle h, dsp_nextfile_cb_t cb, void* ud)
+{ if (h) { auto* w = static_cast<DspWorkerFL2K*>(h); w->nxt_cb  = cb; w->nxt_ud  = ud; } }
+
+int dsp_fl2k_start(DspFL2KHandle h)
+{
+    if (!h) return -1;
+    auto* w = static_cast<DspWorkerFL2K*>(h);
+    if (w->running.load()) return -1;
+    if (w->filenames.empty()) return -2;
+
+    {
+        std::lock_guard<std::mutex> lk(w->ring_mtx);
+        w->ring_head = w->ring_tail = w->ring_count = 0;
+    }
+    w->dev_open.store(false);
+    w->running.store(true, std::memory_order_release);
+
+    w->fl2k_thr = std::thread(&DspWorkerFL2K::run_fl2k, w);
+
+    for (int ms = 0; ms < 1000; ms += 20) {
+        if (w->dev_open.load() || !w->running.load()) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+
+    if (!w->running.load()) {
+        if (w->fl2k_thr.joinable()) w->fl2k_thr.join();
+        return -3;
+    }
+
+    w->dsp_thr = std::thread(&DspWorkerFL2K::run_dsp, w);
+    return 0;
+}
+
+void dsp_fl2k_stop(DspFL2KHandle h)
+{
+    if (!h) return;
+    auto* w = static_cast<DspWorkerFL2K*>(h);
+    w->running.store(false, std::memory_order_release);
+    w->ring_not_full.notify_all();
+    w->ring_not_empty.notify_all();
+    if (w->dsp_thr.joinable())  w->dsp_thr.join();
+    if (w->fl2k_thr.joinable()) w->fl2k_thr.join();
+}
+
+void dsp_fl2k_set_pause(DspFL2KHandle h, int paused)
+{ if (h) static_cast<DspWorkerFL2K*>(h)->paused.store(paused != 0); }
+
+void dsp_fl2k_set_gain(DspFL2KHandle h, float gain)
+{ if (h) static_cast<DspWorkerFL2K*>(h)->gainValue.store(gain); }
+
+int dsp_fl2k_is_running(DspFL2KHandle h)
+{ return h ? (static_cast<DspWorkerFL2K*>(h)->running.load() ? 1 : 0) : 0; }
+
+int dsp_fl2k_check_device()
+{
+    if (fl2k_get_device_count() == 0) return -1;
+    fl2k_dev_t* dev = nullptr;
+    int r = fl2k_open(&dev, 0);
+    if (r != FL2K_SUCCESS) return -1;
+    fl2k_close(dev);
+    return 0;
+}
+
+void dsp_fl2k_seek(DspFL2KHandle h, int64_t byte_pos, int whence)
+{
+    if (!h) return;
+    auto* w = static_cast<DspWorkerFL2K*>(h);
+    std::lock_guard<std::mutex> lk(w->seek_mtx);
+    w->seek_req.pending = true;
+    w->seek_req.pos     = byte_pos;
+    w->seek_req.whence  = whence;
+}

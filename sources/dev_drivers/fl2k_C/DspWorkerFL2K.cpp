@@ -54,10 +54,10 @@ struct AuxiContent  { uint8_t padding[68]; char filename[96]; };
 /* ------------------------------------------------------------------ */
 /* Constants                                                           */
 /* ------------------------------------------------------------------ */
-static constexpr size_t RING_BUFS  = 8;
+static constexpr size_t RING_BUFS  = 16;
 static constexpr size_t RING_SIZE  = (size_t)FL2K_BUF_LEN * RING_BUFS; /* ~10 MB */
-static constexpr size_t DSP_BLOCK  = 4096;   /* WAV input samples per DSP block  */
-static constexpr size_t MON_SIZE   = 4096;   /* monitoring window (float samples) */
+static constexpr size_t DSP_BLOCK  = 2*8192;   /* WAV input samples per DSP block  */
+static constexpr size_t MON_SIZE   = 8192;   /* monitoring window (float samples) */
 /* SCALE_MON must match fl2k_stream: there data = preset_volume * scalefactor_fl2k * int16
  *   = 512 * (1/16) * int16 = 32 * int16.
  * Here x[k].real = int16 / 32768, so we need SCALE_MON = 32 * 32768 = 1048576. */
@@ -317,7 +317,7 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
 
             /* ---- set up liquiddsp resampler + NCO ---- */
             float upRate  = targetRate / (float)sampleRate;
-            msresamp_crcf resamp = msresamp_crcf_create(upRate, 100.0f);
+            msresamp_crcf resamp = msresamp_crcf_create(upRate, 60.0f);
             nco_crcf      vco    = nco_crcf_create(LIQUID_VCO);
             nco_crcf_set_frequency(vco, 2.f * M_PIf * shiftFreq / targetRate);
 
