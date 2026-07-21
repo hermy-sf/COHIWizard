@@ -254,11 +254,25 @@ void DspWorkerFL2K::drain_ring(int8_t* buf, size_t n)
     std::lock_guard<std::mutex> lk(ring_mtx);
     if (ring_count < n) {
         ++_ring_underrun_cnt;
+        size_t have = ring_count;
         fprintf(stderr, "[fl2k_plus] RING UNDERRUN #%llu (cb=%llu): ring=%zu < need=%zu\n",
                 (unsigned long long)_ring_underrun_cnt,
                 (unsigned long long)_ring_cb_cnt,
-                ring_count, n);
-        memset(buf, 0, n);
+                have, n);
+        if (have > 0) {
+            /* Use whatever is in the ring, zero-pad the rest.
+             * Minimises the silence gap vs. returning all zeros. */
+            size_t first = std::min(have, RING_SIZE - ring_tail);
+            memcpy(buf, ring.data() + ring_tail, first);
+            if (first < have)
+                memcpy(buf + first, ring.data(), have - first);
+            memset(buf + have, 0, n - have);
+            ring_tail  = (ring_tail + have) % RING_SIZE;
+            ring_count = 0;
+            ring_not_full.notify_one();
+        } else {
+            memset(buf, 0, n);
+        }
         return;
     }
     size_t first = std::min(n, RING_SIZE - ring_tail);
@@ -323,6 +337,19 @@ void DspWorkerFL2K::run_fl2k()
         fl2k_close(dev);
         { std::lock_guard<std::mutex> lk(dev_mtx); dev = nullptr; }
         return;
+    }
+
+    /* Wait for the DSP thread to pre-fill the ring (≥ 4 × FL2K_BUF_LEN ≈ 524 ms
+     * of IQ data) before handing off to hardware.  This prevents the systematic
+     * underruns that occur when fl2k_start_tx fires before the DSP has buffered
+     * anything.  Timeout of 5 s so we don't block forever if DSP fails to start. */
+    {
+        std::unique_lock<std::mutex> lk(ring_mtx);
+        ring_not_empty.wait_for(lk, std::chrono::seconds(5), [this] {
+            return ring_count >= 4 * FL2K_BUF_LEN || !running.load();
+        });
+        fprintf(stderr, "[fl2k_plus] ring pre-fill: %zu bytes ready before TX start\n",
+                ring_count);
     }
 
     fl2k_start_tx(dev, fl2k_callback, this, 0);
@@ -460,9 +487,12 @@ void DspWorkerFL2K::mix_audio_block(liquid_float_complex* x, size_t n_iq)
                     (void*)rt.a_in_buf.data(), (void*)rt.rs_scratch.data(),
                     (void*)rt.resamp, (void*)rt.nco);
 
-        /* 1. Read all queued UDP datagrams into raw_fifo */
+        /* 1. Read all queued UDP datagrams into raw_fifo.
+         * Skip entirely when raw_fifo is full to avoid burning hundreds of
+         * recv() syscalls per block for fast-decode sources (e.g. local mp3
+         * via ffmpeg at 700× speed) that over-fill the socket buffer. */
         if (_verbose) fprintf(stderr, "[fl2k_plus] ch[%zu] STEP1 start\n", _chi);
-        {
+        if (rt.raw_fifo.available() < rt.raw_fifo.cap) {
             ssize_t nr;
             while ((nr = recv(rt.udp_fd, rt.udp_recv_buf.data(),
                               rt.udp_recv_buf.size(), MSG_DONTWAIT)) > 0)
@@ -472,6 +502,7 @@ void DspWorkerFL2K::mix_audio_block(liquid_float_complex* x, size_t n_iq)
                     rt.a_rs_buf[k] = (static_cast<float>(rt.udp_recv_buf[k]) - 128.f)
                                      / 128.f;
                 rt.raw_fifo.push(rt.a_rs_buf.data(), static_cast<size_t>(nr));
+                if (rt.raw_fifo.available() >= rt.raw_fifo.cap) break;
             }
         }
         if (_verbose) fprintf(stderr, "[fl2k_plus] ch[%zu] STEP1 done, raw_fifo=%zu\n",
@@ -828,6 +859,8 @@ void DspWorkerFL2K::run_dsp()
 
 DspFL2KHandle dsp_fl2k_create()
 {
+    fprintf(stderr, "[fl2k_plus] *** libdspfl2k BUILD %s %s (recv-fix+prefill) ***\n",
+            __DATE__, __TIME__);
     return new DspWorkerFL2K();
 }
 

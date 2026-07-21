@@ -350,16 +350,24 @@ class playrec_worker(QObject):
                     mode="w", suffix=".txt", prefix="fl2k_concat_",
                     delete=False, encoding="utf-8"
                 )
+                # The concat demuxer does not support seeking, so -stream_loop -1
+                # fails with "Operation not permitted" after the first pass.
+                # Writing the playlist 200 times gives ~hours of playback in practice.
                 _cf.write("ffconcat version 1.0\n")
-                for _e in _entries:
-                    _cf.write(f"file {_e!r}\n")
+                for _ in range(200):
+                    for _e in _entries:
+                        _cf.write(f"file {_e!r}\n")
                 _cf.close()
                 self._concat_files.append(_cf.name)
                 print(f"[fl2k_plus] m3u '{url}': {len(_entries)} track(s) → concat {_cf.name}")
 
                 cmd = [
                     ffmpeg_bin,
-                    "-f", "concat", "-safe", "0", "-stream_loop", "-1",
+                    # -re: read at native (1×) speed so the UDP socket is not
+                    # flooded with 700× worth of data, which would cause hundreds
+                    # of wasted recv() syscalls per DSP block in the C++ engine.
+                    "-re",
+                    "-f", "concat", "-safe", "0",
                     "-i", _cf.name,
                     "-af", (f"lowpass=f={lowpass_f},"
                             f"volume=0.8"),
