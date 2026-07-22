@@ -16,6 +16,7 @@ main upsampler.
 CSV format (semicolon-separated, first line may be a header):
   Frequenz;Bandbreite;Programmname;URL
   175 kHz;10.0 kHz;Canal Sud;http://91.224.148.160:8000/canalsud-live
+  600 kHz;4.5 kHz;Radio Dismuke;"http://74.208.228.126:8020/;stream.mp3"
 
 Units accepted for frequency/bandwidth: Hz, kHz, MHz (case-insensitive).
 
@@ -30,10 +31,12 @@ config_wizard.yaml keys used by this driver:
   ffmpeg_path             str    ffmpeg binary (default 'ffmpeg')
 """
 
+import csv
 import ctypes
 import os
 import subprocess
 import time
+from urllib.parse import urlparse, urlunparse
 
 import numpy as np
 import psutil
@@ -157,6 +160,30 @@ _LIB = _load_lib()
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _ffmpeg_url(url: str) -> str:
+    """Encode semicolons in the URL path/params for ffmpeg's URL parser.
+
+    Python's urlparse() and ffmpeg's av_url_split() both follow RFC 2396 and
+    split "path;params" at the first semicolon.  SHOUTcast streams commonly use
+    paths like /;stream.mp3.  ffmpeg silently drops the params part, causing an
+    immediate open failure.  We rejoin path and params with '%3B' so ffmpeg sees
+    a single unambiguous path token; ffmpeg's HTTP layer URL-decodes it back to
+    ';' before issuing the GET request.
+    """
+    try:
+        p = urlparse(url)
+        if p.params:
+            base = urlunparse(p._replace(params=""))
+            return base + "%3B" + p.params.replace(";", "%3B")
+    except Exception:
+        pass
+    return url
+
+
+# ---------------------------------------------------------------------------
 # CSV playlist parser
 # ---------------------------------------------------------------------------
 
@@ -179,22 +206,33 @@ def parse_audio_playlist(csv_path: str) -> list:
 
     Columns: Frequenz ; Bandbreite ; Programmname ; URL
     Lines starting with '#' are comments; the first line may be a header.
+    URLs containing semicolons must be quoted: "http://host:port/;stream.mp3"
 
     Returns list of dicts: {freq_hz, bw_hz, name, url}.
     """
+    # Map typographic double-quote variants to ASCII “ (U+0022) so that
+    # csv.reader’s quotechar recognises them as field delimiters.
+    # 0x201C = U+201C LEFT DOUBLE QUOTATION MARK  “
+    # 0x201D = U+201D RIGHT DOUBLE QUOTATION MARK “
+    _QUOTE_MAP = str.maketrans({0x201C: 0x22, 0x201D: 0x22})
+
+    def _norm(lines):
+        for line in lines:
+            yield line.translate(_QUOTE_MAP)
+
     stations = []
     try:
         with open(csv_path, encoding="utf-8", errors="replace") as fh:
-            for lineno, raw in enumerate(fh, 1):
-                line = raw.strip()
-                if not line or line.startswith("#"):
+            reader = csv.reader(_norm(fh), delimiter=";", quotechar='"',
+                                skipinitialspace=True)
+            for lineno, parts in enumerate(reader, 1):
+                if not parts or parts[0].strip().startswith("#"):
                     continue
-                parts = line.split(";", 3)
                 if len(parts) < 4:
                     print(f"[fl2k_plus] CSV line {lineno}: expected 4 columns, "
                           f"got {len(parts)} – skipped")
                     continue
-                freq_s, bw_s, name_s, url_s = (p.strip() for p in parts)
+                freq_s, bw_s, name_s, url_s = (p.strip() for p in parts[:4])
                 if freq_s.lower() in ("frequenz", "frequency", "freq"):
                     continue  # header row
                 try:
@@ -361,6 +399,7 @@ class playrec_worker(QObject):
                 self._concat_files.append(_cf.name)
                 print(f"[fl2k_plus] m3u '{url}': {len(_entries)} track(s) → concat {_cf.name}")
 
+                _curl_cmd = None
                 cmd = [
                     ffmpeg_bin,
                     # -re: read at native (1×) speed so the UDP socket is not
@@ -374,14 +413,30 @@ class playrec_worker(QObject):
                     "-f", "u8", "-ar", str(audio_rate), "-ac", "1",
                     f"udp://127.0.0.1:{port}?pkt_size=256",
                 ]
+            elif _is_http and urlparse(url).params:
+                # SHOUTcast / URLs with a semicolon in the path, e.g.
+                # http://host:port/;stream.mp3.
+                # ffmpeg's av_url_split() strips everything from ';' onward,
+                # even when percent-encoded.  Work around by piping through
+                # curl which handles the URL verbatim.
+                _curl_cmd = ["curl", "-s", "--max-time", "0", "--", url]
+                cmd = [
+                    ffmpeg_bin,
+                    "-i", "pipe:0",
+                    "-af", (f"lowpass=f={lowpass_f},"
+                            f"volume=0.8"),
+                    "-f", "u8", "-ar", str(audio_rate), "-ac", "1",
+                    f"udp://127.0.0.1:{port}?pkt_size=256",
+                ]
             else:
                 # HTTP / RTSP live stream — use reconnect flags for resilience.
+                _curl_cmd = None
                 cmd = [
                     ffmpeg_bin,
                     "-reconnect", "1",
                     "-reconnect_streamed", "1",
                     "-reconnect_delay_max", "5",
-                    "-i", url,
+                    "-i", _ffmpeg_url(url),
                     "-af", (f"lowpass=f={lowpass_f},"
                             f"volume=0.8"),
                     "-f", "u8", "-ar", str(audio_rate), "-ac", "1",
@@ -393,12 +448,29 @@ class playrec_worker(QObject):
             _logfile = _logdir / f"fl2k_ffmpeg_ch{idx}.log"
 
             try:
-                proc = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.DEVNULL,
-                    stderr=open(_logfile, "w"),
-                    close_fds=True,
-                )
+                if _curl_cmd is not None:
+                    curl_proc = subprocess.Popen(
+                        _curl_cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.DEVNULL,
+                        close_fds=True,
+                    )
+                    proc = subprocess.Popen(
+                        cmd,
+                        stdin=curl_proc.stdout,
+                        stdout=subprocess.DEVNULL,
+                        stderr=open(_logfile, "w"),
+                        close_fds=True,
+                    )
+                    curl_proc.stdout.close()  # let curl get SIGPIPE if ffmpeg dies
+                    self._ffmpeg_procs.append(curl_proc)
+                else:
+                    proc = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.DEVNULL,
+                        stderr=open(_logfile, "w"),
+                        close_fds=True,
+                    )
                 print(f"[fl2k_plus] ffmpeg log → {_logfile}")
                 self._ffmpeg_procs.append(proc)
                 print(f"[fl2k_plus] ffmpeg ch[{idx}] '{name}' "
