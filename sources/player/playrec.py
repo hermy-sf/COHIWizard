@@ -68,6 +68,7 @@ class playrec_m(QObject):
         self.mdl["AGC"] = True
         self.mdl["Reset_AGC"] = True
         self.mdl["skinhandler"] = []
+        self.mdl["modulator"] = False
         # Create a custom logger
         logging.getLogger().setLevel(logging.DEBUG)
         self.logger = logging.getLogger(__name__)
@@ -90,6 +91,7 @@ class playrec_m(QObject):
         self.mdl["device_ID_dict"] = {}
         self.mdl["REC_AGC"] = False
         self.mdl["volume_mode"] = "mean" #default, may be changed by device driver, e.g. to "crest" for stemlabcontrol
+        self.mdl["modulator_type"] = "all" #default, may be changed by config_wizard.yaml
         #os.path.isdir(os.getcwd)
 
 class playrec_c(QObject):
@@ -375,7 +377,10 @@ class playrec_c(QObject):
         #generate List of files if nextfile present in wavheader:
         self.contingent_file_list = []
         self.contingent_file_list.append(self.m["f1"])
-        self.m["wavheader"]['nextfilename'] = self.m["wavheader"]['nextfilename'].rstrip("\x00")
+        if self.m["modulator"]:
+            self.m["wavheader"]['nextfilename'] = ""
+        else:    
+            self.m["wavheader"]['nextfilename'] = self.m["wavheader"]['nextfilename'].rstrip("\x00")
         curr_nextfilestem = Path(self.m["wavheader"]['nextfilename'].rstrip()).stem
         while True:
             if len(curr_nextfilestem) > 0:
@@ -522,6 +527,7 @@ class playrec_c(QObject):
         device_ID_dict =self.stemlabcontrol.identify()
         device_ID_dict ["resolutions"]
         #print("file opened in playloop thread starter")
+        
         if self.m["wavheader"]['nBitsPerSample'] in device_ID_dict ["resolutions"]:
         #if self.m["wavheader"]['nBitsPerSample'] == 16 or self.m["wavheader"]['nBitsPerSample'] == 24 or self.m["wavheader"]['nBitsPerSample'] == 32:
             if self.m["wavheader"]['nBitsPerSample'] == 24:
@@ -534,11 +540,14 @@ class playrec_c(QObject):
             errorstate = True
             value = f"dataformat not supported, only {device_ID_dict ['resolutions']} bits per sample are possible"
             return(errorstate,value)
-                
         self.m["timescaler"] = self.m["wavheader"]['nSamplesPerSec']*self.m["wavheader"]['nBlockAlign']
         #TODO TODO TODO: generate list of playlengths in case of nextfile-chain !
-        true_filesize = os.path.getsize(self.m["f1"]) ########
-        self.m["playlength"] = true_filesize/self.m["wavheader"]['nAvgBytesPerSec'] ##########
+        if not self.m["modulator"]:
+            true_filesize = os.path.getsize(self.m["f1"]) ########
+            self.m["playlength"] = true_filesize/self.m["wavheader"]['nAvgBytesPerSec'] ##########
+        else:
+            self.m["playlength"] = 1e6
+
         #self.m["playlength"] = self.m["wavheader"]['filesize']/self.m["wavheader"]['nAvgBytesPerSec'] #TODO test OLD: before 22-12-2024
         self.playthread = QThread()
 ######################  TODO: change for general devicedrivers
@@ -1136,6 +1145,56 @@ class playrec_v(QObject):
         self.m["Reset_AGC"] = True
         self.gui.lineEdit_playrec_LO.setText("1125")
 
+    def modulator_listselected(self,cf,boxix):
+        '''
+        Handles the selection of a modulator module from the list of available modulators. 
+        It imports the necessary classes for the selected modulator and updates the GUI accordingly.
+        :param cf: name of the modulator module
+        :type cf: str
+        :param boxix: index of the modulator module in the list
+        :type boxix: int
+        :raises [none]: [none]
+        :return: boxix: updated index of the modulator module in the list
+        :rtype: none'''
+        #         errorstate = False
+        # value = ""
+        #         return errorstate, value
+        #import playrec_worker classes
+        full_module_path = f"dev_drivers.{cf}.cohi_playrecworker"                
+        try:
+            self.m["imported_device_modules"].append(importlib.import_module(full_module_path))
+            # import SDRcontrol classes
+            full_module_path = f"dev_drivers.{cf}.SDR_control"
+            self.m["imported_sdr_controllers"].append(importlib.import_module(full_module_path))
+            #text = self.gui.comboBox_playrec_targetSR_2.currentText()
+            #set SDR choice combobox to stemlab 125-14
+            if cf.find("stemlab_125_14") == 0 and cf == "stemlab_125_14":
+                self.m["currentSDRindex"] = boxix
+                self.m["standardSDRindex"] = boxix
+            boxix += 1
+            self.gui.comboBox_stemlab.addItem(str(cf)) #shifted from (***)
+        except:
+            print(f"module {cf} not in driver list, will be ignored")
+            messagetext = f"Hardware driver {cf} cannot be activated.\n\
+            Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
+            COHIWizard will still be operative for all other correctly installed hardware devices"
+            dontshowlabel = f"dontshow{cf}"
+            if dontshowlabel not in self.metadata.keys():
+                checkboxtext = "Don't show this message again"
+                ok_pressed, dont_show_again = auxi.show_infobox_withcheck(messagetext, checkboxtext)
+                if dont_show_again:
+                    try:
+                        self.metadata[dontshowlabel] = True 
+                        stream = open("config_wizard.yaml", "w")
+                        yaml.dump(self.metadata, stream)
+                        stream.close()
+                    except:
+                        self.logger.error("playrec: 'dont show' labelling: cannot write metadata")
+                        pass
+        return boxix
+
+
+
 
     def init_playrec_ui(self):
 
@@ -1235,47 +1294,91 @@ class playrec_v(QObject):
         #self.mdl["devicelist"] = os.listdir(os.path.join(os.getcwd(), "dev_drivers"))
         boxix = 0
         auxl = len(self.m["devicelist"])
+        error,value = auxi.fetch_configyaml("modulator_type")
+        #read modulator type from config-file, if not present, set to "all" and write to config-file
+        if not error:
+            self.m["modulator_type"] = value
+            if value not in ["all","audio_only","band_only","band_and_audio"]:
+                self.m["modulator_type"] = "all"
+        else:
+            self.m["modulator_type"] = "all"
+            
         for ix, cf in enumerate(self.m["devicelist"]):
-            if not cf.find("__") == 0:
-                #self.gui.comboBox_stemlab.addItem(str(cf))
-                #TODO TODO: check change after 19-10-2025, line above has been shifted to (***)
+
+            ###TODO: test / check after 24-07-2026 after implementing modulator_listselected(self,cf) instead of repetitions of same code
+            if self.m["modulator_type"] == "all" and not (cf.find("__") == 0):
+                boxix = self.modulator_listselected(cf,boxix)
+            if self.m["modulator_type"] == "audio_only" and cf.endswith("_modulator") and not (cf.find("__") == 0 ):
+                boxix = self.modulator_listselected(cf,boxix)
+            if self.m["modulator_type"] == "band_and_audio" and cf.endswith("_plus") and not (cf.find("__") == 0 ):
+                boxix = self.modulator_listselected(cf,boxix)
+            if self.m["modulator_type"] == "band_only" and not (cf.endswith("_modulator") or cf.endswith("_plus") or (cf.find("__") == 0 )):
+                boxix = self.modulator_listselected(cf,boxix)
                 #import playrec_worker classes
-                full_module_path = f"dev_drivers.{cf}.cohi_playrecworker"
-                #module_path = os.path.join("dev_drivers",cf)
-                #full_module_path = f"{module_path}.cohi_playrecworker"
-                #print(f"vvvvvvvvvvvvvvvvvvvvvvvvvvv    full_module_path: {full_module_path}")
-                
-                try:
-                    self.m["imported_device_modules"].append(importlib.import_module(full_module_path))
-                    #print(f"vvvvvvvvvvvvvvvvvvvvvvvvvvv    imported device module: {self.m['imported_device_modules']}")
-                    # import SDRcontrol classes
-                    full_module_path = f"dev_drivers.{cf}.SDR_control"
-                    self.m["imported_sdr_controllers"].append(importlib.import_module(full_module_path))
-                    #text = self.gui.comboBox_playrec_targetSR_2.currentText()
-                    #set SDR choice combobox to stemlab 125-14
-                    if cf.find("stemlab_125_14") == 0 and cf == "stemlab_125_14":
-                        self.m["currentSDRindex"] = boxix
-                        self.m["standardSDRindex"] = boxix
-                    boxix += 1
-                    self.gui.comboBox_stemlab.addItem(str(cf)) #shifted from (***)
-                except:
-                    print(f"module {cf} not in driver list, will be ignored")
-                    messagetext = f"Hardware driver {cf} cannot be activated.\n\
-                    Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
-                    COHIWizard will still be operative for all other correctly installed hardware devices"
-                    dontshowlabel = f"dontshow{cf}"
-                    if dontshowlabel not in self.metadata.keys():
-                        checkboxtext = "Don't show this message again"
-                        ok_pressed, dont_show_again = auxi.show_infobox_withcheck(messagetext, checkboxtext)
-                        if dont_show_again:
-                            try:
-                                self.metadata[dontshowlabel] = True 
-                                stream = open("config_wizard.yaml", "w")
-                                yaml.dump(self.metadata, stream)
-                                stream.close()
-                            except:
-                                self.logger.error("playrec: 'dont show' labelling: cannot write metadata")
-                                pass
+                # full_module_path = f"dev_drivers.{cf}.cohi_playrecworker"                
+                # try:
+                #     self.m["imported_device_modules"].append(importlib.import_module(full_module_path))
+                #     # import SDRcontrol classes
+                #     full_module_path = f"dev_drivers.{cf}.SDR_control"
+                #     self.m["imported_sdr_controllers"].append(importlib.import_module(full_module_path))
+                #     #text = self.gui.comboBox_playrec_targetSR_2.currentText()
+                #     #set SDR choice combobox to stemlab 125-14
+                #     if cf.find("stemlab_125_14") == 0 and cf == "stemlab_125_14":
+                #         self.m["currentSDRindex"] = boxix
+                #         self.m["standardSDRindex"] = boxix
+                #     boxix += 1
+                #     self.gui.comboBox_stemlab.addItem(str(cf)) #shifted from (***)
+                # except:
+                #     print(f"module {cf} not in driver list, will be ignored")
+                #     messagetext = f"Hardware driver {cf} cannot be activated.\n\
+                #     Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
+                #     COHIWizard will still be operative for all other correctly installed hardware devices"
+                #     dontshowlabel = f"dontshow{cf}"
+                #     if dontshowlabel not in self.metadata.keys():
+                #         checkboxtext = "Don't show this message again"
+                #         ok_pressed, dont_show_again = auxi.show_infobox_withcheck(messagetext, checkboxtext)
+                #         if dont_show_again:
+                #             try:
+                #                 self.metadata[dontshowlabel] = True 
+                #                 stream = open("config_wizard.yaml", "w")
+                #                 yaml.dump(self.metadata, stream)
+                #                 stream.close()
+                #             except:
+                #                 self.logger.error("playrec: 'dont show' labelling: cannot write metadata")
+                #                 pass
+
+                # #import playrec_worker classes
+                # full_module_path = f"dev_drivers.{cf}.cohi_playrecworker"                
+                # try:
+                #     self.m["imported_device_modules"].append(importlib.import_module(full_module_path))
+                #     # import SDRcontrol classes
+                #     full_module_path = f"dev_drivers.{cf}.SDR_control"
+                #     self.m["imported_sdr_controllers"].append(importlib.import_module(full_module_path))
+                #     #text = self.gui.comboBox_playrec_targetSR_2.currentText()
+                #     #set SDR choice combobox to stemlab 125-14
+                #     if cf.find("stemlab_125_14") == 0 and cf == "stemlab_125_14":
+                #         self.m["currentSDRindex"] = boxix
+                #         self.m["standardSDRindex"] = boxix
+                #     boxix += 1
+                #     self.gui.comboBox_stemlab.addItem(str(cf)) #shifted from (***)
+                # except:
+                #     print(f"module {cf} not in driver list, will be ignored")
+                #     messagetext = f"Hardware driver {cf} cannot be activated.\n\
+                #     Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
+                #     COHIWizard will still be operative for all other correctly installed hardware devices"
+                #     dontshowlabel = f"dontshow{cf}"
+                #     if dontshowlabel not in self.metadata.keys():
+                #         checkboxtext = "Don't show this message again"
+                #         ok_pressed, dont_show_again = auxi.show_infobox_withcheck(messagetext, checkboxtext)
+                #         if dont_show_again:
+                #             try:
+                #                 self.metadata[dontshowlabel] = True 
+                #                 stream = open("config_wizard.yaml", "w")
+                #                 yaml.dump(self.metadata, stream)
+                #                 stream.close()
+                #             except:
+                #                 self.logger.error("playrec: 'dont show' labelling: cannot write metadata")
+                #                 pass
 
 
                     # auxi.standard_infobox(f"Hardware driver {cf} cannot be activated.\n\
@@ -1410,6 +1513,22 @@ class playrec_v(QObject):
         self.gui.pushButton_Loop.setEnabled(value)
         self.gui.pushButton_adv1byte.setEnabled(value)
 
+    def activate_samplingparameters(self,value):
+        """activates or inactivates GUI elements of the Sampling parameters functions based on
+        value (True,False)
+        
+        :param: value: True or False
+        :type: bool
+        ...
+        :raises: none
+        ...
+        :return: none
+        """
+        self.gui.comboBox_playrec_targetSR.setEnabled(value)
+        self.gui.lineEdit_playrec_LO.setEnabled(value)
+        self.gui.comboBox_playrec_targetSR_2.setEnabled(value)
+        self.gui.lineEdit_LO_bias.setEnabled(value)
+
     def recordinggroup_activate(self,value):
         """activates or inactivates GUI elements of the Recording functions based on
         value (True,False)
@@ -1465,7 +1584,7 @@ class playrec_v(QObject):
             errorstate = False
             value = self.m["device_ID_dict"]
             print(f'SDR metadata:{self.m["device_ID_dict"]}')
-            if not self.m["device_ID_dict"]["TX"]:
+            if not (self.m["device_ID_dict"]["TX"] or self.m["device_ID_dict"]["MODULATOR"]):
                 self.playgroup_activate(False)
             else:
                 self.playgroup_activate(True)
@@ -1473,6 +1592,9 @@ class playrec_v(QObject):
                 self.recordinggroup_activate(False)
             else:
                 self.recordinggroup_activate(True)
+            # if "modulator" in self.m["device_ID_dict"]:
+            #     if self.m["device_ID_dict"]["modulator"] =="M":
+            #         self.activate_samplingparameters(True)
             if self.m["device_ID_dict"]["connection_type"] == "USB":
                 self.gui.lineEdit_IPAddress.setEnabled(False)
                 self.gui.pushButton_IP.setEnabled(False)
@@ -1888,10 +2010,14 @@ class playrec_v(QObject):
         self.update_LO_bias()
         #TODO TODO TODO: inactivate other tabs
         self.SigActivateOtherTabs.emit("Player","inactivate",["View spectra"])
+
         if self.gui.pushButton_Play.isChecked():
             if not self.gui.lineEdit_IPAddress.isReadOnly():
                 auxi.standard_errorbox("IP address has not been saved yet, please press 'save IP address' and hence confirm the validity of the address ! ")
                 return False
+            if "modulator" in self.m["device_ID_dict"]:
+                self.m["fileopened"] = True
+
             if not self.m["fileopened"]:
                 if self.gui.radioButton_LO_bias.isChecked():
                     #TODO TODO TODO: replace by query method
@@ -1914,9 +2040,11 @@ class playrec_v(QObject):
                 #TODO TODO TODO. HOW TO CALL A CORE FUNCTION ?
                 #if self.cb_open_file() is False: #TODO TODO: check if works equally as before, 
                 # now the quest is for fileopened and not, if open file returned True
+                if self.gui.comboBox_stemlab.itemText(self.m["currentSDRindex"]).endswith("_modulator"):
+                    self.m["fileopened"] = True
                 if not self.m["fileopened"]:
+                    #TODO TODO TODO: OBSOLETE ? check if the if query self.m["fileopened" is False is necessary. This is true anyway!
                     auxi.standard_errorbox("file must be opened before playing") #TODO TODO TODO: good errorhandling with errorstate, value; errorhandler
-                    #TODO TODO TODO: OBSOLETE ? check if this is ever reached ? self.m["fileopened" is False is a condition that this branch is reched !
                     # restore automatic call of fileopen in this case
                     self.reset_playerbuttongroup()
                     return False
@@ -1924,10 +2052,28 @@ class playrec_v(QObject):
                     self.reset_playerbuttongroup()
                     return False
                 self.gui.lineEdit_LO_bias.setEnabled(False)
-                ######Setze linedit f LO_Bias inaktiv
-            self.m["ifreq"] = self.m["wavheader"]['centerfreq'] + self.m["LO_offset"]
-            self.m["irate"] = self.m["wavheader"]['nSamplesPerSec']
-            self.m["timescaler"] = self.m["wavheader"]['nSamplesPerSec']*self.m["wavheader"]['nBlockAlign']
+
+
+            if "modulator" in self.m["device_ID_dict"]:
+                self.m["modulator"] = True
+                if self.m["device_ID_dict"]["modulator"] =="M":
+                    #self.activate_samplingparameters(True)
+                    self.m["f1"] = "no_file.dat"
+                    #gerenate dummy wavheader for modulator mode
+                    self.m["wavheader"]["wFormatTag"], self.m["wavheader"]['nBlockAlign'], self.m["wavheader"]['nBitsPerSample'] = 1, 2, 16
+
+                    if self.numeraltest(self.gui.lineEdit_playrec_LO.text(),self.LO_LOW,self.LO_HIGH,"LO value in recorder tab"):
+                        self.m["ifreq"] = int(1000*int(self.gui.lineEdit_playrec_LO.text()))
+                        self.m["irate"] = int(1000*int(self.gui.comboBox_playrec_targetSR.currentText()))
+                        self.m["wavheader"]['nSamplesPerSec'] = self.m["irate"]
+                        self.m["wavheader"]['nAvgBytesPerSec'] = self.m["irate"]*self.m["wavheader"]['nBlockAlign']
+                    else:
+                        return False
+            else:
+                self.m["modulator"] = False
+                self.m["ifreq"] = self.m["wavheader"]['centerfreq'] + self.m["LO_offset"]
+                self.m["irate"] = self.m["wavheader"]['nSamplesPerSec']
+                self.m["timescaler"] = self.m["wavheader"]['nSamplesPerSec']*self.m["wavheader"]['nBlockAlign']
 
             errorstate, value = self.playrec_c.checkSTEMLABrates()
             self.st = self.et
@@ -2272,6 +2418,7 @@ class playrec_v(QObject):
         """       
         errorstate = False
         value = ""
+        
         if mode == "mean":
             value = 1.5*np.std(np.abs(data))/normfactor/refvol
         elif mode == "crest":
@@ -2479,8 +2626,8 @@ class playrec_v(QObject):
         :return: True/False on successful/unsuccesful operation
         :rtype: bool
         """ 
-        #TODO: remove after tests:
-        #reftime = datetime.now()
+        if self.m["modulator"]:
+            return
         if not self.m["fileopened"]:
             return
         if increment == 0:

@@ -1,5 +1,5 @@
 """
-Created on Feb 09 2025
+Created on Jul2026
 
 #@author: scharfetter_admin
 """
@@ -67,7 +67,7 @@ class SDR_control(QObject):
                           "rate_type": "continuous",
                           "RX": False,
                           "TX": True,
-                          "device_name": "fl2k_plus",
+                          "device_name": "fl2k_modulator",
                           "device_ID": 1,
                           "max_IFREQ": 100000000,
                           "min_IFREQ": 0,
@@ -75,7 +75,7 @@ class SDR_control(QObject):
                           "connection_type": "USB",
                           "watchdog": True,
                           "volume_mode": "mean",
-                          "modulator": "P"}
+                          "modulator": "M"}
         #connection type USB_Vethernet is virtual, as the device in reality is USB but communication occurs via TCP to IP 127.0.0.1
         return(device_ID_dict)
 

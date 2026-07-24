@@ -383,6 +383,20 @@ class playrec_worker(QObject):
                     print(f"[fl2k_plus] m3u '{url}' has no playable entries – skipped.")
                     continue
 
+                # Filter out files that don't exist — otherwise ffmpeg starts,
+                # fails immediately, and lingers as a zombie until session end.
+                import os as _os
+                _valid = []
+                for _e in _entries:
+                    if _os.path.isfile(_e):
+                        _valid.append(_e)
+                    else:
+                        print(f"[fl2k_plus] WARNING: m3u entry not found, skipping: {_e}")
+                _entries = _valid
+                if not _entries:
+                    print(f"[fl2k_plus] m3u '{url}': no files found on disk – channel skipped.")
+                    continue
+
                 import tempfile as _tf
                 _cf = _tf.NamedTemporaryFile(
                     mode="w", suffix=".txt", prefix="fl2k_concat_",
