@@ -12,6 +12,9 @@ The C++ library resamples each stream to baseband_rate, AM-modulates it
 onto its carrier, sums all channels, upsamples to target_rate and feeds
 the FL2K DAC.
 
+Signal processing is performed by a cpp-library DspWorkerFLMod.cpp based on liquiddsp.
+This library was inspired by AMWaveSynth by radiolab81 (https://github.com/radiolab81/AMWaveSynth)
+
 CSV format (semicolon-separated, same as fl2k_plus):
   Frequenz;Bandbreite;Programmname;URL
   175 kHz;10.0 kHz;Canal Sud;http://91.224.148.160:8000/canalsud-live
