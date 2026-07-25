@@ -377,7 +377,8 @@ class auxiliaries():
 
     def fetch_configyaml(key):
         """
-        open config_wizard.yaml, read metadata, determine the entry with key 'key' with the value 'value' and return value
+        open config_wizard.yaml, read metadata, 
+        determine the entry with key 'key' with the value 'value' and return value
         :param : key: metadata dict key
         :type : str
         :raises : none

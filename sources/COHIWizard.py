@@ -1,4 +1,4 @@
-#Version 2.2.9
+#Version 2.3.0
 # -*- coding: utf-8 -*-logfile
 # For reducing to RFCorder: disable all modules except resample in the config_modules.yaml file
 #
@@ -572,6 +572,10 @@ class core_v(QObject):
         self.GUI_reset_status()
         self.gui = gui.gui
         self.gui.Mainwindowreference = gui
+        try:
+            self.gui.actionPlaylist_open.triggered.connect(self.cb_open_modulatorplaylist)
+        except:
+            pass
         self.gui.actionFile_open.triggered.connect(self.cb_open_file)
         self.gui.actionOverwrite_header.triggered.connect(self.send_overwrite_header)
         try:
@@ -637,6 +641,13 @@ class core_v(QObject):
             self.m["metadata"]["STM_IP_address"] = "000.000.000.000"
             #auxi.standard_infobox("configuration file does not yet exist, a basic file will be generated. Please configure the STEMLAB IP address before using the Player")
             self.m["metadata"]["recording_path"] = os.path.join(self.m["metadata"]["rootpath"], "out")
+            self.m["metadata"]["audio_base_port"] = 1234
+            self.m["metadata"]["audio_mix_level"] = 0.25
+            self.m["metadata"]["audio_mod_index"] = 0.8
+            self.m["metadata"]["audio_rate_hz"] = 12500
+            self.m["metadata"]["autoAGC_DspWorker"] = False
+            self.m["metadata"]["modulator_type"] =  "band_only"
+            self.m["metadata"]["gain_correction_fl2k_C"] =  0.25
             screen = QGuiApplication.primaryScreen()
             physical_size = screen.physicalSize()
             diagonal_inches = math.sqrt(physical_size.width()**2 + physical_size.height()**2) / 25.4
@@ -699,6 +710,7 @@ class core_v(QObject):
                             "HostAddress":self.m["HostAddress"], "LO_offset":self.m["LO_offset"]}
         self.m["f1"] = ""
         self.m["_log"] = False
+        self.m["modulator_playlist"] = ""
 
         # Create a custom logger
         # set level of Root-Logger to DEBUG
@@ -1030,10 +1042,12 @@ class core_v(QObject):
         """
         #self.m = {}
         self.m["my_filename"] = ""
+        self.m["modulator_playlist"] = ""
         self.m["ext"] = ""
         self.m["emergency_stop"] = False
         self.m["timescaler"] = 0
         self.m["fileopened"] = False
+        self.m["playlist_opened"] = False
         self.m["rates"] = {20000:0, 50000:1, 100000:2, 250000:3, 
                       500000:4, 1250000:5, 2500000:6}
         self.m["ifreq"] = 0
@@ -1145,6 +1159,67 @@ class core_v(QObject):
             else:
                 self.SigRelay.emit("cm_all_",["fileopened",True])
 
+    def cb_open_modulatorplaylist(self):
+        """ slot function for the playlist open action in the Menubar of the Main GUI. 
+        It checks some conditions for proper opening of a new audio streaming file; 
+        if all conditions are met PlaylistOpen() is called which does the detailed work
+        returns without action if a playthread is currently active; 
+        if a playlist file is open, the method asks if a new file should be opened (yes/no); returns on 'No'
+        The method relays the variable m["playlist_opened"] via the SigRelay signal to all other modules
+
+        :param: none
+        :returns: errorstate and value acc to standard
+        :type: Boolean, void
+        """
+        #TODO: check, if relaying is really necessary
+        errorstate = False
+        value = ""
+        #errorstate, value = auxi.fetch_configyaml("any key")
+
+        self.setactivity_tabs("all","activate",[])
+
+        if self.m["playthreadActive"] == True:
+            auxi.standard_errorbox("Player is currently active, no access to data file is possible; Please stop Player before new file access")
+            return False
+
+        self.SigRelay.emit("cm_playrec",["HostAddress",self.m["HostAddress"]])
+        
+        if self.m["playlist_opened"] is True:
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Question)
+            msg.setText("open new file")
+            msg.setInformativeText("you are about to open another playlist file. Current file will be closed; Do you want to proceed")
+            msg.setWindowTitle("FILE OPEN")
+            msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+            msg.buttonClicked.connect(self.popup)
+            msg.exec_()
+
+            if self.yesno == "&Yes":
+                errorstate, value = self.modulator_playlistOpen()
+                # if self.fileOpen() is False:
+                #     self.SigRelay.emit("cm_all_",["playlist_opened", False])
+                #     return False
+        else:
+            errorstate, value = self.modulator_playlistOpen()
+
+        if not errorstate and value == "":
+            self.SigRelay.emit("cm_all_",["playlist_opened",False])
+        elif not errorstate:
+            self.SigRelay.emit("cm_all_",["playlist_opened",True])
+            self.m["modulator_playlist"] = value
+            self.SigRelay.emit("cm_all_",["modulator_playlist",value])
+            auxi.update_configyaml("audioplaylist", value)
+            self.gui.label_csv_filename.setText(str(Path(value).stem) + str(Path(value).suffix))
+        if errorstate:
+            auxi.standard_errorbox(value)
+            self.logger.info(f'cb_open_audiofile: {value}')
+        else:
+            self.logger.info(f'cb_open_audiofile: playlistOpen error: {value}')
+
+        return errorstate, value  
+
+
+
     def popup(self,i):
         """
         """
@@ -1204,6 +1279,44 @@ class core_v(QObject):
         pass
 
     #@njit
+
+    def modulator_playlistOpen(self):
+        """
+        acquires info about file to be opened and returns the filename to be opened
+        
+        :params: none
+        :type: none
+        :returns: errorstate, value
+        :type: Boolean, string
+        """
+        
+        errorstate = False
+        value = ""
+        keyerror, keyvalue = auxi.fetch_configyaml("last_modulator_playlist_path")
+        filters = "playlist csv files (*.csv);;"
+        selected_filter = "playlist csv files (*.csv)"
+
+        if not keyerror:
+            filenamelist =  QtWidgets.QFileDialog.getOpenFileName(gui,
+                                    "Open playlist csv file"
+                                     ,keyvalue , filters, selected_filter)
+
+        else:
+            filenamelist =  QtWidgets.QFileDialog.getOpenFileName(gui,
+                                    "Open playlist csv file"
+                                    ,os.getcwd() , filters, selected_filter)
+
+        value = filenamelist[0]
+        playlist_path = str(Path(str(value)).parent)
+        auxi.update_configyaml("last_modulator_playlist_path",playlist_path)
+        if errorstate:
+            auxi.standard_errorbox(value)
+            self.logger.info(f'cb_open_audiofile: {value}')
+        else:
+            self.logger.info(f'cb_open_audiofile: playlistOpen error: {value}')
+        return errorstate, value
+
+        
     def fileOpen(self):   #TODO: shift to controller
 
         '''
@@ -1228,8 +1341,6 @@ class core_v(QObject):
         :type: none
         :returns: True, if successful, False otherwise
         :type: Boolean
-
-        .. image:: ../../source/images/fileopen.svg
 
         '''
 
@@ -1811,7 +1922,7 @@ if __name__ == '__main__':
         xcore_v.logger.debug("startup Tab not defined in configuration file config_wizard.yaml")
         xcore_v.gui.tabWidget.setCurrentIndex(0)
     xcore_v.timethread.start()
-    print("COHIWIzard Version 2.2.9 , 24-07-2026, (C) Hermann Scharfetter")
+    print("COHIWIzard Version 2.3.0 , 25-07-2026, (C) Hermann Scharfetter")
 
 
 

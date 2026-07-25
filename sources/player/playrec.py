@@ -69,6 +69,7 @@ class playrec_m(QObject):
         self.mdl["Reset_AGC"] = True
         self.mdl["skinhandler"] = []
         self.mdl["modulator"] = False
+        self.mdl["modulator_playlist"] = ""
         # Create a custom logger
         logging.getLogger().setLevel(logging.DEBUG)
         self.logger = logging.getLogger(__name__)
@@ -1302,105 +1303,111 @@ class playrec_v(QObject):
                 self.m["modulator_type"] = "all"
         else:
             self.m["modulator_type"] = "all"
-            
-        for ix, cf in enumerate(self.m["devicelist"]):
+        self.modulator_type_handler()
 
-            ###TODO: test / check after 24-07-2026 after implementing modulator_listselected(self,cf) instead of repetitions of same code
-            if self.m["modulator_type"] == "all" and not (cf.find("__") == 0):
-                boxix = self.modulator_listselected(cf,boxix)
-            if self.m["modulator_type"] == "audio_only" and cf.endswith("_modulator") and not (cf.find("__") == 0 ):
-                boxix = self.modulator_listselected(cf,boxix)
-            if self.m["modulator_type"] == "band_and_audio" and cf.endswith("_plus") and not (cf.find("__") == 0 ):
-                boxix = self.modulator_listselected(cf,boxix)
-            if self.m["modulator_type"] == "band_only" and not (cf.endswith("_modulator") or cf.endswith("_plus") or (cf.find("__") == 0 )):
-                boxix = self.modulator_listselected(cf,boxix)
-                #import playrec_worker classes
-                # full_module_path = f"dev_drivers.{cf}.cohi_playrecworker"                
-                # try:
-                #     self.m["imported_device_modules"].append(importlib.import_module(full_module_path))
-                #     # import SDRcontrol classes
-                #     full_module_path = f"dev_drivers.{cf}.SDR_control"
-                #     self.m["imported_sdr_controllers"].append(importlib.import_module(full_module_path))
-                #     #text = self.gui.comboBox_playrec_targetSR_2.currentText()
-                #     #set SDR choice combobox to stemlab 125-14
-                #     if cf.find("stemlab_125_14") == 0 and cf == "stemlab_125_14":
-                #         self.m["currentSDRindex"] = boxix
-                #         self.m["standardSDRindex"] = boxix
-                #     boxix += 1
-                #     self.gui.comboBox_stemlab.addItem(str(cf)) #shifted from (***)
-                # except:
-                #     print(f"module {cf} not in driver list, will be ignored")
-                #     messagetext = f"Hardware driver {cf} cannot be activated.\n\
-                #     Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
-                #     COHIWizard will still be operative for all other correctly installed hardware devices"
-                #     dontshowlabel = f"dontshow{cf}"
-                #     if dontshowlabel not in self.metadata.keys():
-                #         checkboxtext = "Don't show this message again"
-                #         ok_pressed, dont_show_again = auxi.show_infobox_withcheck(messagetext, checkboxtext)
-                #         if dont_show_again:
-                #             try:
-                #                 self.metadata[dontshowlabel] = True 
-                #                 stream = open("config_wizard.yaml", "w")
-                #                 yaml.dump(self.metadata, stream)
-                #                 stream.close()
-                #             except:
-                #                 self.logger.error("playrec: 'dont show' labelling: cannot write metadata")
-                #                 pass
+        # for ix, cf in enumerate(self.m["devicelist"]):
 
-                # #import playrec_worker classes
-                # full_module_path = f"dev_drivers.{cf}.cohi_playrecworker"                
-                # try:
-                #     self.m["imported_device_modules"].append(importlib.import_module(full_module_path))
-                #     # import SDRcontrol classes
-                #     full_module_path = f"dev_drivers.{cf}.SDR_control"
-                #     self.m["imported_sdr_controllers"].append(importlib.import_module(full_module_path))
-                #     #text = self.gui.comboBox_playrec_targetSR_2.currentText()
-                #     #set SDR choice combobox to stemlab 125-14
-                #     if cf.find("stemlab_125_14") == 0 and cf == "stemlab_125_14":
-                #         self.m["currentSDRindex"] = boxix
-                #         self.m["standardSDRindex"] = boxix
-                #     boxix += 1
-                #     self.gui.comboBox_stemlab.addItem(str(cf)) #shifted from (***)
-                # except:
-                #     print(f"module {cf} not in driver list, will be ignored")
-                #     messagetext = f"Hardware driver {cf} cannot be activated.\n\
-                #     Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
-                #     COHIWizard will still be operative for all other correctly installed hardware devices"
-                #     dontshowlabel = f"dontshow{cf}"
-                #     if dontshowlabel not in self.metadata.keys():
-                #         checkboxtext = "Don't show this message again"
-                #         ok_pressed, dont_show_again = auxi.show_infobox_withcheck(messagetext, checkboxtext)
-                #         if dont_show_again:
-                #             try:
-                #                 self.metadata[dontshowlabel] = True 
-                #                 stream = open("config_wizard.yaml", "w")
-                #                 yaml.dump(self.metadata, stream)
-                #                 stream.close()
-                #             except:
-                #                 self.logger.error("playrec: 'dont show' labelling: cannot write metadata")
-                #                 pass
+        #     ###TODO: test / check after 24-07-2026 after implementing modulator_listselected(self,cf) instead of repetitions of same code
+        #     if self.m["modulator_type"] == "all" and not (cf.find("__") == 0):
+        #         boxix = self.modulator_listselected(cf,boxix)
+        #     if self.m["modulator_type"] == "audio_only" and cf.endswith("_modulator") and not (cf.find("__") == 0 ):
+        #         boxix = self.modulator_listselected(cf,boxix)
+        #     if self.m["modulator_type"] == "band_and_audio" and cf.endswith("_plus") and not (cf.find("__") == 0 ):
+        #         boxix = self.modulator_listselected(cf,boxix)
+        #     if self.m["modulator_type"] == "band_only" and not (cf.endswith("_modulator") or cf.endswith("_plus") or (cf.find("__") == 0 )):
+        #         boxix = self.modulator_listselected(cf,boxix)
+        #         #import playrec_worker classes
+        #         # full_module_path = f"dev_drivers.{cf}.cohi_playrecworker"                
+        #         # try:
+        #         #     self.m["imported_device_modules"].append(importlib.import_module(full_module_path))
+        #         #     # import SDRcontrol classes
+        #         #     full_module_path = f"dev_drivers.{cf}.SDR_control"
+        #         #     self.m["imported_sdr_controllers"].append(importlib.import_module(full_module_path))
+        #         #     #text = self.gui.comboBox_playrec_targetSR_2.currentText()
+        #         #     #set SDR choice combobox to stemlab 125-14
+        #         #     if cf.find("stemlab_125_14") == 0 and cf == "stemlab_125_14":
+        #         #         self.m["currentSDRindex"] = boxix
+        #         #         self.m["standardSDRindex"] = boxix
+        #         #     boxix += 1
+        #         #     self.gui.comboBox_stemlab.addItem(str(cf)) #shifted from (***)
+        #         # except:
+        #         #     print(f"module {cf} not in driver list, will be ignored")
+        #         #     messagetext = f"Hardware driver {cf} cannot be activated.\n\
+        #         #     Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
+        #         #     COHIWizard will still be operative for all other correctly installed hardware devices"
+        #         #     dontshowlabel = f"dontshow{cf}"
+        #         #     if dontshowlabel not in self.metadata.keys():
+        #         #         checkboxtext = "Don't show this message again"
+        #         #         ok_pressed, dont_show_again = auxi.show_infobox_withcheck(messagetext, checkboxtext)
+        #         #         if dont_show_again:
+        #         #             try:
+        #         #                 self.metadata[dontshowlabel] = True 
+        #         #                 stream = open("config_wizard.yaml", "w")
+        #         #                 yaml.dump(self.metadata, stream)
+        #         #                 stream.close()
+        #         #             except:
+        #         #                 self.logger.error("playrec: 'dont show' labelling: cannot write metadata")
+        #         #                 pass
+
+        #         # #import playrec_worker classes
+        #         # full_module_path = f"dev_drivers.{cf}.cohi_playrecworker"                
+        #         # try:
+        #         #     self.m["imported_device_modules"].append(importlib.import_module(full_module_path))
+        #         #     # import SDRcontrol classes
+        #         #     full_module_path = f"dev_drivers.{cf}.SDR_control"
+        #         #     self.m["imported_sdr_controllers"].append(importlib.import_module(full_module_path))
+        #         #     #text = self.gui.comboBox_playrec_targetSR_2.currentText()
+        #         #     #set SDR choice combobox to stemlab 125-14
+        #         #     if cf.find("stemlab_125_14") == 0 and cf == "stemlab_125_14":
+        #         #         self.m["currentSDRindex"] = boxix
+        #         #         self.m["standardSDRindex"] = boxix
+        #         #     boxix += 1
+        #         #     self.gui.comboBox_stemlab.addItem(str(cf)) #shifted from (***)
+        #         # except:
+        #         #     print(f"module {cf} not in driver list, will be ignored")
+        #         #     messagetext = f"Hardware driver {cf} cannot be activated.\n\
+        #         #     Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
+        #         #     COHIWizard will still be operative for all other correctly installed hardware devices"
+        #         #     dontshowlabel = f"dontshow{cf}"
+        #         #     if dontshowlabel not in self.metadata.keys():
+        #         #         checkboxtext = "Don't show this message again"
+        #         #         ok_pressed, dont_show_again = auxi.show_infobox_withcheck(messagetext, checkboxtext)
+        #         #         if dont_show_again:
+        #         #             try:
+        #         #                 self.metadata[dontshowlabel] = True 
+        #         #                 stream = open("config_wizard.yaml", "w")
+        #         #                 yaml.dump(self.metadata, stream)
+        #         #                 stream.close()
+        #         #             except:
+        #         #                 self.logger.error("playrec: 'dont show' labelling: cannot write metadata")
+        #         #                 pass
 
 
-                    # auxi.standard_infobox(f"Hardware driver {cf} cannot be activated.\n\
-                    # Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
-                    # COHIWizard will still be operative for all other correctly installed hardware devices")
-                    #auxi.standard_errorbox(f"Hardware driver {cf} cannot be activated.\n\
-                    #Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
-                    #COHIWizard will still be operative for all other correctly installed hardware devices")
+        #             # auxi.standard_infobox(f"Hardware driver {cf} cannot be activated.\n\
+        #             # Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
+        #             # COHIWizard will still be operative for all other correctly installed hardware devices")
+        #             #auxi.standard_errorbox(f"Hardware driver {cf} cannot be activated.\n\
+        #             #Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
+        #             #COHIWizard will still be operative for all other correctly installed hardware devices")
         
-        error,value = auxi.fetch_configyaml("last_device")
-        if not error:
-            self.m["currentSDRindex"] = value
-        else:
-            pass
-            #auxi.standard_errorbox(value)
+        # error,value = auxi.fetch_configyaml("last_device")
+        # if not error:
+        #     self.m["currentSDRindex"] = value
+        # else:
+        #     pass
+        #     #auxi.standard_errorbox(value)
 
-        self.gui.comboBox_stemlab.setCurrentIndex(self.m["currentSDRindex"])
+        # self.gui.comboBox_stemlab.setCurrentIndex(self.m["currentSDRindex"])
 
         #instantiate stemlab control
         #self.playrec_c.instantiate_SDRcontrol(self.m["currentSDRindex"])
         self.gui.comboBox_stemlab.currentIndexChanged.connect(self.sdrdevice_changehandler)
         self.sdrdevice_changehandler()
+        try:
+            self.gui.comboBox_modulator_type.currentIndexChanged.connect(self.modulatortype_changehandler)
+        except:
+            pass
+        #self.modulatortype_changehandler()
         # now self.m["SDRcontrol"] is the same as stemlab_control
             #cohi_playrecworker
             #from dev_drivers.fl2k import cohi_playrecworker
@@ -1471,6 +1478,33 @@ class playrec_v(QObject):
     #         logger.debug(f"dynamic import: Error importing {module} from {directory}: {e}")
 
 
+    def modulator_type_handler(self):
+        """
+        handles filling of the device combobox according to the value of self.m["modulator_type"]
+        
+        """
+        boxix = 0
+        for ix, cf in enumerate(self.m["devicelist"]):
+
+            ###TODO: test / check after 24-07-2026 after implementing modulator_listselected(self,cf) instead of repetitions of same code
+            if self.m["modulator_type"] == "all" and not (cf.find("__") == 0):
+                boxix = self.modulator_listselected(cf,boxix)
+            if self.m["modulator_type"] == "audio_only" and cf.endswith("_modulator") and not (cf.find("__") == 0 ):
+                boxix = self.modulator_listselected(cf,boxix)
+            if self.m["modulator_type"] == "band_and_audio" and cf.endswith("_plus") and not (cf.find("__") == 0 ):
+                boxix = self.modulator_listselected(cf,boxix)
+            if self.m["modulator_type"] == "band_only" and not (cf.endswith("_modulator") or cf.endswith("_plus") or (cf.find("__") == 0 )):
+                boxix = self.modulator_listselected(cf,boxix)
+
+        error,value = auxi.fetch_configyaml("last_device")
+        if not error:
+            self.m["currentSDRindex"] = value
+        else:
+            pass
+            #auxi.standard_errorbox(value)
+
+        self.gui.comboBox_stemlab.setCurrentIndex(self.m["currentSDRindex"])
+
     def togglelogfilehandler(self):
         if self.gui.playrec_radioButtonpushButton_write_logfile.isChecked():  #TODO TODO: should be task of the playrec module ??
             self.logger.setLevel(logging.DEBUG)
@@ -1495,6 +1529,9 @@ class playrec_v(QObject):
         
     def sdrdevice_changehandler(self):
         QTimer.singleShot(0, self.process_combobox_change)
+
+    def modulatortype_changehandler(self):
+        QTimer.singleShot(0, self.process_combobox_modulator_change)
 
     def playgroup_activate(self,value):
         """activates or inactivates GUI elements of the Playback functions based on
@@ -1555,6 +1592,39 @@ class playrec_v(QObject):
         self.gui.playrec_label_RECSTART.setEnabled(value)
         self.gui.playrec_label_REC_duration.setEnabled(value)
         self.gui.label_35.setEnabled(value)
+
+    def process_combobox_modulator_change(self):
+        """handles change of modulator type in combobox
+        (1) sets the modulator_type in self.m["modulator_type"]
+        :param: none
+        :type: none
+        ...
+        :raises: none
+        ...
+        :return: errorstate, value; in case of error, value contains error message, else device ID dict
+        :rtype: bool, str
+        """
+        errorstate = False
+        value = ""
+
+        self.m["imported_device_modules"] = []
+        self.m["imported_sdr_controllers"] = []
+
+        modulatorindex = self.gui.comboBox_modulator_type.currentIndex()
+        if modulatorindex == 0:
+            self.m["modulator_type"] = "band_only"
+            self.modulator_type_handler()
+        if modulatorindex == 1:
+            self.m["modulator_type"] = "band_and_audio"
+            self.modulator_type_handler()
+        if modulatorindex == 2:
+            self.m["modulator_type"] = "audio_only"
+      
+        #if self.m["modulator_type"] = "all" and not (cf.find("__") == 0):
+        auxi.update_configyaml("modulator_type",self.m["modulator_type"])
+        self.gui.comboBox_stemlab.clear()
+        self.modulator_type_handler()
+
 
     def process_combobox_change(self):
         """handles change of SDR device in combobox
@@ -2015,7 +2085,7 @@ class playrec_v(QObject):
             if not self.gui.lineEdit_IPAddress.isReadOnly():
                 auxi.standard_errorbox("IP address has not been saved yet, please press 'save IP address' and hence confirm the validity of the address ! ")
                 return False
-            if "modulator" in self.m["device_ID_dict"]:
+            if "modulator" in self.m["device_ID_dict"] and self.m["device_ID_dict"]["modulator"] =="M":
                 self.m["fileopened"] = True
 
             if not self.m["fileopened"]:
@@ -2069,11 +2139,23 @@ class playrec_v(QObject):
                         self.m["wavheader"]['nAvgBytesPerSec'] = self.m["irate"]*self.m["wavheader"]['nBlockAlign']
                     else:
                         return False
+                if self.m["device_ID_dict"]["modulator"] =="P":
+                    self.m["ifreq"] = self.m["wavheader"]['centerfreq'] + self.m["LO_offset"]
+                    self.m["irate"] = self.m["wavheader"]['nSamplesPerSec']
+                    self.m["timescaler"] = self.m["wavheader"]['nSamplesPerSec']*self.m["wavheader"]['nBlockAlign']
+
             else:
                 self.m["modulator"] = False
                 self.m["ifreq"] = self.m["wavheader"]['centerfreq'] + self.m["LO_offset"]
                 self.m["irate"] = self.m["wavheader"]['nSamplesPerSec']
                 self.m["timescaler"] = self.m["wavheader"]['nSamplesPerSec']*self.m["wavheader"]['nBlockAlign']
+
+            if self.m["modulator_type"] != "band_only" and not os.path.exists(self.m["modulator_playlist"]):
+                auxi.standard_errorbox("playlist csv file must be opened before playing") #TODO TODO TODO: good errorhandling with errorstate, value; errorhandler
+                # restore automatic call of fileopen in this case
+                #core_v.cb_open_modulatorplaylist() TODO: relaying command
+                self.reset_playerbuttongroup()
+                return False
 
             errorstate, value = self.playrec_c.checkSTEMLABrates()
             self.st = self.et
@@ -2335,6 +2417,7 @@ class playrec_v(QObject):
         self.gui.label_32.setEnabled(False)
         self.m["playlist_active"] = False
         self.gui.lineEditCurTime.setText("")
+        self.gui.label_csv_filename.setText("")
 
     def indicate_bufoverflow(self):
         """_indicate if during recording a buffer underflow occurred
