@@ -1295,7 +1295,9 @@ class playrec_v(QObject):
         #self.mdl["devicelist"] = os.listdir(os.path.join(os.getcwd(), "dev_drivers"))
         boxix = 0
         auxl = len(self.m["devicelist"])
-        error,value = auxi.fetch_configyaml("modulator_type")
+
+        
+        error,value = auxi.fetch_configyaml("last_modulator_type")
         #read modulator type from config-file, if not present, set to "all" and write to config-file
         if not error:
             self.m["modulator_type"] = value
@@ -1305,102 +1307,37 @@ class playrec_v(QObject):
             self.m["modulator_type"] = "all"
         self.modulator_type_handler()
 
-        # for ix, cf in enumerate(self.m["devicelist"]):
 
-        #     ###TODO: test / check after 24-07-2026 after implementing modulator_listselected(self,cf) instead of repetitions of same code
-        #     if self.m["modulator_type"] == "all" and not (cf.find("__") == 0):
-        #         boxix = self.modulator_listselected(cf,boxix)
-        #     if self.m["modulator_type"] == "audio_only" and cf.endswith("_modulator") and not (cf.find("__") == 0 ):
-        #         boxix = self.modulator_listselected(cf,boxix)
-        #     if self.m["modulator_type"] == "band_and_audio" and cf.endswith("_plus") and not (cf.find("__") == 0 ):
-        #         boxix = self.modulator_listselected(cf,boxix)
-        #     if self.m["modulator_type"] == "band_only" and not (cf.endswith("_modulator") or cf.endswith("_plus") or (cf.find("__") == 0 )):
-        #         boxix = self.modulator_listselected(cf,boxix)
-        #         #import playrec_worker classes
-        #         # full_module_path = f"dev_drivers.{cf}.cohi_playrecworker"                
-        #         # try:
-        #         #     self.m["imported_device_modules"].append(importlib.import_module(full_module_path))
-        #         #     # import SDRcontrol classes
-        #         #     full_module_path = f"dev_drivers.{cf}.SDR_control"
-        #         #     self.m["imported_sdr_controllers"].append(importlib.import_module(full_module_path))
-        #         #     #text = self.gui.comboBox_playrec_targetSR_2.currentText()
-        #         #     #set SDR choice combobox to stemlab 125-14
-        #         #     if cf.find("stemlab_125_14") == 0 and cf == "stemlab_125_14":
-        #         #         self.m["currentSDRindex"] = boxix
-        #         #         self.m["standardSDRindex"] = boxix
-        #         #     boxix += 1
-        #         #     self.gui.comboBox_stemlab.addItem(str(cf)) #shifted from (***)
-        #         # except:
-        #         #     print(f"module {cf} not in driver list, will be ignored")
-        #         #     messagetext = f"Hardware driver {cf} cannot be activated.\n\
-        #         #     Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
-        #         #     COHIWizard will still be operative for all other correctly installed hardware devices"
-        #         #     dontshowlabel = f"dontshow{cf}"
-        #         #     if dontshowlabel not in self.metadata.keys():
-        #         #         checkboxtext = "Don't show this message again"
-        #         #         ok_pressed, dont_show_again = auxi.show_infobox_withcheck(messagetext, checkboxtext)
-        #         #         if dont_show_again:
-        #         #             try:
-        #         #                 self.metadata[dontshowlabel] = True 
-        #         #                 stream = open("config_wizard.yaml", "w")
-        #         #                 yaml.dump(self.metadata, stream)
-        #         #                 stream.close()
-        #         #             except:
-        #         #                 self.logger.error("playrec: 'dont show' labelling: cannot write metadata")
-        #         #                 pass
-
-        #         # #import playrec_worker classes
-        #         # full_module_path = f"dev_drivers.{cf}.cohi_playrecworker"                
-        #         # try:
-        #         #     self.m["imported_device_modules"].append(importlib.import_module(full_module_path))
-        #         #     # import SDRcontrol classes
-        #         #     full_module_path = f"dev_drivers.{cf}.SDR_control"
-        #         #     self.m["imported_sdr_controllers"].append(importlib.import_module(full_module_path))
-        #         #     #text = self.gui.comboBox_playrec_targetSR_2.currentText()
-        #         #     #set SDR choice combobox to stemlab 125-14
-        #         #     if cf.find("stemlab_125_14") == 0 and cf == "stemlab_125_14":
-        #         #         self.m["currentSDRindex"] = boxix
-        #         #         self.m["standardSDRindex"] = boxix
-        #         #     boxix += 1
-        #         #     self.gui.comboBox_stemlab.addItem(str(cf)) #shifted from (***)
-        #         # except:
-        #         #     print(f"module {cf} not in driver list, will be ignored")
-        #         #     messagetext = f"Hardware driver {cf} cannot be activated.\n\
-        #         #     Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
-        #         #     COHIWizard will still be operative for all other correctly installed hardware devices"
-        #         #     dontshowlabel = f"dontshow{cf}"
-        #         #     if dontshowlabel not in self.metadata.keys():
-        #         #         checkboxtext = "Don't show this message again"
-        #         #         ok_pressed, dont_show_again = auxi.show_infobox_withcheck(messagetext, checkboxtext)
-        #         #         if dont_show_again:
-        #         #             try:
-        #         #                 self.metadata[dontshowlabel] = True 
-        #         #                 stream = open("config_wizard.yaml", "w")
-        #         #                 yaml.dump(self.metadata, stream)
-        #         #                 stream.close()
-        #         #             except:
-        #         #                 self.logger.error("playrec: 'dont show' labelling: cannot write metadata")
-        #         #                 pass
-
-
-        #             # auxi.standard_infobox(f"Hardware driver {cf} cannot be activated.\n\
-        #             # Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
-        #             # COHIWizard will still be operative for all other correctly installed hardware devices")
-        #             #auxi.standard_errorbox(f"Hardware driver {cf} cannot be activated.\n\
-        #             #Please check, if you need to install some additional software components (in case of ADALM2000 e.g. the libm2k library)\n\
-        #             #COHIWizard will still be operative for all other correctly installed hardware devices")
-        
-        # error,value = auxi.fetch_configyaml("last_device")
-        # if not error:
-        #     self.m["currentSDRindex"] = value
-        # else:
+        # try:
+        #     error,value = auxi.fetch_configyaml("last_modulator_type")
+        #     if not error:
+        #         self.m["modulator_type"] = value
+        #     else:
+        #         pass
+        # except:
         #     pass
-        #     #auxi.standard_errorbox(value)
 
-        # self.gui.comboBox_stemlab.setCurrentIndex(self.m["currentSDRindex"])
 
-        #instantiate stemlab control
-        #self.playrec_c.instantiate_SDRcontrol(self.m["currentSDRindex"])
+        #auxi.update_configyaml("last_modulator_type",self.m["modulator_type"])
+        #self.gui.comboBox_stemlab.clear()
+        ################TODO CHECK: new to be tested
+        try:
+            error,value = auxi.fetch_configyaml("last_device")
+            if not error:
+                self.m["currentSDRindex"] = value
+            else:
+                pass
+            #auxi.standard_errorbox(value)
+        except:
+            pass
+        
+        #self.modulator_type_handler()
+        modulator_types = ["band_only","band_and_audio","audio_only","all"]
+        modulator_index = modulator_types.index(self.m["modulator_type"])
+        self.gui.comboBox_modulator_type.setCurrentIndex(modulator_index)
+
+        self.gui.comboBox_stemlab.setCurrentIndex(self.m["currentSDRindex"])
+
         self.gui.comboBox_stemlab.currentIndexChanged.connect(self.sdrdevice_changehandler)
         self.sdrdevice_changehandler()
         try:
@@ -1483,6 +1420,7 @@ class playrec_v(QObject):
         handles filling of the device combobox according to the value of self.m["modulator_type"]
         
         """
+        self.gui.comboBox_stemlab.clear()
         boxix = 0
         for ix, cf in enumerate(self.m["devicelist"]):
 
@@ -1496,14 +1434,16 @@ class playrec_v(QObject):
             if self.m["modulator_type"] == "band_only" and not (cf.endswith("_modulator") or cf.endswith("_plus") or (cf.find("__") == 0 )):
                 boxix = self.modulator_listselected(cf,boxix)
 
-        error,value = auxi.fetch_configyaml("last_device")
-        if not error:
-            self.m["currentSDRindex"] = value
-        else:
-            pass
-            #auxi.standard_errorbox(value)
 
-        self.gui.comboBox_stemlab.setCurrentIndex(self.m["currentSDRindex"])
+        # error,value = auxi.fetch_configyaml("last_device")
+        
+        # if not error:
+        #     self.m["currentSDRindex"] = value
+        # else:
+        #     pass
+        #     #auxi.standard_errorbox(value)
+
+        # self.gui.comboBox_stemlab.setCurrentIndex(self.m["currentSDRindex"])
 
     def togglelogfilehandler(self):
         if self.gui.playrec_radioButtonpushButton_write_logfile.isChecked():  #TODO TODO: should be task of the playrec module ??
@@ -1621,9 +1561,11 @@ class playrec_v(QObject):
             self.m["modulator_type"] = "audio_only"
       
         #if self.m["modulator_type"] = "all" and not (cf.find("__") == 0):
-        auxi.update_configyaml("modulator_type",self.m["modulator_type"])
+        auxi.update_configyaml("last_modulator_type",self.m["modulator_type"])
         self.gui.comboBox_stemlab.clear()
         self.modulator_type_handler()
+
+
 
 
     def process_combobox_change(self):
