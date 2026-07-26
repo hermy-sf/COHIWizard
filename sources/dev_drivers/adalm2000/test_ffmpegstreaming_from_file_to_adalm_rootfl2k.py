@@ -157,7 +157,7 @@ def stream_to_fl2k_file(input_file, target_sampling_rate, targetfile_path, buffe
     print("DONE")
 
 # Beispielaufruf
-fl2k_file_path = os.path.join(os.getcwd(),"dev_drivers/fl2k_stream/osmo-fl2k-64bit-20250105", "fl2k_file.exe")
+fl2k_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "__osmo-fl2k-64bit-20250105", "fl2k_file.exe")
 
 #ADALM:
 sourcefile_path = 'C:/Users/scharfetter_admin/Documents/COHIRADIA/Data/SDR_Testaufzeichnungen/A_gaincorrSDRuno_20220910_095058Z_1125kHz.wav'

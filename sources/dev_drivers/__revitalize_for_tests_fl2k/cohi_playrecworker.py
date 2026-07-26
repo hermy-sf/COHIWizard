@@ -244,7 +244,7 @@ class playrec_worker(QObject):
         #TODO TODO: target samplingrate von aussen übernehm,en
         print(f"play_loop_filelist, sampling_rate: {sampling_rate}")
         #sampling_rate = sSR
-        fl2k_file_path = os.path.join(os.getcwd(),"dev_drivers/fl2k/osmo-fl2k-64bit-20250105", "fl2k_file.exe")
+        fl2k_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "__osmo-fl2k-64bit-20250105", "fl2k_file.exe")
         #print(f"cohi_playrecworker fl2k_file_path exists: {os.path.exists(fl2k_file_path)}")
         if not TEST:
             if os.name.find("posix") >= 0:

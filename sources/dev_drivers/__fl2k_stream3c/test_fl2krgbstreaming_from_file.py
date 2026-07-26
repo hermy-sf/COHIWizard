@@ -167,7 +167,7 @@ def stream_to_fl2k_file(input_file, target_sampling_rate, buffer_size=4096, fl2k
 
 # Beispielaufruf
 #TODO TODO: filepath f fl2krgb anpassen
-fl2k_file_path = os.path.join(os.getcwd(),"dev_drivers/fl2k_stream/osmo-fl2k-64bit-20250105", "fl2k_file.exe")
+fl2k_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "__osmo-fl2k-64bit-20250105", "fl2k_file.exe")
 
 SDRpath = "C:/Users/scharfetter_admin/Documents/MW_Aufzeichnungen/COHIRADIA/Softwareentwicklung/COHIRADIA_RFCorder/COHIRADIA_RFCorder"
 filename = 'out8_20250118_224441_1100kHz.wav'

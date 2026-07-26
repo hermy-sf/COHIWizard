@@ -10,12 +10,16 @@ from socket import socket, AF_INET, SOCK_STREAM
 from struct import unpack
 import numpy as np
 import os
-import signal 
+import signal
 import psutil
 import subprocess
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_OSMO_DIR = os.path.normpath(os.path.join(_HERE, "..", "__osmo-fl2k-64bit-20250105"))
+_FL2K_FILE_EXE = os.path.join(_OSMO_DIR, "fl2k_file.exe")
 
 
 class playrec_worker(QObject):
@@ -142,7 +146,7 @@ class playrec_worker(QObject):
         tSR = min(100000000,tSR)
         format = self.get_formattag()
         a = (np.tan(np.pi * lo_shift / tSR) - 1) / (np.tan(np.pi * lo_shift / tSR) + 1)
-        fl2k_file_path = os.path.join(os.getcwd(),"dev_drivers/fl2k/osmo-fl2k-64bit-20250105", "fl2k_file.exe")
+        fl2k_file_path = _FL2K_FILE_EXE
         ffmpeg_file_path = os.path.join(os.getcwd(),"ffmpeg-master-latest-win64-gpl-shared/bin", "ffmpeg.exe")
         #TODO: check evaluation criterion if appropriate
         stability_criterion = (np.mod(np.log2(tSR/sampling_rate),1) == 0) or sampling_rate < 500001
@@ -597,7 +601,11 @@ class playrec_worker(QObject):
         else:
             print("check_ready_fl2k: WINDOWS: try popen fl2k")
             try:
-                fl2k_file_path = os.path.join(os.getcwd(),"dev_drivers/fl2k/osmo-fl2k-64bit-20250105", "fl2k_file.exe")
+                fl2k_file_path = _FL2K_FILE_EXE
+                if not os.path.isfile(fl2k_file_path):
+                    value = f"fl2k_file.exe nicht gefunden in {_OSMO_DIR}"
+                    errorstate = True
+                    return(errorstate, value)
                 fl2k_process = subprocess.Popen(
                     [fl2k_file_path, "-s", str(tSR), "-r", "0", "-"],
                     stdin=subprocess.PIPE,

@@ -219,5 +219,5 @@ def stream_to_fl2k_file(input_file, target_sampling_rate, buffer_size=4096, fl2k
     print("DONE")
 
 # Beispielaufruf
-fl2k_file_path = os.path.join(os.getcwd(),"dev_drivers/fl2k_stream/osmo-fl2k-64bit-20250105", "fl2k_file.exe")
+fl2k_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "__osmo-fl2k-64bit-20250105", "fl2k_file.exe")
 stream_to_fl2k_file('SDRuno_20220910_095058Z_1125kHz.wav', 10000000, 4096*256*16*8, fl2k_file_path)
