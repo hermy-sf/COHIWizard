@@ -483,22 +483,24 @@ class playrec_worker(QObject):
         else:
             print("[fl2k_mod] No audioplaylist configured – silence mode.")
 
-        # ---- Baseband rate: auto from carrier span, yaml override if set ----
+        # ---- Baseband rate: GUI selection is the enforced minimum ----
+        _bb_rate_min = float(config.get("irate", 1_250_000.0))
+
         if _bb_rate_yaml > 0:
-            _bb_rate = _bb_rate_yaml
+            _bb_rate = max(_bb_rate_yaml, _bb_rate_min)
         elif _stations:
             _s_freqs   = [s["freq_hz"] for s in _stations]
             _s_bws     = [s["bw_hz"]   for s in _stations]
             _band_span = max(_s_freqs) - min(_s_freqs) if len(_stations) > 1 else 0.0
             # Required span: carrier spread + LO_offset asymmetry + audio guard band (×1.2)
             _min_bb    = (_band_span + 2.0 * abs(_lo_offset) + 2.0 * max(_s_bws)) * 1.2
-            # Largest integer divisor of 10 MS/s that keeps _bb_rate >= _min_bb; cap ratio at 32
-            _ratio     = min(32, max(1, int(10_000_000 / _min_bb)))
-            _bb_rate   = 10_000_000.0 / _ratio
+            _ratio     = min(8, max(1, int(10_000_000 / _min_bb)))
+            _bb_rate   = max(10_000_000.0 / _ratio, _bb_rate_min)
+            _ratio     = int(10_000_000 / _bb_rate)
             print(f"[fl2k_mod] auto bb_rate: span={_band_span/1e3:.0f} kHz  "
                   f"ratio={_ratio} → {_bb_rate/1e3:.0f} kHz")
         else:
-            _bb_rate = 1_250_000.0
+            _bb_rate = _bb_rate_min
 
         # target_rate: smallest multiple of 10 MS/s that covers the band
         tSR = 10_000_000 * (1 + int((center_freq + _bb_rate / 2) * 2 / 10_000_000))

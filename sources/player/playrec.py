@@ -271,7 +271,6 @@ class playrec_c(QObject):
             errorstate = True
         if device_ID_dict["rate_type"] == "discrete":
             if self.m["irate"] not in device_ID_dict["rates"]:
-            #TODO Device replace by: if self.m["irate"] not in device_ID_dict["rates"]:
                 value = "The sample rate of this file is inappropriate for the device " + device_ID_dict["device_name"] + "\n \n Please check if it is an SDR wav File (not audio) and what TX device it is meant for. \n \n" + \
                 "YOU MAY USE THE 'Resample' TAB TO CREATE A PLAYABLE FILE ! \n \n " + \
                 "SR must be in the set " + str(list(device_ID_dict["rates"].keys()))
@@ -1501,10 +1500,13 @@ class playrec_v(QObject):
         ...
         :return: none
         """
-        self.gui.comboBox_playrec_targetSR.setEnabled(value)
-        self.gui.lineEdit_playrec_LO.setEnabled(value)
+        #self.gui.comboBox_playrec_targetSR.setEnabled(value)
+        #self.gui.lineEdit_playrec_LO.setEnabled(value)
         self.gui.comboBox_playrec_targetSR_2.setEnabled(value)
         self.gui.lineEdit_LO_bias.setEnabled(value)
+        self.gui.lineEdit_LO_bias.setEnabled(value)
+        self.gui.label_LO.setEnabled(value)
+
 
     def recordinggroup_activate(self,value):
         """activates or inactivates GUI elements of the Recording functions based on
@@ -1596,7 +1598,7 @@ class playrec_v(QObject):
             errorstate = False
             value = self.m["device_ID_dict"]
             print(f'SDR metadata:{self.m["device_ID_dict"]}')
-            if not (self.m["device_ID_dict"]["TX"] or self.m["device_ID_dict"]["MODULATOR"]):
+            if not (self.m["device_ID_dict"]["TX"]):
                 self.playgroup_activate(False)
             else:
                 self.playgroup_activate(True)
@@ -1604,9 +1606,11 @@ class playrec_v(QObject):
                 self.recordinggroup_activate(False)
             else:
                 self.recordinggroup_activate(True)
-            # if "modulator" in self.m["device_ID_dict"]:
-            #     if self.m["device_ID_dict"]["modulator"] =="M":
-            #         self.activate_samplingparameters(True)
+            if "modulator" in self.m["device_ID_dict"] and (self.m["device_ID_dict"]["modulator"] == "M"):
+                self.activate_samplingparameters(True)
+            else:
+                self.activate_samplingparameters(False)
+
             if self.m["device_ID_dict"]["connection_type"] == "USB":
                 self.gui.lineEdit_IPAddress.setEnabled(False)
                 self.gui.pushButton_IP.setEnabled(False)
