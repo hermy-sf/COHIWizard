@@ -1,0 +1,35 @@
+# Makefile.win – Windows/MSYS2 MinGW64 build for libdspflmod.dll (fl2k_modulator)
+#
+# Requirements:
+#   MSYS2 MinGW64 shell (MSYSTEM=MINGW64), with liquid-dsp and osmo-fl2k
+#   built and installed into the MinGW64 prefix. Default prefix is /mingw64.
+#
+# Usage:
+#   make -f Makefile.win          – build libdspflmod.dll
+#   make -f Makefile.win clean    – remove build artefacts
+
+MINGW_PREFIX ?= /mingw64
+
+CXX      = g++
+CXXFLAGS = -std=c++17 -O3 -march=native -ffast-math \
+           -I$(MINGW_PREFIX)/include -Wall -Wextra -Wpedantic
+# Static-link libgcc/libstdc++ so the DLL doesn't need the MinGW runtime
+# installed on the target machine. libwinpthread stays dynamic (MinGW's
+# static winpthread.a still needs the DLL for TLS callback support).
+LDFLAGS  = -shared -static-libgcc -static-libstdc++ -L$(MINGW_PREFIX)/lib
+LIBS     = -lliquid -losmo-fl2k -lpthread -lm -lws2_32
+
+TARGET   = libdspflmod.dll
+SRC      = DspWorkerFLMod.cpp
+
+.PHONY: all clean
+
+all: $(TARGET)
+
+$(TARGET): $(SRC) DspWorkerFLMod.h
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $< $(LIBS)
+	@echo "Built $(TARGET) successfully."
+	@echo "Runtime deps (copy next to $(TARGET) or keep on PATH): libosmo-fl2k.dll, libusb-1.0.dll, libwinpthread-1.dll."
+
+clean:
+	rm -f $(TARGET)

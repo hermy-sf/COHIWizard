@@ -28,6 +28,10 @@
  *        DspWorkerFL2K.cpp -o libdspfl2k.so -losmo-fl2k -lpthread -lm
  */
 
+#ifndef _USE_MATH_DEFINES
+#  define _USE_MATH_DEFINES  // MinGW hides M_PI etc. under -std=c++17 without this
+#endif
+
 #include "DspWorkerFL2K.h"
 
 #include <cstdio>
@@ -473,7 +477,7 @@ void DspWorkerFL2K::mix_audio_block_fast(IQf* x, size_t n_iq)
         /* 1. Drain UDP socket into raw_fifo */
         if (rt.raw_fifo.available() < rt.raw_fifo.cap) {
             ssize_t nr;
-            while ((nr = recv(rt.udp_fd, rt.udp_recv_buf.data(),
+            while ((nr = recv(rt.udp_fd, reinterpret_cast<char*>(rt.udp_recv_buf.data()),
                               rt.udp_recv_buf.size(), MSG_DONTWAIT)) > 0)
             {
                 /* u8 PCM (silence=128) → float [-1..1] */
@@ -995,7 +999,7 @@ void dsp_fl2k_prefill_audio(DspFL2KHandle h, int duration_ms)
         for (auto& rt : w->audio_rt) {
             if (rt.udp_fd < 0) continue;
             ssize_t nr;
-            while ((nr = ::recv(rt.udp_fd, recv_buf.data(),
+            while ((nr = ::recv(rt.udp_fd, reinterpret_cast<char*>(recv_buf.data()),
                                 recv_buf.size(), MSG_DONTWAIT)) > 0) {
                 for (ssize_t k = 0; k < nr; ++k) {
                     float s = (static_cast<float>(recv_buf[k]) - 128.f) / 128.f;

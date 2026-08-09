@@ -56,6 +56,14 @@ def _load_lib() -> ctypes.CDLL | None:
     here     = os.path.dirname(os.path.abspath(__file__))
     _libname = "libdspflmod.dll" if platform.system() == "Windows" else "libdspflmod.so"
     libpath  = os.path.join(here, _libname)
+    if platform.system() == "Windows":
+        # Since Python 3.8, PATH is no longer searched for a DLL's own
+        # dependencies (libosmo-fl2k.dll, libusb-1.0.dll, libwinpthread-1.dll);
+        # the directory has to be registered explicitly.
+        try:
+            os.add_dll_directory(here)
+        except (AttributeError, OSError):
+            pass
     try:
         lib = ctypes.CDLL(libpath)
     except OSError as exc:

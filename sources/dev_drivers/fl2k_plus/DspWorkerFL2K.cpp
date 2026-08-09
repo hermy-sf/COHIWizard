@@ -45,6 +45,9 @@
 #  endif
 #  define MSG_DONTWAIT 0
 #  define SOCKOPT_VAL(p) ((const char*)(p))
+#  ifndef M_PIf
+#    define M_PIf 3.14159265358979323846f  // GNU libc extension, not defined by MinGW
+#  endif
 static inline int  _sock_close(int fd)           { return closesocket((SOCKET)fd); }
 static inline void _sock_set_nonblocking(int fd) { u_long m=1; ioctlsocket((SOCKET)fd,FIONBIO,&m); }
 #else
@@ -512,7 +515,7 @@ void DspWorkerFL2K::mix_audio_block(liquid_float_complex* x, size_t n_iq)
         if (_verbose) fprintf(stderr, "[fl2k_plus] ch[%zu] STEP1 start\n", _chi);
         if (rt.raw_fifo.available() < rt.raw_fifo.cap) {
             ssize_t nr;
-            while ((nr = recv(rt.udp_fd, rt.udp_recv_buf.data(),
+            while ((nr = recv(rt.udp_fd, reinterpret_cast<char*>(rt.udp_recv_buf.data()),
                               rt.udp_recv_buf.size(), MSG_DONTWAIT)) > 0)
             {
                 /* Convert u8 PCM (0..255, silence=128) to float [-1..1] */
@@ -1023,7 +1026,7 @@ void dsp_fl2k_prefill_audio(DspFL2KHandle h, int duration_ms)
         for (auto& rt : w->audio_rt) {
             if (rt.udp_fd < 0) continue;
             ssize_t nr;
-            while ((nr = ::recv(rt.udp_fd, recv_buf.data(),
+            while ((nr = ::recv(rt.udp_fd, reinterpret_cast<char*>(recv_buf.data()),
                                 recv_buf.size(), MSG_DONTWAIT)) > 0) {
                 for (ssize_t k = 0; k < nr; ++k)
                     conv_buf[k] = (static_cast<float>(recv_buf[k]) - 128.f)

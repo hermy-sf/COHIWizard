@@ -30,6 +30,10 @@
  *        DspWorkerFLMod.cpp -o libdspflmod.so -losmo-fl2k -lpthread -lm
  */
 
+#ifndef _USE_MATH_DEFINES
+#  define _USE_MATH_DEFINES  // MinGW hides M_PI etc. under -std=c++17 without this
+#endif
+
 #include "DspWorkerFLMod.h"
 
 #include <cstdio>
@@ -452,7 +456,7 @@ void DspWorkerFLMod::mix_audio_block_fast(IQf* x, size_t n_bb)
         /* 1. Drain UDP into raw_fifo */
         if (rt.raw_fifo.available() < rt.raw_fifo.cap) {
             ssize_t nr;
-            while ((nr = recv(rt.udp_fd, rt.udp_recv_buf.data(),
+            while ((nr = recv(rt.udp_fd, reinterpret_cast<char*>(rt.udp_recv_buf.data()),
                               rt.udp_recv_buf.size(), MSG_DONTWAIT)) > 0)
             {
                 for (ssize_t k = 0; k < nr; ++k) {
@@ -820,7 +824,7 @@ void dsp_flmod_prefill(DspFLModHandle h, int duration_ms)
         for (auto& rt : w->audio_rt) {
             if (rt.udp_fd < 0) continue;
             ssize_t nr;
-            while ((nr = ::recv(rt.udp_fd, recv_buf.data(),
+            while ((nr = ::recv(rt.udp_fd, reinterpret_cast<char*>(recv_buf.data()),
                                 recv_buf.size(), MSG_DONTWAIT)) > 0) {
                 for (ssize_t k = 0; k < nr; ++k) {
                     float s = (static_cast<float>(recv_buf[k]) - 128.f) / 128.f;

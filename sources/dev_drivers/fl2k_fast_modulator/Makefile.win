@@ -1,0 +1,27 @@
+# Makefile.win – Windows/MSYS2 MinGW64 build for libdspflmod.dll (fl2k_fast_modulator)
+#
+# liquidDSP-free variant – only needs osmo-fl2k. Run from an MSYS2 MinGW64
+# shell (MSYSTEM=MINGW64), with osmo-fl2k built and installed into the
+# MinGW64 prefix. Default prefix is /mingw64.
+#
+# Usage:
+#   make -f Makefile.win          – build libdspflmod.dll
+#   make -f Makefile.win clean    – remove build artefacts
+
+MINGW_PREFIX ?= /mingw64
+
+CXX      := g++
+CXXFLAGS := -std=c++17 -O3 -march=native -ffast-math -I$(MINGW_PREFIX)/include
+TARGET   := libdspflmod.dll
+
+all: $(TARGET)
+
+$(TARGET): DspWorkerFLMod.cpp DspWorkerFLMod.h
+	$(CXX) $(CXXFLAGS) -shared -static-libgcc -static-libstdc++ -L$(MINGW_PREFIX)/lib -o $@ $< -losmo-fl2k -lpthread -lm -lws2_32
+	@echo "Built $(TARGET) successfully."
+	@echo "Runtime deps (copy next to $(TARGET) or keep on PATH): libosmo-fl2k.dll, libusb-1.0.dll, libwinpthread-1.dll."
+
+clean:
+	rm -f $(TARGET)
+
+.PHONY: all clean

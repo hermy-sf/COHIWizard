@@ -1,0 +1,37 @@
+# Makefile.win – Windows/MSYS2 MinGW64 build for libdspfl2k.dll (fl2k_plus)
+#
+# Requirements:
+#   MSYS2 MinGW64 shell (run this from mingw64.exe / MSYSTEM=MINGW64),
+#   with liquid-dsp and osmo-fl2k built and installed into the MinGW64
+#   prefix (headers under $(MINGW_PREFIX)/include, libs under
+#   $(MINGW_PREFIX)/lib/bin). Default prefix is /mingw64.
+#
+# Usage:
+#   make -f Makefile.win          – build libdspfl2k.dll
+#   make -f Makefile.win clean    – remove build artefacts
+
+MINGW_PREFIX ?= /mingw64
+
+CXX      = g++
+CXXFLAGS = -std=c++17 -O3 -march=native -ffast-math \
+           -I$(MINGW_PREFIX)/include -Wall -Wextra -Wpedantic
+# Static-link libgcc/libstdc++ so the DLL doesn't need the MinGW runtime
+# installed on the target machine. libwinpthread stays dynamic (MinGW's
+# static winpthread.a still needs the DLL for TLS callback support).
+LDFLAGS  = -shared -static-libgcc -static-libstdc++ -L$(MINGW_PREFIX)/lib
+LIBS     = -lliquid -losmo-fl2k -lpthread -lm -lws2_32
+
+TARGET   = libdspfl2k.dll
+SRC      = DspWorkerFL2K.cpp
+
+.PHONY: all clean
+
+all: $(TARGET)
+
+$(TARGET): $(SRC) DspWorkerFL2K.h
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $< $(LIBS)
+	@echo "Built $(TARGET) successfully."
+	@echo "Runtime deps (copy next to $(TARGET) or keep on PATH): libosmo-fl2k.dll, libusb-1.0.dll, libwinpthread-1.dll."
+
+clean:
+	rm -f $(TARGET)
