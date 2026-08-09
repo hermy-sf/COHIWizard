@@ -44,12 +44,30 @@
 #include <thread>
 #include <algorithm>
 
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
+/* Platform-specific socket support */
+#ifdef _WIN32
+#  include <winsock2.h>
+#  include <ws2tcpip.h>
+#  pragma comment(lib, "ws2_32.lib")
+#  ifndef _SSIZE_T_DEFINED
+     typedef SSIZE_T ssize_t;
+#    define _SSIZE_T_DEFINED
+#  endif
+#  define MSG_DONTWAIT 0
+#  define SOCKOPT_VAL(p) ((const char*)(p))
+static inline int  _sock_close(int fd)           { return closesocket((SOCKET)fd); }
+static inline void _sock_set_nonblocking(int fd) { u_long m=1; ioctlsocket((SOCKET)fd,FIONBIO,&m); }
+#else
+#  include <sys/socket.h>
+#  include <netinet/in.h>
+#  include <arpa/inet.h>
+#  include <unistd.h>
+#  include <fcntl.h>
+#  include <errno.h>
+#  define SOCKOPT_VAL(p) (p)
+static inline int  _sock_close(int fd)           { return ::close(fd); }
+static inline void _sock_set_nonblocking(int fd) { int f=fcntl(fd,F_GETFL,0); fcntl(fd,F_SETFL,f|O_NONBLOCK); }
+#endif
 
 #include <osmo-fl2k.h>
 
@@ -356,7 +374,7 @@ void DspWorkerFLMod::run_fl2k()
 void DspWorkerFLMod::close_audio_sockets()
 {
     for (auto& rt : audio_rt) {
-        if (rt.udp_fd >= 0) { ::close(rt.udp_fd); rt.udp_fd = -1; }
+        if (rt.udp_fd >= 0) { _sock_close(rt.udp_fd); rt.udp_fd = -1; }
     }
     audio_rt.clear();
 }
@@ -686,6 +704,9 @@ void DspWorkerFLMod::run_dsp()
 
 DspFLModHandle dsp_flmod_create()
 {
+#ifdef _WIN32
+    WSADATA wsa; WSAStartup(MAKEWORD(2,2), &wsa);
+#endif
     init_lut();
     fprintf(stderr, "[fl2k_fast_mod] *** libdspflmod BUILD %s %s (fast-no-liquid) ***\n",
             __DATE__, __TIME__);
@@ -698,6 +719,9 @@ void dsp_flmod_destroy(DspFLModHandle h)
     dsp_flmod_stop(h);
     static_cast<DspWorkerFLMod*>(h)->close_audio_sockets();
     delete static_cast<DspWorkerFLMod*>(h);
+#ifdef _WIN32
+    WSACleanup();
+#endif
 }
 
 int dsp_flmod_configure(DspFLModHandle h,
@@ -760,9 +784,9 @@ int dsp_flmod_configure_channels(DspFLModHandle        h,
             continue;
         }
         int one = 1;
-        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, SOCKOPT_VAL(&one), sizeof(one));
         int rcvbuf = 524288;
-        setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
+        setsockopt(fd, SOL_SOCKET, SO_RCVBUF, SOCKOPT_VAL(&rcvbuf), sizeof(rcvbuf));
 
         struct sockaddr_in addr{};
         addr.sin_family      = AF_INET;
@@ -772,11 +796,10 @@ int dsp_flmod_configure_channels(DspFLModHandle        h,
         if (::bind(fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) != 0) {
             fprintf(stderr, "[fl2k_fast_mod] bind() failed ch[%d] '%s' port %d: %s\n",
                     i, cfg.name, cfg.udp_port, strerror(errno));
-            ::close(fd);
+            _sock_close(fd);
             continue;
         }
-        int flags = fcntl(fd, F_GETFL, 0);
-        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+        _sock_set_nonblocking(fd);
         rt.udp_fd = fd;
         fprintf(stderr, "[fl2k_fast_mod] ch[%d] '%s': UDP port %d bound, carrier %.1f Hz\n",
                 i, cfg.name, cfg.udp_port, cfg.freq_hz);

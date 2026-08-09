@@ -52,12 +52,14 @@ from PyQt5.QtCore import QObject, QMutex, QThread, pyqtSignal
 # ---------------------------------------------------------------------------
 
 def _load_lib() -> ctypes.CDLL | None:
-    here    = os.path.dirname(os.path.abspath(__file__))
-    libpath = os.path.join(here, "libdspflmod.so")
+    import platform
+    here     = os.path.dirname(os.path.abspath(__file__))
+    _libname = "libdspflmod.dll" if platform.system() == "Windows" else "libdspflmod.so"
+    libpath  = os.path.join(here, _libname)
     try:
         lib = ctypes.CDLL(libpath)
     except OSError as exc:
-        print(f"[fl2k_mod] Cannot load libdspflmod.so: {exc}\n"
+        print(f"[fl2k_mod] Cannot load {_libname}: {exc}\n"
               f"  Build it with:  cd {here} && make")
         return None
 

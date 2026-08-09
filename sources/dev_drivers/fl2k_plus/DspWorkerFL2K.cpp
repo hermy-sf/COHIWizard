@@ -34,13 +34,30 @@
 #include <thread>
 #include <algorithm>
 
-/* POSIX socket support for audio UDP reception */
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
+/* Platform-specific socket support */
+#ifdef _WIN32
+#  include <winsock2.h>
+#  include <ws2tcpip.h>
+#  pragma comment(lib, "ws2_32.lib")
+#  ifndef _SSIZE_T_DEFINED
+     typedef SSIZE_T ssize_t;
+#    define _SSIZE_T_DEFINED
+#  endif
+#  define MSG_DONTWAIT 0
+#  define SOCKOPT_VAL(p) ((const char*)(p))
+static inline int  _sock_close(int fd)           { return closesocket((SOCKET)fd); }
+static inline void _sock_set_nonblocking(int fd) { u_long m=1; ioctlsocket((SOCKET)fd,FIONBIO,&m); }
+#else
+#  include <sys/socket.h>
+#  include <netinet/in.h>
+#  include <arpa/inet.h>
+#  include <unistd.h>
+#  include <fcntl.h>
+#  include <errno.h>
+#  define SOCKOPT_VAL(p) (p)
+static inline int  _sock_close(int fd)           { return ::close(fd); }
+static inline void _sock_set_nonblocking(int fd) { int f=fcntl(fd,F_GETFL,0); fcntl(fd,F_SETFL,f|O_NONBLOCK); }
+#endif
 
 #include <liquid/liquid.h>
 #include <osmo-fl2k.h>
@@ -371,7 +388,7 @@ void DspWorkerFL2K::close_audio_sockets()
 {
     for (auto& rt : audio_rt) {
         if (rt.udp_fd >= 0) {
-            ::close(rt.udp_fd);
+            _sock_close(rt.udp_fd);
             rt.udp_fd = -1;
         }
     }
@@ -860,6 +877,9 @@ void DspWorkerFL2K::run_dsp()
 
 DspFL2KHandle dsp_fl2k_create()
 {
+#ifdef _WIN32
+    WSADATA wsa; WSAStartup(MAKEWORD(2,2), &wsa);
+#endif
     fprintf(stderr, "[fl2k_plus] *** libdspfl2k BUILD %s %s (recv-fix+prefill) ***\n",
             __DATE__, __TIME__);
     return new DspWorkerFL2K();
@@ -871,6 +891,9 @@ void dsp_fl2k_destroy(DspFL2KHandle h)
     dsp_fl2k_stop(h);
     static_cast<DspWorkerFL2K*>(h)->close_audio_sockets();
     delete static_cast<DspWorkerFL2K*>(h);
+#ifdef _WIN32
+    WSACleanup();
+#endif
 }
 
 int dsp_fl2k_configure(DspFL2KHandle h,
@@ -944,11 +967,11 @@ int dsp_fl2k_configure_audio(DspFL2KHandle          h,
         }
 
         int one = 1;
-        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, SOCKOPT_VAL(&one), sizeof(one));
 
         /* Set OS receive buffer to 512 KB per channel */
         int rcvbuf = 524288;
-        setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
+        setsockopt(fd, SOL_SOCKET, SO_RCVBUF, SOCKOPT_VAL(&rcvbuf), sizeof(rcvbuf));
 
         struct sockaddr_in addr{};
         addr.sin_family      = AF_INET;
@@ -960,12 +983,11 @@ int dsp_fl2k_configure_audio(DspFL2KHandle          h,
         {
             printf("[fl2k_plus] bind() failed for ch[%d] '%s' port %d: %s\n",
                    i, cfg.name, cfg.udp_port, strerror(errno));
-            ::close(fd);
+            _sock_close(fd);
             continue;
         }
 
-        int flags = fcntl(fd, F_GETFL, 0);
-        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+        _sock_set_nonblocking(fd);
 
         rt.udp_fd = fd;
         printf("[fl2k_plus] ch[%d] '%s': bound UDP port %d, carrier %.1f Hz\n",
