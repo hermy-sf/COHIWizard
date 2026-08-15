@@ -380,6 +380,12 @@ void DspWorkerFL2K::run_fl2k()
 
     fl2k_stop_tx(dev);
     fl2k_close(dev);
+    /* Grace period: fl2k_close() returns once osmo-fl2k's own worker threads
+     * report FL2K_INACTIVE, but a trailing WinUSB/libusb completion routine
+     * can still be unwinding on Windows for a brief moment afterwards.
+     * dsp_fl2k_destroy() deletes `this` as soon as this thread is joined,
+     * so give any straggler time to finish before that happens. */
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
     { std::lock_guard<std::mutex> lk(dev_mtx); dev = nullptr; dev_open.store(false); }
 }
 
@@ -892,8 +898,16 @@ void dsp_fl2k_destroy(DspFL2KHandle h)
 {
     if (!h) return;
     dsp_fl2k_stop(h);
-    static_cast<DspWorkerFL2K*>(h)->close_audio_sockets();
-    delete static_cast<DspWorkerFL2K*>(h);
+    auto* w = static_cast<DspWorkerFL2K*>(h);
+    /* Detach callbacks first: if a stray native completion still fires in
+     * the grace window after dsp_fl2k_stop(), it becomes a harmless no-op
+     * instead of calling into a Python trampoline for an object we're
+     * about to delete. */
+    w->mon_cb = nullptr;
+    w->err_cb = nullptr;
+    w->fin_cb = nullptr;
+    w->close_audio_sockets();
+    delete w;
 #ifdef _WIN32
     WSACleanup();
 #endif

@@ -35,6 +35,7 @@ import csv
 import ctypes
 import os
 import subprocess
+import threading
 import time
 from urllib.parse import urlparse, urlunparse
 
@@ -168,6 +169,17 @@ def _load_lib() -> ctypes.CDLL | None:
 
 _LIB = _load_lib()
 
+# COHIWizard resets playthreadActive (and thus allows a new play_manager()
+# call) as soon as the STOP button is pressed, well before the fl2k USB
+# device has actually finished its native shutdown (which now waits
+# properly for in-flight transfer cancellation, see DspWorkerFL2K.cpp).
+# A quick re-Start can therefore try to fl2k_open() the same physical
+# device while the previous session's fl2k_close() is still in progress,
+# which crashes. Serialize device ownership across worker instances here
+# instead of touching the shared playrec.py state machine.
+_device_free = threading.Event()
+_device_free.set()
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -191,6 +203,29 @@ def _ffmpeg_url(url: str) -> str:
     except Exception:
         pass
     return url
+
+
+def _resolve_ffmpeg_bin(raw: str) -> str:
+    """Turn the 'ffmpeg_path' config entry into an executable path.
+
+    config_wizard.yaml stores the ffmpeg *installation directory* (see
+    auxiliaries.is_ffmpeg_installed / playrec.checkffmpeg_install), not the
+    exe itself, e.g. '...\\ffmpeg-master-latest-win64-gpl-shared/bin'.
+    subprocess.Popen() cannot exec a directory, so it must be joined with
+    the platform binary name here before use.
+    """
+    import platform
+    exe_name = "ffmpeg.exe" if platform.system() == "Windows" else "ffmpeg"
+    raw = (raw or "").strip()
+    if not raw:
+        return "ffmpeg"
+    if os.path.isdir(raw):
+        candidate = os.path.join(raw, exe_name)
+        if os.path.isfile(candidate):
+            return candidate
+        print(f"[fl2k_plus] ffmpeg_path '{raw}' has no {exe_name} – falling back to PATH lookup.")
+        return "ffmpeg"
+    return raw
 
 
 # ---------------------------------------------------------------------------
@@ -421,7 +456,7 @@ class playrec_worker(QObject):
                         _cf.write(f"file {_e!r}\n")
                 _cf.close()
                 self._concat_files.append(_cf.name)
-                print(f"[fl2k_plus] m3u '{url}': {len(_entries)} track(s) → concat {_cf.name}")
+                print(f"[fl2k_plus] m3u '{url}': {len(_entries)} track(s) -> concat {_cf.name}")
 
                 _curl_cmd = None
                 cmd = [
@@ -495,10 +530,10 @@ class playrec_worker(QObject):
                         stderr=open(_logfile, "w"),
                         close_fds=True,
                     )
-                print(f"[fl2k_plus] ffmpeg log → {_logfile}")
+                print(f"[fl2k_plus] ffmpeg log -> {_logfile}")
                 self._ffmpeg_procs.append(proc)
                 print(f"[fl2k_plus] ffmpeg ch[{idx}] '{name}' "
-                      f"@ {sta['freq_hz']/1e3:.1f} kHz → UDP {port} "
+                      f"@ {sta['freq_hz']/1e3:.1f} kHz -> UDP {port} "
                       f"(PID {proc.pid})")
                 channels.append({
                     "freq_hz":   sta["freq_hz"],
@@ -542,6 +577,17 @@ class playrec_worker(QObject):
 
     # ----------------------------------------------------------------
     def play_loop_filelist(self):
+        """Wait for any previous session's fl2k device teardown to fully
+        finish before claiming the device, so a fast re-Start after STOP
+        can't race the native fl2k_close() of the session it's replacing."""
+        _device_free.wait()
+        _device_free.clear()
+        try:
+            self._play_loop_filelist_impl()
+        finally:
+            _device_free.set()
+
+    def _play_loop_filelist_impl(self):
         if _LIB is None:
             self.SigError.emit(
                 "libdspfl2k.so not found – build it with  make  in "
@@ -579,8 +625,7 @@ class playrec_worker(QObject):
             _mix_level     = float(_cfg.get("audio_mix_level",        1.0))
             _base_port     = int(_cfg.get("audio_base_port",          1234))
             _mod_index     = float(_cfg.get("audio_mod_index",        0.9))
-            _ffmpeg_bin    = (str(_cfg.get("ffmpeg_path", "ffmpeg")).strip()
-                              or "ffmpeg")
+            _ffmpeg_bin    = _resolve_ffmpeg_bin(str(_cfg.get("ffmpeg_path", "")))
         except Exception as _e:
             print(f"[fl2k_plus] config_wizard.yaml read error: {_e}; using defaults")
 
@@ -605,8 +650,18 @@ class playrec_worker(QObject):
             return
 
         # ---- Device check -------------------------------------------
+        # A fast re-Start right after a STOP can hit the device while
+        # Windows/WinUSB is still releasing the handle from the previous
+        # session (a few hundred ms after our own native close() already
+        # returned) -- retry briefly instead of failing on the first probe.
         self.mutex.lock()
-        if _LIB.dsp_fl2k_check_device() != 0:
+        _dev_ok = False
+        for _attempt in range(5):
+            if _LIB.dsp_fl2k_check_device() == 0:
+                _dev_ok = True
+                break
+            time.sleep(0.3)
+        if not _dev_ok:
             self.SigError.emit(
                 "fl2k device not found. Check the USB-VGA dongle connection."
             )

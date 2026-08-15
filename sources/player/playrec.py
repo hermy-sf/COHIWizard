@@ -418,7 +418,12 @@ class playrec_c(QObject):
         if self.m["TEST"] is False:
             self.m["sdr_configparams"]["TEST"] = False
             errorstate, process = self.stemlabcontrol.sdrserverstart(self.m["sdr_configparams"])
-            time.sleep(5)
+            # This 5s pause gives a real SDR server (e.g. STEMLAB) time to
+            # boot after sdrserverstart(). Devices connected directly via
+            # USB (e.g. fl2k) don't start a server at all -- sdrserverstart()
+            # is a no-op for them -- so the wait serves no purpose there.
+            if self.m["device_ID_dict"].get("connection_type") != "USB":
+                time.sleep(5)
             #stdout, stderr = process.communicate()
             #print(stderr.decode())
             if errorstate: #TODO TODO TODO: errorhandling: generate errormsg in function instead of True/False
@@ -865,6 +870,16 @@ class playrec_c(QObject):
         self.playthread.quit()
         self.playthread.wait()
         time.sleep(0.05)
+        # The thread is now confirmed to have actually finished (wait()
+        # returned), so it's safe to let a new Start create a fresh
+        # self.playthread/self.playrec_tworker. Previously
+        # reset_playerbuttongroup() cleared playthreadActive synchronously
+        # inside cb_Butt_STOP(), well before the old worker/native device
+        # teardown was actually done -- a fast re-Start could then
+        # overwrite self.playthread with a new QThread while this handler
+        # (running for the OLD session's SigFinished) was still using it,
+        # and/or race the old device's still-in-progress native close.
+        self.m["playthreadActive"] = False
         #prfilehandle.close() ###TODO TODO TODO: obsolete, file is closed by tworker
         self.m["fileopened"] = False #OBSOLETE ?
         #self.SigRelay.emit("cm_all_",["fileopened",False]) ####TODO geht nicht
@@ -2335,8 +2350,14 @@ class playrec_v(QObject):
         self.gui.pushButton_REC.setIcon(QIcon("./core/ressources/icons/rec_v4.PNG"))
         self.gui.Label_Recindicator.setEnabled(False)
         self.gui.Label_Recindicator.setStyleSheet(('background-color: rgb(255,255,255)'))
-        self.m["playthreadActive"] = False
-        self.SigRelay.emit("cm_all_",["playthreadActive",self.m["playthreadActive"]])
+        # playthreadActive is intentionally NOT reset here. This function
+        # runs synchronously inside cb_Butt_STOP(), well before the worker
+        # thread and its native device teardown have actually finished.
+        # Resetting it here let a fast re-Start create a new QThread/worker
+        # while the old one (and its still-pending SigFinished -> EOF_manager
+        # cleanup) was still in flight, racing the old device's native
+        # close and crashing. EOF_manager() now resets it once
+        # self.playthread.wait() confirms the old thread is truly done.
         self.SigActivateOtherTabs.emit("Player","activate",[])
         self.m["fileopened"] = False ###CHECK
         self.SigRelay.emit("cm_all_",["fileopened",False])
