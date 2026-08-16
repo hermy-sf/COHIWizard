@@ -654,7 +654,7 @@ class core_v(QObject):
             if diagonal_inches <= 7:
                 self.m["metadata"]["skinindex"] = 2
             else:
-                self.m["metadata"]["skinindex"] = 1
+                self.m["metadata"]["skinindex"] = 5
             self.m["metadata"]["autoskin"] = True
             self.m["metadata"]["logfilehandler"] = True
             self.m["metadata"]["HIRES_ffmpeg"] = True 
@@ -1693,7 +1693,7 @@ if __name__ == '__main__':
         wiz_config = load_config_from_yaml("config_wizard.yaml")
         # Get display diagonal size in inches
         if not "skinindex" in wiz_config:
-            skinindex = 1
+            skinindex = 5
             wiz_config["skinindex"]
         if not "autoskin" in wiz_config:
             wiz_config["autoskin"] = True
@@ -1705,7 +1705,7 @@ if __name__ == '__main__':
         if diagonal_inches <= 7:
             skinindex = 2
         else:
-            skinindex = 1
+            skinindex = 5
         print("could not load wizard configuration, set skinindex to default value 1")
     
     #print(f"__main__: gui = {gui} gui.gui = {gui.gui}")
