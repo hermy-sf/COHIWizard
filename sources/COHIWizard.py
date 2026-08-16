@@ -1693,7 +1693,7 @@ if __name__ == '__main__':
         wiz_config = load_config_from_yaml("config_wizard.yaml")
         # Get display diagonal size in inches
         if not "skinindex" in wiz_config:
-            skinindex = 1
+            skinindex = 5
             wiz_config["skinindex"]
         if not "autoskin" in wiz_config:
             wiz_config["autoskin"] = True
