@@ -1,4 +1,4 @@
-#Version 2.3.0
+#Version 2.3.1
 # -*- coding: utf-8 -*-logfile
 # For reducing to RFCorder: disable all modules except resample in the config_modules.yaml file
 #
@@ -654,7 +654,7 @@ class core_v(QObject):
             if diagonal_inches <= 7:
                 self.m["metadata"]["skinindex"] = 2
             else:
-                self.m["metadata"]["skinindex"] = 1
+                self.m["metadata"]["skinindex"] = 5
             self.m["metadata"]["autoskin"] = True
             self.m["metadata"]["logfilehandler"] = True
             self.m["metadata"]["HIRES_ffmpeg"] = True 
@@ -1705,7 +1705,7 @@ if __name__ == '__main__':
         if diagonal_inches <= 7:
             skinindex = 2
         else:
-            skinindex = 1
+            skinindex = 5
         print("could not load wizard configuration, set skinindex to default value 1")
     
     #print(f"__main__: gui = {gui} gui.gui = {gui.gui}")
@@ -1922,7 +1922,7 @@ if __name__ == '__main__':
         xcore_v.logger.debug("startup Tab not defined in configuration file config_wizard.yaml")
         xcore_v.gui.tabWidget.setCurrentIndex(0)
     xcore_v.timethread.start()
-    print("COHIWIzard Version 2.3.0 , 25-07-2026, (C) Hermann Scharfetter")
+    print("COHIWIzard Version 2.3.1 , 15-08-2026, (C) Hermann Scharfetter")
 
 
 
