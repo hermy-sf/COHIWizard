@@ -31,7 +31,9 @@ list_mvct_directories = list(config['modules'].keys())
 list_mvct_modules = list(config['modules'].values())
 #add dict of widget modules to config
 aux_dict = {}
-skinindexrange = np.arange(4)
+####################  !!!!!!!!!!!!!!!!!!!  adapt if number of skins is changed ! ##########################
+skinindexrange = np.arange(6) #set to number of available skins + 1
+###########################################################################################################
 for ix in range(len(list_mvct_directories)):
     #aux_dict[list_mvct_directories[ix]] = list_mvct_directories[ix] + "_widget"
     #for skinindex in skinindexrange:
@@ -55,6 +57,7 @@ command += (f' --hidden-import=core.COHIWizard_GUI_v10_scrollhv_skin_0')
 command += (f' --hidden-import=core.COHIWizard_GUI_v10_scrollhv_skin_1')
 command += (f' --hidden-import=core.COHIWizard_GUI_v10_scrollhv_skin_2')
 command += (f' --hidden-import=core.COHIWizard_GUI_v10_scrollhv_skin_3')
+command += (f' --hidden-import=core.COHIWizard_GUI_v10_scrollhv_skin_5')
 for ix in range(len(list_mvct_directories)): 
     module = list_mvct_directories[ix] + "." + list_mvct_modules[ix] 
         #aux_dict[list_mvct_directories[ix]] = list_mvct_directories[ix] + "_widget_skin_" + str(skinindex)
