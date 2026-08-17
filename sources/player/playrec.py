@@ -1160,6 +1160,23 @@ class playrec_v(QObject):
         self.m["Reset_AGC"] = True
         self.gui.lineEdit_playrec_LO.setText("1125")
 
+        # Closing the main window (or Alt+F4/task-close) never stopped an
+        # active playback session: the worker thread, its native SDR
+        # device handle (e.g. the fl2k USB device) and any ffmpeg child
+        # processes it spawned kept running after the Qt event loop
+        # returned, so the process (and, for a PyInstaller console build,
+        # its terminal window) never actually exited on its own. Run the
+        # same graceful-stop path the STOP button uses, and give it a
+        # bounded moment to actually finish, before the app quits for real.
+        QApplication.instance().aboutToQuit.connect(self._on_about_to_quit)
+
+    def _on_about_to_quit(self):
+        self.playrec_c.cb_Butt_STOP()
+        deadline = time.time() + 3.0
+        while self.m["playthreadActive"] and time.time() < deadline:
+            QApplication.processEvents()
+            time.sleep(0.05)
+
     def modulator_listselected(self,cf,boxix):
         '''
         Handles the selection of a modulator module from the list of available modulators. 
