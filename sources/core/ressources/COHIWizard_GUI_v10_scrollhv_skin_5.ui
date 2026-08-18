@@ -7692,7 +7692,7 @@ UFL</string>
     <string>open modulator playlist (csv)</string>
    </property>
    <property name="shortcut">
-    <string>Alt+P</string>
+    <string>Alt+L</string>
    </property>
   </action>
  </widget>
