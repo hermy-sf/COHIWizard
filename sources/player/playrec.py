@@ -3,11 +3,8 @@ Created on Feb 24 2024
 
 #@author: scharfetter_admin
 """
-#from pickle import FALSE, TRUE #intrinsic
 from statistics import mode
 import time
-#from datetime import timedelta
-#from socket import socket, AF_INET, SOCK_STREAM
 from struct import unpack
 import numpy as np
 import os
@@ -32,7 +29,6 @@ import datetime as ndatetime
 from player import stemlab_control
 from auxiliaries import ffmpeg_installtools as ffinst
 import platform
-#from dev_drivers.fl2k import cohi_playrecworker
 
 
 
@@ -115,7 +111,7 @@ class playrec_c(QObject):
         self.m["playlist_ix"] = 0
         self.logger = playrec_m.logger
         self.RecBitsPerSample = 16 #Default 16 bit recording, may be changed in the future
-        self.TESTFILELISTCONTINUOUS = True
+        #self.TESTFILELISTCONTINUOUS = True
         try:
             stream = open("config_wizard.yaml", "r")
             self.m["metadata"] = yaml.safe_load(stream)
@@ -401,8 +397,7 @@ class playrec_c(QObject):
         self.m["sdr_configparams"] = {"ifreq":self.m["ifreq"], "irate":self.m["irate"],
                 "rates": self.m["rates"], "icorr":self.m["icorr"],
                 "HostAddress":self.m["HostAddress"], "LO_offset":self.m["LO_offset"]}
-        ################## TODO CHECK: was changed for general devicedrivers
-        #self.m["sdr_configparams"]["QMAINWINDOWparent"] = self.m["QTMAINWINDOWparent"]
+
         self.m["sdr_configparams"]["QMAINWINDOWparent"] = self.m["QTMAINWINDOWparent"]
     ######################  TODO: change for general devicedrivers
         # call respective driver here:
@@ -620,12 +615,12 @@ class playrec_c(QObject):
         
         #self.prfilehandle = self.playrec_tworker.get_fileHandle() #TODO CHECK IF REQUIRED test output, no special other function
         if self.m["modality"] == "play": #TODO: activate
-            if not self.TESTFILELISTCONTINUOUS: # This is obsolete , test after 01-01-2025
-                self.playrec_tworker.set_filename(self.m["f1"])
-                self.playthread.started.connect(self.playrec_tworker.play_loop16)
-            else:
-                self.playrec_tworker.set_filename(self.contingent_file_list)
-                self.playthread.started.connect(self.playrec_tworker.play_loop_filelist) #TODO TODO TODO TODO: activate for nextfile list
+            # if not self.TESTFILELISTCONTINUOUS: # This is obsolete , test after 22-08-2026
+            #     self.playrec_tworker.set_filename(self.m["f1"])
+            #     self.playthread.started.connect(self.playrec_tworker.play_loop16)
+            # else:
+            self.playrec_tworker.set_filename(self.contingent_file_list)
+            self.playthread.started.connect(self.playrec_tworker.play_loop_filelist) #TODO TODO TODO TODO: activate for nextfile list
         else:
             self.playrec_tworker.set_filename(self.m["f1"])
             self.playthread.started.connect(self.playrec_tworker.rec_loop)
@@ -1375,14 +1370,6 @@ class playrec_v(QObject):
             self.gui.comboBox_modulator_type.currentIndexChanged.connect(self.modulatortype_changehandler)
         except:
             pass
-        #self.modulatortype_changehandler()
-        # now self.m["SDRcontrol"] is the same as stemlab_control
-            #cohi_playrecworker
-            #from dev_drivers.fl2k import cohi_playrecworker
-
-            #self.dynamic_import(self.m["devicelist"][ix])
-        #self.gui.comboBox_stemlab.
-        #self.mdl["devicelist"] # comboBox_stemlab
         
         self.gui.checkBox_TESTMODE.clicked.connect(self.toggleTEST)
         preset_time = QTime(00, 30, 00) 
