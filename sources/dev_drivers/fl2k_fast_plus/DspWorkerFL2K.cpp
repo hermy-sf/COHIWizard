@@ -7,10 +7,11 @@
  * Key algorithm changes vs. fl2k_plus:
  *
  *  1. IQ upsampling (WAV → targetRate):
- *       Cosine-interpolation between adjacent WAV samples + 7-tap symmetric
- *       integer FIR smoother (coefficients {4,16,26,36,26,16,4}, sum=128).
+ *       Kaiser-windowed polyphase sinc FIR (16 taps per arm, beta=7,
+ *       ~70 dB alias suppression).  Coefficient table is computed once
+ *       per WAV file from the upsampling ratio n_interp = round(targetRate
+ *       / sampleRate).  Replaces the earlier cosine-interp + 7-tap FIR.
  *       Replaces liquidDSP msresamp_crcf.
- *       Idea from COHIRADIAStreamer / DspWorker::run_dsp_engine_32INT.
  *
  *  2. Audio resampling (audio_rate → sampleRate):
  *       Zero-order hold (ZOH / sample-repetition):  each audio sample from
@@ -75,29 +76,47 @@ static inline void _sock_set_nonblocking(int fd) { int f=fcntl(fd,F_GETFL,0); fc
 #include <osmo-fl2k.h>
 
 /* ================================================================== */
-/* LUT NCO  –  12-bit, 4096 entries, int16_t ±32767                   */
+/* LUT NCO  –  12-bit, 4096 entries, float ±1.0                       */
 /* ================================================================== */
 
-static constexpr int LUT_BITS = 12;
-static constexpr int LUT_SIZE = 1 << LUT_BITS;   /* 4096 */
-static int16_t g_lut_sin[LUT_SIZE];
-static int16_t g_lut_cos[LUT_SIZE];
+static constexpr int LUT_BITS      = 12;
+static constexpr int LUT_SIZE      = 1 << LUT_BITS;   /* 4096 */
+static constexpr int LUT_FRAC_BITS = 8;               /* sub-entry interpolation bits */
+static float   g_lut_sin[LUT_SIZE];
+static float   g_lut_cos[LUT_SIZE];
 static bool    g_lut_ready = false;
 
 static void init_lut()
 {
     if (g_lut_ready) return;
     for (int i = 0; i < LUT_SIZE; ++i) {
-        double a    = 2.0 * M_PI * i / LUT_SIZE;
-        g_lut_sin[i] = (int16_t)std::round(std::sin(a) * 32767.0);
-        g_lut_cos[i] = (int16_t)std::round(std::cos(a) * 32767.0);
+        double a     = 2.0 * M_PI * i / LUT_SIZE;
+        g_lut_sin[i] = (float)std::sin(a);
+        g_lut_cos[i] = (float)std::cos(a);
     }
     g_lut_ready = true;
 }
 
-/* Phase accumulator access: upper LUT_BITS select table entry */
-static inline int16_t lut_sin(uint32_t phase) { return g_lut_sin[phase >> (32 - LUT_BITS)]; }
-static inline int16_t lut_cos(uint32_t phase) { return g_lut_cos[phase >> (32 - LUT_BITS)]; }
+/* Simple LUT access (audio NCOs – carrier error ≤ sampleRate/LUT_SIZE ≈ 305 Hz) */
+static inline float lut_sin(uint32_t phase) { return g_lut_sin[phase >> (32 - LUT_BITS)]; }
+static inline float lut_cos(uint32_t phase) { return g_lut_cos[phase >> (32 - LUT_BITS)]; }
+
+/* Interpolated LUT (main VCO only).
+ * A plain 12-bit LUT truncates 20 phase bits, causing a systematic frequency
+ * error of targetRate/LUT_SIZE ≈ 2441 Hz — observed as the ~2 kHz Pfeifton.
+ * 8 extra interpolation bits reduce the effective error to < 0.01 Hz. */
+static inline void lut_sincos_lerp(uint32_t phase,
+                                   float* __restrict__ s_out,
+                                   float* __restrict__ c_out)
+{
+    uint32_t idx  = phase >> (32 - LUT_BITS);
+    float    frac = (float)((phase >> (32 - LUT_BITS - LUT_FRAC_BITS))
+                            & ((1u << LUT_FRAC_BITS) - 1))
+                   * (1.f / (float)(1u << LUT_FRAC_BITS));
+    uint32_t idx1 = (idx + 1) & (LUT_SIZE - 1);
+    *s_out = g_lut_sin[idx] + (g_lut_sin[idx1] - g_lut_sin[idx]) * frac;
+    *c_out = g_lut_cos[idx] + (g_lut_cos[idx1] - g_lut_cos[idx]) * frac;
+}
 
 /* Frequency (Hz) → uint32_t phase increment at sample_rate */
 static inline uint32_t freq_to_pinc(double freq_hz, double sample_rate)
@@ -249,6 +268,9 @@ struct DspWorkerFL2K {
     std::vector<AudioChanRT>  audio_rt;
     float                     audio_rate    = 25000.f;
     float                     audio_mix_lvl = 1.0f;
+    /* Smoothed RMS of IQ-archive (before audio mixing); used to scale audio
+     * carriers so their amplitude tracks the IQ signal level. */
+    float                     audio_iq_ref  = 0.01f;
 
     /* --- helpers -------------------------------------------------- */
     void write_ring(const int8_t* data, size_t n);
@@ -463,7 +485,7 @@ void DspWorkerFL2K::teardown_audio_for_file()
  *   1. Drain available UDP datagrams into raw_fifo (u8 PCM → float).
  *   2. Advance ZOH audio position by aud_phase_inc per IQ sample;
  *      pop one new audio sample from raw_fifo whenever phase ≥ 1.
- *   3. DSB-LC AM with integer LUT NCO:
+ *   3. DSB-LC AM with float LUT NCO:
  *        x[k] += gain * (1 + mod_idx * audio) * exp(j * nco_phase)
  *
  * Signal-theoretically, ZOH introduces a sinc roll-off and images at
@@ -496,7 +518,6 @@ void DspWorkerFL2K::mix_audio_block_fast(IQf* x, size_t n_iq)
         }
 
         /* 2+3. ZOH advance + LUT NCO + AM mix */
-        const float inv32767 = 1.f / 32767.f;
         for (size_t k = 0; k < n_iq; ++k) {
 
             /* ZOH: advance audio position, pop when phase crosses 1 */
@@ -506,13 +527,14 @@ void DspWorkerFL2K::mix_audio_block_fast(IQf* x, size_t n_iq)
                 rt.raw_fifo.pop(&rt.current_aud, 1);
             }
 
-            /* LUT NCO */
-            float cf = lut_cos(rt.nco_phase) * inv32767;
-            float sf = lut_sin(rt.nco_phase) * inv32767;
+            /* LUT NCO — float ±1.0, no inv32767 needed */
+            float cf = lut_cos(rt.nco_phase);
+            float sf = lut_sin(rt.nco_phase);
             rt.nco_phase += rt.nco_phase_inc;
 
-            /* DSB-LC AM: (1 + m * audio) * carrier */
-            float am = rt.gain * (1.f + rt.mod_idx * rt.current_aud);
+            /* DSB-LC AM: gain is referenced to IQ amplitude so that audio
+             * carriers scale with the IQ archive level (audio_mix_lvl = ratio). */
+            float am = rt.gain * audio_iq_ref * (1.f + rt.mod_idx * rt.current_aud);
             x[k].re += am * cf;
             x[k].im += am * sf;
         }
@@ -535,24 +557,60 @@ void DspWorkerFL2K::mix_audio_block_fast(IQf* x, size_t n_iq)
 /* DSP: process a single WAV file                                      */
 /* ================================================================== */
 
-/*
- * 7-tap symmetric FIR smoother  {4,16,26,36,26,16,4}  (sum=128 → >>7).
- * Applied after cosine-interpolation upsampling to suppress spectral
- * images from the zero-order-hold staircase.
- * Coefficients from COHIRADIAStreamer / DspWorker::run_dsp_engine_32INT.
- */
-static constexpr int32_t FIR_COEFFS[7] = { 4, 16, 26, 36, 26, 16, 4 };
+/* ================================================================== */
+/* Polyphase sinc FIR for IQ upsampling                               */
+/*                                                                    */
+/* Kaiser-windowed, POLY_TAPS taps per polyphase arm (power of 2 for */
+/* fast ring-buffer indexing with &(POLY_TAPS-1)).                    */
+/* beta=7  →  ~70 dB stopband, far better than the earlier 7-tap FIR.*/
+/* ================================================================== */
+static constexpr int POLY_TAPS = 16;
 
-static inline int32_t fir_step(int32_t* hist, int32_t new_val)
+static double bessel_i0(double x)
 {
-    /* Shift history and insert new sample at position 6 */
-    hist[0] = hist[1]; hist[1] = hist[2]; hist[2] = hist[3];
-    hist[3] = hist[4]; hist[4] = hist[5]; hist[5] = hist[6];
-    hist[6] = new_val;
-    return (hist[0]*FIR_COEFFS[0] + hist[1]*FIR_COEFFS[1] +
-            hist[2]*FIR_COEFFS[2] + hist[3]*FIR_COEFFS[3] +
-            hist[4]*FIR_COEFFS[4] + hist[5]*FIR_COEFFS[5] +
-            hist[6]*FIR_COEFFS[6]) >> 7;
+    double sum = 1.0, term = 1.0;
+    for (int k = 1; k <= 30; ++k) {
+        term *= (0.25 * x * x) / ((double)k * k);
+        sum  += term;
+        if (term < 1e-12 * sum) break;
+    }
+    return sum;
+}
+
+/* Build polyphase coefficient table for upsampling by integer ratio L.
+ * Returns poly[L][POLY_TAPS]:  poly[phase p][tap t] = h[p + t*L].
+ * DC gain of the prototype filter = L, so the upsampled signal has the
+ * same amplitude as the input (no factor-L amplitude boost). */
+static std::vector<std::vector<float>> build_poly_coeffs(int L)
+{
+    const int    total  = L * POLY_TAPS;
+    const int    center = total / 2;
+    const double beta   = 7.0;
+    const double i0b    = bessel_i0(beta);
+    const double cut    = 0.9 / L;   /* cutoff slightly below 1/L for guard band */
+
+    std::vector<float> h(total, 0.f);
+    for (int i = 0; i < total; ++i) {
+        double n    = i - center;
+        double sinc = (n == 0.0) ? (2.0 * cut)
+                                 : (std::sin(2.0 * M_PI * cut * n) / (M_PI * n));
+        double t    = 2.0 * i / (total - 1) - 1.0;
+        double w    = bessel_i0(beta * std::sqrt(std::max(0.0, 1.0 - t * t))) / i0b;
+        h[i] = (float)(sinc * w);
+    }
+    /* Normalize so that sum of all coefficients = L (DC gain = 1 after upsampling) */
+    double norm = 0.0;
+    for (auto v : h) norm += (double)v;
+    float scale = (norm > 0.0) ? (float)(L / norm) : 1.f;
+    for (auto& v : h) v *= scale;
+
+    /* Polyphase decomposition: phase p uses taps h[p], h[p+L], h[p+2L], ... */
+    std::vector<std::vector<float>> poly(L, std::vector<float>(POLY_TAPS, 0.f));
+    for (int p = 0; p < L; ++p)
+        for (int t = 0; t < POLY_TAPS; ++t)
+            if (p + t * L < total)
+                poly[p][t] = h[p + t * L];
+    return poly;
 }
 
 std::string DspWorkerFL2K::process_file(const std::string& path)
@@ -610,26 +668,24 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
             }
 
             /* ----------------------------------------------------------
-             * Precompute cosine-interpolation LUT for IQ upsampling.
+             * Polyphase sinc FIR coefficients for IQ upsampling.
              *
-             * mu2_lut[k] = (1 - cos(k/N * π)) / 2  for k = 0..N-1
-             * where N = round(targetRate / sampleRate).
+             * n_interp = round(targetRate / sampleRate) is the integer
+             * upsampling ratio.  build_poly_coeffs() designs a Kaiser-
+             * windowed prototype FIR and splits it into n_interp polyphase
+             * subfilters, each with POLY_TAPS coefficients.
              *
-             * The inner loop interpolates from lastI to nextI using
-             * mu2 as the mixing coefficient (cosine-shaped for smooth
-             * spectral roll-off vs. linear interpolation).
-             *
-             * Precomputing removes the cosf() call from the hot path.
+             * Output sample k (0..n_interp-1) for each input sample is
+             * computed as the dot product of polyphase subfilter k with
+             * the POLY_TAPS most-recent input samples.
              * --------------------------------------------------------*/
-            double upRatio = (double)targetRate / sampleRate;
+            double upRatio  = (double)targetRate / sampleRate;
             int    n_interp = (int)std::round(upRatio);
             if (n_interp < 1) n_interp = 1;
 
-            std::vector<float> mu2_lut(n_interp);
-            for (int k = 0; k < n_interp; ++k) {
-                double mu    = (double)k / upRatio;
-                mu2_lut[k]   = (float)((1.0 - std::cos(mu * M_PI)) / 2.0);
-            }
+            auto poly_coeffs = build_poly_coeffs(n_interp);
+            printf("[fl2k_fast_plus] polyphase FIR: L=%d  taps_per_arm=%d  total=%d\n",
+                   n_interp, POLY_TAPS, n_interp * POLY_TAPS);
 
             /* Main LUT NCO: shift IQ baseband to shiftFreq at targetRate */
             uint32_t vco_phase     = 0;
@@ -639,18 +695,22 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
             setup_audio_for_file(sampleRate);
 
             /* AGC / gain state
-             * GAIN_SCALE = 256 * bitScale matches fl2k_plus semantics:
-             *   gainValue × GAIN_SCALE / 32767 maps the same gainValue range to the
-             *   same output amplitude as fl2k_plus (which uses gainValue × GAIN_SCALE
-             *   on a ±1 float signal; here mixed is ±32767, hence the ÷32767). */
+             * IQ signal path is float ±1.0 throughout (polyphase FIR output ≈ ±1.0).
+             * current_gain_fast = gainValue × GAIN_SCALE maps float ±1.0 → int8 ±bitScale
+             * for gainValue = 1.0 (full scale). */
             const float bitScale    = 127.0f;
-            const float GAIN_SCALE  = 256.0f * bitScale;   /* = 32512, same as fl2k_plus */
-            float current_gain_fast = gainValue.load() * GAIN_SCALE / 32767.f;
+            const float GAIN_SCALE  = 256.0f * bitScale;   /* = 32512 */
+            /* Safe initial gain: target 65% of int8 full-scale for typical IQ.
+             * Converges to the right level within ~20 blocks instead of starting
+             * at a potentially huge gainValue * GAIN_SCALE. */
+            float current_gain_fast = bitScale * 0.65f;
             float peak_hold         = 0.1f;
 
-            /* IQ cosine-interp state: integer ±32767 */
-            int32_t lastI = 0, lastQ = 0, nextI = 0, nextQ = 0;
-            int32_t i_hist[7] = {}, q_hist[7] = {};
+            /* IQ polyphase ring buffer: POLY_TAPS samples of history (float ±1.0) */
+            float i_buf[POLY_TAPS] = {};
+            float q_buf[POLY_TAPS] = {};
+            int   buf_ptr          = 0;
+            audio_iq_ref = 0.01f;  /* reset IQ-level tracker per file */
 
             /* Buffers */
             std::vector<IQf>   x(DSP_BLOCK);
@@ -689,10 +749,10 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
                             ring_head = ring_tail = ring_count = 0;
                             ring_not_full.notify_all();
                         }
-                        /* Reset interpolation state to avoid a glitch */
-                        lastI = lastQ = nextI = nextQ = 0;
-                        std::fill(std::begin(i_hist), std::end(i_hist), 0);
-                        std::fill(std::begin(q_hist), std::end(q_hist), 0);
+                        /* Reset polyphase ring buffer to avoid a glitch after seek */
+                        std::fill(std::begin(i_buf), std::end(i_buf), 0.f);
+                        std::fill(std::begin(q_buf), std::end(q_buf), 0.f);
+                        buf_ptr = 0;
                     }
                 }
 
@@ -748,9 +808,17 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
 
                 dataBytesRead += (uint32_t)(DSP_BLOCK * numChannels * (bitsPerSample / 8));
 
-                /* -- mix audio overlay channels into baseband at sampleRate -- */
-                if (!audio_rt.empty())
+                /* -- mix audio overlay channels into baseband at sampleRate --
+                 * Measure IQ-only RMS first so audio carriers scale with
+                 * the archive signal level (audio_mix_lvl acts as a ratio). */
+                if (!audio_rt.empty()) {
+                    float rms2 = 0.0f;
+                    for (size_t i = 0; i < DSP_BLOCK; ++i)
+                        rms2 += x[i].re * x[i].re + x[i].im * x[i].im;
+                    float rms = sqrtf(rms2 / (float)DSP_BLOCK);
+                    audio_iq_ref = 0.995f * audio_iq_ref + 0.005f * rms;
                     mix_audio_block_fast(x.data(), DSP_BLOCK);
+                }
 
                 /* -- AGC: track peak amplitude of combined IQ block -- */
                 float bpeak = 0.0001f;
@@ -761,55 +829,57 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
                 peak_hold = 0.95f * peak_hold + 0.05f * bpeak;
 
                 if (useAGC) {
-                    /* Target: peak_hold maps to bitScale * 0.65 in output */
-                    float tg = (bitScale * 0.65f)
-                               / ((peak_hold + 0.0001f) * 32767.f);
-                    current_gain_fast = 0.98f * current_gain_fast + 0.02f * tg;
+                    /* IQ signal is float ±1.0; polyphase FIR preserves amplitude.
+                     * tg maps peak_hold → bitScale * 0.65 in the int8 output.
+                     * Time constant: τ ≈ 20 blocks ≈ 16 ms at 10 MHz. */
+                    float tg = (bitScale * 0.65f) / (peak_hold + 0.0001f);
+                    current_gain_fast = 0.95f * current_gain_fast + 0.05f * tg;
                 } else {
-                    current_gain_fast = gainValue.load() * GAIN_SCALE / 32767.f;
+                    current_gain_fast = gainValue.load() * GAIN_SCALE;
                 }
 
-                /* -- Upsample + LUT NCO + int8 output --
+                /* -- Upsample (polyphase sinc FIR) + LUT NCO + int8 output --
                  *
                  * For each WAV sample pair in x[]:
-                 *   a) convert float IQ → int32 ±32767
-                 *   b) cosine-interpolate n_interp output samples between
-                 *      lastI/Q and nextI/Q using the precomputed mu2_lut
-                 *   c) push each interpolated sample through the 7-tap FIR
-                 *   d) mix with main LUT NCO (frequency shift to shiftFreq)
-                 *   e) apply gain + clip → int8_t
+                 *   a) push float IQ sample into ring buffer (size POLY_TAPS)
+                 *   b) for each polyphase arm k = 0..n_interp-1:
+                 *        dot product of poly_coeffs[k] with ring buffer → fI, fQ
+                 *   c) mix with main LUT NCO (frequency shift to shiftFreq)
+                 *   d) apply gain + clip → int8_t
+                 *
+                 * The polyphase FIR is a Kaiser-windowed sinc (beta=7, ~70 dB
+                 * stopband) split into n_interp arms of POLY_TAPS taps each.
+                 * Ring-buffer index uses &(POLY_TAPS-1) (power-of-2 fast modulo).
                  */
                 size_t out_pos = 0;
-                const float inv32767 = 1.f / 32767.f;
 
                 for (size_t bi = 0; bi < DSP_BLOCK; ++bi) {
-                    lastI = nextI;
-                    lastQ = nextQ;
-                    nextI = (int32_t)(x[bi].re * 32767.f);
-                    nextQ = (int32_t)(x[bi].im * 32767.f);
+                    /* Push new sample into the ring buffer */
+                    int wptr = buf_ptr & (POLY_TAPS - 1);
+                    i_buf[wptr] = x[bi].re;
+                    q_buf[wptr] = x[bi].im;
+                    ++buf_ptr;
 
+                    /* Generate n_interp upsampled outputs */
                     for (int k = 0; k < n_interp; ++k) {
-                        float mu2 = mu2_lut[k];
+                        const float* pc = poly_coeffs[k].data();
+                        float fI = 0.f, fQ = 0.f;
+                        for (int t = 0; t < POLY_TAPS; ++t) {
+                            int idx = (buf_ptr - 1 - t) & (POLY_TAPS - 1);
+                            fI += pc[t] * i_buf[idx];
+                            fQ += pc[t] * q_buf[idx];
+                        }
 
-                        /* Cosine-interpolated IQ */
-                        int32_t currI = (int32_t)((float)lastI + mu2 * (float)(nextI - lastI));
-                        int32_t currQ = (int32_t)((float)lastQ + mu2 * (float)(nextQ - lastQ));
-
-                        /* 7-tap FIR */
-                        int32_t fI = fir_step(i_hist, currI);
-                        int32_t fQ = fir_step(q_hist, currQ);
-
-                        /* LUT NCO: extract real part of IQ * exp(j*phi)
-                         * = I*cos(phi) - Q*sin(phi)                    */
-                        int16_t c = lut_cos(vco_phase);
-                        int16_t s = lut_sin(vco_phase);
+                        /* Interpolated LUT NCO: IQ * exp(j*phi), real part only.
+                         * fI/fQ are float ±1.0; c/s are float ±1.0. */
+                        float c, s;
+                        lut_sincos_lerp(vco_phase, &s, &c);
                         vco_phase += vco_phase_inc;
 
-                        /* Product fits in int32: |fI*c| ≤ 32767² < 2^31 */
-                        int32_t mixed = ((int32_t)fI * c - (int32_t)fQ * s) >> 15;
+                        float mixed = fI * c - fQ * s;
 
                         /* Apply gain and clip to signed 8-bit */
-                        float hf = (float)mixed * current_gain_fast;
+                        float hf = mixed * current_gain_fast;
                         if      (hf >  127.f) hf =  127.f;
                         else if (hf < -128.f) hf = -128.f;
                         out8[out_pos++] = (int8_t)hf;
