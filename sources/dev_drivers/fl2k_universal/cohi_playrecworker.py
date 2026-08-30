@@ -69,11 +69,12 @@ def _setup_lib_plus(lib, libpath):
 
     class DspAudioChannel(ctypes.Structure):
         _fields_ = [
-            ("freq_hz",      ctypes.c_float),
-            ("bandwidth_hz", ctypes.c_float),
-            ("name",         ctypes.c_char * 64),
-            ("udp_port",     ctypes.c_int),
-            ("mod_index",    ctypes.c_float),
+            ("freq_hz",         ctypes.c_float),
+            ("bandwidth_hz",    ctypes.c_float),
+            ("name",            ctypes.c_char * 64),
+            ("udp_port",        ctypes.c_int),
+            ("mod_index",       ctypes.c_float),
+            ("schroeder_phase", ctypes.c_float),
         ]
     lib._DspAudioChannel = DspAudioChannel
 
@@ -440,6 +441,7 @@ class playrec_worker(QObject):
                               audio_rate: int, mod_index: float,
                               ffmpeg_bin: str) -> list:
         channels = []
+        N_total = len(stations)
         for idx, sta in enumerate(stations):
             port      = base_port + idx
             url       = sta["url"]
@@ -534,12 +536,14 @@ class playrec_worker(QObject):
                       f"@ {sta['freq_hz']/1e3:.1f} kHz -> UDP {port} "
                       f"(PID {proc.pid}), log -> {_logfile}")
                 self._ffmpeg_procs.append(proc)
+                schroeder_phase = np.pi * idx * (idx + 1) / max(1, N_total)
                 channels.append({
-                    "freq_hz":   sta["freq_hz"],
-                    "bw_hz":     bw_hz,
-                    "name":      name,
-                    "udp_port":  port,
-                    "mod_index": mod_index,
+                    "freq_hz":         sta["freq_hz"],
+                    "bw_hz":           bw_hz,
+                    "name":            name,
+                    "udp_port":        port,
+                    "mod_index":       mod_index,
+                    "schroeder_phase": schroeder_phase,
                 })
             except OSError as exc:
                 print(f"[fl2k_universal] Failed to start ffmpeg for '{name}': {exc}")
@@ -748,11 +752,12 @@ class playrec_worker(QObject):
             DspAudioChannel = LIB._DspAudioChannel
             ch_arr = (DspAudioChannel * len(_channels))()
             for i, ch in enumerate(_channels):
-                ch_arr[i].freq_hz      = ch["freq_hz"]
-                ch_arr[i].bandwidth_hz = ch["bw_hz"]
-                ch_arr[i].name         = ch["name"].encode("utf-8", errors="replace")[:63]
-                ch_arr[i].udp_port     = ch["udp_port"]
-                ch_arr[i].mod_index    = ch["mod_index"]
+                ch_arr[i].freq_hz         = ch["freq_hz"]
+                ch_arr[i].bandwidth_hz    = ch["bw_hz"]
+                ch_arr[i].name            = ch["name"].encode("utf-8", errors="replace")[:63]
+                ch_arr[i].udp_port        = ch["udp_port"]
+                ch_arr[i].mod_index       = ch["mod_index"]
+                ch_arr[i].schroeder_phase = ch.get("schroeder_phase", 0.0)
             rc = LIB.dsp_fl2k_configure_audio(
                 handle, ch_arr,
                 ctypes.c_int(len(_channels)),

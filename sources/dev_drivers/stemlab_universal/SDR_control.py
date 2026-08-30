@@ -50,7 +50,6 @@ class SDR_control(QObject):
             "resolutions":     [16, 24, 32],
             "connection_type": "ethernet",
             "volume_mode":     "mean",
-            "modulator":       "P",   # show both IQ-file and audio-playlist GUI elements
             "watchdog":        False,
         }
         return device_ID_dict

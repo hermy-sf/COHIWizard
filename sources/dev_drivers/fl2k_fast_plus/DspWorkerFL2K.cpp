@@ -236,11 +236,12 @@ struct DspWorkerFL2K {
      * Audio overlay channels
      * ================================================================*/
     struct AudioChanCfg {
-        float freq_hz  = 0.f;
-        float bw_hz    = 4500.f;
-        float mod_idx  = 0.9f;
-        char  name[64] = {};
-        int   udp_port = -1;
+        float freq_hz        = 0.f;
+        float bw_hz          = 4500.f;
+        float mod_idx        = 0.9f;
+        char  name[64]       = {};
+        int   udp_port       = -1;
+        float schroeder_phase = 0.f;
     };
 
     struct AudioChanRT {
@@ -452,7 +453,11 @@ void DspWorkerFL2K::setup_audio_for_file(uint32_t sr)
 
         /* LUT NCO at delta_f = carrier - centerFreq, running at sampleRate */
         double delta_f = (double)cfg.freq_hz - shiftFreq;
-        rt.nco_phase     = 0;
+        {
+            double sp = fmod((double)cfg.schroeder_phase, 2.0 * M_PI);
+            if (sp < 0.0) sp += 2.0 * M_PI;
+            rt.nco_phase = (uint32_t)(sp / (2.0 * M_PI) * 4294967296.0);
+        }
         rt.nco_phase_inc = freq_to_pinc(delta_f, sr);
 
         /* Allocate UDP receive scratch */
@@ -1044,7 +1049,8 @@ int dsp_fl2k_configure_audio(DspFL2KHandle          h,
                        ? channels[i].mod_index : 0.9f;
         strncpy(cfg.name, channels[i].name, 63);
         cfg.name[63] = '\0';
-        cfg.udp_port = channels[i].udp_port;
+        cfg.udp_port        = channels[i].udp_port;
+        cfg.schroeder_phase = channels[i].schroeder_phase;
 
         /* Reset runtime state */
         rt.active = false; rt.mod_idx = 0.9f; rt.gain = 0.f;

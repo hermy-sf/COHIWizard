@@ -53,7 +53,6 @@ class SDR_control(QObject):
             "connection_type": "USB",
             "watchdog":        True,
             "volume_mode":     "mean",
-            "modulator":       "P",   # show IQ-file AND audio-playlist GUI elements
         }
 
     # ------------------------------------------------------------------
