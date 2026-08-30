@@ -46,6 +46,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <thread>
+#include <chrono>
 #include <algorithm>
 
 /* Platform-specific socket support */
@@ -268,9 +269,6 @@ struct DspWorkerFL2K {
     std::vector<AudioChanRT>  audio_rt;
     float                     audio_rate    = 25000.f;
     float                     audio_mix_lvl = 1.0f;
-    /* Smoothed RMS of IQ-archive (before audio mixing); used to scale audio
-     * carriers so their amplitude tracks the IQ signal level. */
-    float                     audio_iq_ref  = 0.01f;
 
     /* --- helpers -------------------------------------------------- */
     void write_ring(const int8_t* data, size_t n);
@@ -532,9 +530,8 @@ void DspWorkerFL2K::mix_audio_block_fast(IQf* x, size_t n_iq)
             float sf = lut_sin(rt.nco_phase);
             rt.nco_phase += rt.nco_phase_inc;
 
-            /* DSB-LC AM: gain is referenced to IQ amplitude so that audio
-             * carriers scale with the IQ archive level (audio_mix_lvl = ratio). */
-            float am = rt.gain * audio_iq_ref * (1.f + rt.mod_idx * rt.current_aud);
+            /* DSB-LC AM: (1 + m * audio) * carrier */
+            float am = rt.gain * (1.f + rt.mod_idx * rt.current_aud);
             x[k].re += am * cf;
             x[k].im += am * sf;
         }
@@ -560,11 +557,14 @@ void DspWorkerFL2K::mix_audio_block_fast(IQf* x, size_t n_iq)
 /* ================================================================== */
 /* Polyphase sinc FIR for IQ upsampling                               */
 /*                                                                    */
-/* Kaiser-windowed, POLY_TAPS taps per polyphase arm (power of 2 for */
-/* fast ring-buffer indexing with &(POLY_TAPS-1)).                    */
-/* beta=7  →  ~70 dB stopband, far better than the earlier 7-tap FIR.*/
+/* POLY_TAPS_MAX = 16: ring-buffer size (power of 2 for fast modulo). */
+/* Actual taps used per arm is runtime-selectable (4 or 16) for       */
+/* adaptive CPU-load quality switching.                                */
+/*                                                                    */
+/* GOOD mode: taps=16, beta=7  →  ~70 dB stopband                    */
+/* FAST mode: taps= 4, beta=3  →  ~30 dB stopband, ~4× faster        */
 /* ================================================================== */
-static constexpr int POLY_TAPS = 16;
+static constexpr int POLY_TAPS_MAX = 16;   /* ring-buffer size — MUST be power of 2 */
 
 static double bessel_i0(double x)
 {
@@ -578,16 +578,16 @@ static double bessel_i0(double x)
 }
 
 /* Build polyphase coefficient table for upsampling by integer ratio L.
- * Returns poly[L][POLY_TAPS]:  poly[phase p][tap t] = h[p + t*L].
- * DC gain of the prototype filter = L, so the upsampled signal has the
- * same amplitude as the input (no factor-L amplitude boost). */
-static std::vector<std::vector<float>> build_poly_coeffs(int L)
+ * taps:  number of taps per polyphase arm (≤ POLY_TAPS_MAX)
+ * beta:  Kaiser window shape parameter (7 → 70 dB, 3 → 30 dB)
+ * Returns poly[L][taps]: poly[phase p][tap t] = h[p + t*L] */
+static std::vector<std::vector<float>>
+build_poly_coeffs(int L, int taps, double beta)
 {
-    const int    total  = L * POLY_TAPS;
+    const int    total  = L * taps;
     const int    center = total / 2;
-    const double beta   = 7.0;
     const double i0b    = bessel_i0(beta);
-    const double cut    = 0.9 / L;   /* cutoff slightly below 1/L for guard band */
+    const double cut    = 0.9 / L;
 
     std::vector<float> h(total, 0.f);
     for (int i = 0; i < total; ++i) {
@@ -598,16 +598,14 @@ static std::vector<std::vector<float>> build_poly_coeffs(int L)
         double w    = bessel_i0(beta * std::sqrt(std::max(0.0, 1.0 - t * t))) / i0b;
         h[i] = (float)(sinc * w);
     }
-    /* Normalize so that sum of all coefficients = L (DC gain = 1 after upsampling) */
     double norm = 0.0;
     for (auto v : h) norm += (double)v;
     float scale = (norm > 0.0) ? (float)(L / norm) : 1.f;
     for (auto& v : h) v *= scale;
 
-    /* Polyphase decomposition: phase p uses taps h[p], h[p+L], h[p+2L], ... */
-    std::vector<std::vector<float>> poly(L, std::vector<float>(POLY_TAPS, 0.f));
+    std::vector<std::vector<float>> poly(L, std::vector<float>(taps, 0.f));
     for (int p = 0; p < L; ++p)
-        for (int t = 0; t < POLY_TAPS; ++t)
+        for (int t = 0; t < taps; ++t)
             if (p + t * L < total)
                 poly[p][t] = h[p + t * L];
     return poly;
@@ -668,24 +666,27 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
             }
 
             /* ----------------------------------------------------------
-             * Polyphase sinc FIR coefficients for IQ upsampling.
+             * Polyphase sinc FIR — two quality levels for adaptive switching.
              *
-             * n_interp = round(targetRate / sampleRate) is the integer
-             * upsampling ratio.  build_poly_coeffs() designs a Kaiser-
-             * windowed prototype FIR and splits it into n_interp polyphase
-             * subfilters, each with POLY_TAPS coefficients.
+             * GOOD (default): 16 taps/arm, Kaiser β=7  → ~70 dB alias reject.
+             * FAST (fallback):  4 taps/arm, Kaiser β=3  → ~30 dB, ~4× faster.
              *
-             * Output sample k (0..n_interp-1) for each input sample is
-             * computed as the dot product of polyphase subfilter k with
-             * the POLY_TAPS most-recent input samples.
+             * Quality switches at DSP-block boundaries based on measured
+             * ratio of block processing time to real-time budget.
              * --------------------------------------------------------*/
             double upRatio  = (double)targetRate / sampleRate;
             int    n_interp = (int)std::round(upRatio);
             if (n_interp < 1) n_interp = 1;
 
-            auto poly_coeffs = build_poly_coeffs(n_interp);
-            printf("[fl2k_fast_plus] polyphase FIR: L=%d  taps_per_arm=%d  total=%d\n",
-                   n_interp, POLY_TAPS, n_interp * POLY_TAPS);
+            auto poly_good = build_poly_coeffs(n_interp, 16, 7.0); /* GOOD */
+            auto poly_fast = build_poly_coeffs(n_interp,  4, 3.0); /* FAST */
+            printf("[fl2k_fast_plus] polyphase FIR: L=%d  GOOD=16t/β7  FAST=4t/β3\n", n_interp);
+
+            /* Adaptive quality state */
+            const decltype(poly_good)* active_poly      = &poly_good;
+            int                        active_poly_taps  = 16;
+            float                      dsp_load_smooth   = 0.0f;
+            const double               block_real_time   = (double)DSP_BLOCK / (double)targetRate;
 
             /* Main LUT NCO: shift IQ baseband to shiftFreq at targetRate */
             uint32_t vco_phase     = 0;
@@ -706,11 +707,10 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
             float current_gain_fast = bitScale * 0.65f;
             float peak_hold         = 0.1f;
 
-            /* IQ polyphase ring buffer: POLY_TAPS samples of history (float ±1.0) */
-            float i_buf[POLY_TAPS] = {};
-            float q_buf[POLY_TAPS] = {};
-            int   buf_ptr          = 0;
-            audio_iq_ref = 0.01f;  /* reset IQ-level tracker per file */
+            /* IQ polyphase ring buffer: POLY_TAPS_MAX samples of history */
+            float i_buf[POLY_TAPS_MAX] = {};
+            float q_buf[POLY_TAPS_MAX] = {};
+            int   buf_ptr             = 0;
 
             /* Buffers */
             std::vector<IQf>   x(DSP_BLOCK);
@@ -749,9 +749,9 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
                             ring_head = ring_tail = ring_count = 0;
                             ring_not_full.notify_all();
                         }
-                        /* Reset polyphase ring buffer to avoid a glitch after seek */
-                        std::fill(std::begin(i_buf), std::end(i_buf), 0.f);
-                        std::fill(std::begin(q_buf), std::end(q_buf), 0.f);
+                        /* Reset polyphase ring buffer after seek */
+                        std::fill(i_buf, i_buf + POLY_TAPS_MAX, 0.f);
+                        std::fill(q_buf, q_buf + POLY_TAPS_MAX, 0.f);
                         buf_ptr = 0;
                     }
                 }
@@ -808,17 +808,9 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
 
                 dataBytesRead += (uint32_t)(DSP_BLOCK * numChannels * (bitsPerSample / 8));
 
-                /* -- mix audio overlay channels into baseband at sampleRate --
-                 * Measure IQ-only RMS first so audio carriers scale with
-                 * the archive signal level (audio_mix_lvl acts as a ratio). */
-                if (!audio_rt.empty()) {
-                    float rms2 = 0.0f;
-                    for (size_t i = 0; i < DSP_BLOCK; ++i)
-                        rms2 += x[i].re * x[i].re + x[i].im * x[i].im;
-                    float rms = sqrtf(rms2 / (float)DSP_BLOCK);
-                    audio_iq_ref = 0.995f * audio_iq_ref + 0.005f * rms;
+                /* -- mix audio overlay channels into baseband at sampleRate -- */
+                if (!audio_rt.empty())
                     mix_audio_block_fast(x.data(), DSP_BLOCK);
-                }
 
                 /* -- AGC: track peak amplitude of combined IQ block -- */
                 float bpeak = 0.0001f;
@@ -840,46 +832,47 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
 
                 /* -- Upsample (polyphase sinc FIR) + LUT NCO + int8 output --
                  *
-                 * For each WAV sample pair in x[]:
-                 *   a) push float IQ sample into ring buffer (size POLY_TAPS)
-                 *   b) for each polyphase arm k = 0..n_interp-1:
-                 *        dot product of poly_coeffs[k] with ring buffer → fI, fQ
-                 *   c) mix with main LUT NCO (frequency shift to shiftFreq)
-                 *   d) apply gain + clip → int8_t
-                 *
-                 * The polyphase FIR is a Kaiser-windowed sinc (beta=7, ~70 dB
-                 * stopband) split into n_interp arms of POLY_TAPS taps each.
-                 * Ring-buffer index uses &(POLY_TAPS-1) (power-of-2 fast modulo).
+                 * Adaptive quality: GOOD (16-tap/β7, ~70 dB) when CPU is idle,
+                 * FAST (4-tap/β3, ~30 dB) when DSP block takes > 70% of real time.
+                 * TPDF dither before int8 quantisation prevents structured
+                 * harmonic distortion (e.g. 2nd harmonic of 1 kHz audio at 2 kHz).
                  */
+                auto t0_blk = std::chrono::steady_clock::now();
                 size_t out_pos = 0;
 
+                /* LCG state for TPDF dither — seeded from VCO phase for variety */
+                uint32_t lcg = vco_phase ^ 0xdeadbeefU;
+
                 for (size_t bi = 0; bi < DSP_BLOCK; ++bi) {
-                    /* Push new sample into the ring buffer */
-                    int wptr = buf_ptr & (POLY_TAPS - 1);
+                    /* Push new sample into ring buffer (power-of-2 modulo) */
+                    int wptr = buf_ptr & (POLY_TAPS_MAX - 1);
                     i_buf[wptr] = x[bi].re;
                     q_buf[wptr] = x[bi].im;
                     ++buf_ptr;
 
-                    /* Generate n_interp upsampled outputs */
                     for (int k = 0; k < n_interp; ++k) {
-                        const float* pc = poly_coeffs[k].data();
+                        const float* pc = (*active_poly)[k].data();
                         float fI = 0.f, fQ = 0.f;
-                        for (int t = 0; t < POLY_TAPS; ++t) {
-                            int idx = (buf_ptr - 1 - t) & (POLY_TAPS - 1);
+                        for (int t = 0; t < active_poly_taps; ++t) {
+                            int idx = (buf_ptr - 1 - t) & (POLY_TAPS_MAX - 1);
                             fI += pc[t] * i_buf[idx];
                             fQ += pc[t] * q_buf[idx];
                         }
 
-                        /* Interpolated LUT NCO: IQ * exp(j*phi), real part only.
-                         * fI/fQ are float ±1.0; c/s are float ±1.0. */
                         float c, s;
                         lut_sincos_lerp(vco_phase, &s, &c);
                         vco_phase += vco_phase_inc;
 
                         float mixed = fI * c - fQ * s;
+                        float hf    = mixed * current_gain_fast;
 
-                        /* Apply gain and clip to signed 8-bit */
-                        float hf = mixed * current_gain_fast;
+                        /* TPDF dither: two uniform ±0.5 → triangular ±1 LSB.
+                         * Randomises quantisation error; prevents harmonic spurs. */
+                        lcg = lcg * 1664525u + 1013904223u;
+                        hf += (float)(lcg >> 24) * (1.f/256.f) - 0.5f;
+                        lcg = lcg * 1664525u + 1013904223u;
+                        hf += (float)(lcg >> 24) * (1.f/256.f) - 0.5f;
+
                         if      (hf >  127.f) hf =  127.f;
                         else if (hf < -128.f) hf = -128.f;
                         out8[out_pos++] = (int8_t)hf;
@@ -887,6 +880,28 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
                 }
 
                 write_ring(out8.data(), out_pos);
+
+                /* -- Adaptive quality update --------------------------------
+                 * Measure fraction of real-time budget used by this block.
+                 * Switch GOOD↔FAST with hysteresis (70% / 40%). */
+                {
+                    auto t1_blk  = std::chrono::steady_clock::now();
+                    float load   = (float)(std::chrono::duration<double>(t1_blk - t0_blk).count()
+                                          / block_real_time);
+                    dsp_load_smooth = 0.95f * dsp_load_smooth + 0.05f * load;
+
+                    if (dsp_load_smooth > 0.70f && active_poly_taps == 16) {
+                        active_poly      = &poly_fast;
+                        active_poly_taps = 4;
+                        printf("[fl2k_fast_plus] quality → FAST (load=%.0f%%)\n",
+                               dsp_load_smooth * 100.f);
+                    } else if (dsp_load_smooth < 0.40f && active_poly_taps == 4) {
+                        active_poly      = &poly_good;
+                        active_poly_taps = 16;
+                        printf("[fl2k_fast_plus] quality → GOOD (load=%.0f%%)\n",
+                               dsp_load_smooth * 100.f);
+                    }
+                }
 
                 /* -- monitoring (pre-upsample IQ real part) -- */
                 size_t n_mon = std::min(MON_SIZE - monIdx, DSP_BLOCK);
