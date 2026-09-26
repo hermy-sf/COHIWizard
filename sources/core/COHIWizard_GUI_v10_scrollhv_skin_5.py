@@ -2976,7 +2976,7 @@ class Ui_MainWindow(object):
         self.actionopen_pdf.setText(_translate("MainWindow", "open pdf"))
         self.actionPlaylist_open.setText(_translate("MainWindow", "Playlist open"))
         self.actionPlaylist_open.setToolTip(_translate("MainWindow", "open modulator playlist (csv)"))
-        self.actionPlaylist_open.setShortcut(_translate("MainWindow", "Alt+P"))
+        self.actionPlaylist_open.setShortcut(_translate("MainWindow", "Alt+L"))
 #from file import File
 
 

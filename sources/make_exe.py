@@ -31,9 +31,9 @@ list_mvct_directories = list(config['modules'].keys())
 list_mvct_modules = list(config['modules'].values())
 #add dict of widget modules to config
 aux_dict = {}
-############## update skinindexrange when adding skins !
-skinindexrange = np.arange(6)
-###################################################
+####################  !!!!!!!!!!!!!!!!!!!  adapt if number of skins is changed ! ##########################
+skinindexrange = np.arange(6) #set to number of available skins + 1
+###########################################################################################################
 for ix in range(len(list_mvct_directories)):
     #aux_dict[list_mvct_directories[ix]] = list_mvct_directories[ix] + "_widget"
     #for skinindex in skinindexrange:
