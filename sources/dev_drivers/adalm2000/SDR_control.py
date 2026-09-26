@@ -159,6 +159,30 @@ class SDR_control(QObject):
 
         
 
+    # === New unified adapter interface (Schritt 3) ===
+
+    def setup(self, configparams) -> bool:
+        """USB-direct: ADALM2000 context is managed by the worker via libm2k.
+        No server setup needed at adapter level.
+        """
+        return True
+
+    def teardown(self) -> None:
+        """USB-direct: worker closes the ADALM2000 context."""
+        pass
+
+    def is_ready(self) -> bool:
+        """Check if ADALM2000 is reachable via libm2k."""
+        try:
+            import libm2k
+            ctx = libm2k.m2kOpen()
+            if ctx is not None:
+                libm2k.contextClose(ctx)
+                return True
+        except Exception:
+            pass
+        return False
+
     def RPShutdown(self,configparams):
         '''
         not applicable for fl2k

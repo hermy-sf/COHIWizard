@@ -239,6 +239,34 @@ class SDR_control(QObject):
         self.sshsendcommandseq(shcomm)
         
 
+    # === New unified adapter interface (Schritt 3) ===
+
+    def setup(self, configparams) -> bool:
+        """Start the SDR server via SSH, wait briefly, then configure the TCP socket.
+        Returns True on success, False if either step fails.
+        """
+        _err, _val = self.sdrserverstart(configparams)
+        if _err:
+            return False
+        import time as _time
+        _time.sleep(5)
+        result = self.config_socket(configparams)
+        return result is not False
+
+    def teardown(self) -> None:
+        """Stop the SDR server via SSH."""
+        try:
+            self.sdrserverstop()
+        except Exception:
+            pass
+
+    def is_ready(self) -> bool:
+        """Check whether a TCP data socket is present and connected."""
+        try:
+            return self.data_sock is not None and self.data_sock.fileno() >= 0
+        except Exception:
+            return False
+
     def RPShutdown(self,configparams):
         '''
         Purpose: Shutdown the LINUX running on the STEMLAB

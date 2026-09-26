@@ -3,9 +3,7 @@ Created on Feb 24 2024
 
 #@author: scharfetter_admin
 """
-#from pickle import FALSE, TRUE #intrinsic
 import time
-#from datetime import timedelta
 from socket import socket, AF_INET, SOCK_STREAM
 from struct import unpack
 import numpy as np

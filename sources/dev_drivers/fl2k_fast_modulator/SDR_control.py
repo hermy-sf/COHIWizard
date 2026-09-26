@@ -209,6 +209,22 @@ class SDR_control(QObject):
         # return(errorstate, value)
         
 
+    # === New unified adapter interface (Schritt 3) ===
+
+    def setup(self, configparams) -> bool:
+        """USB-direct: fl2k device access is managed by the worker via libdspflmod.so.
+        No server setup needed at adapter level.
+        """
+        return True
+
+    def teardown(self) -> None:
+        """USB-direct: worker cleans up fl2k context on stop."""
+        pass
+
+    def is_ready(self) -> bool:
+        """fl2k readiness is checked by the worker; adapter-level always reports ready."""
+        return True
+
     def RPShutdown(self,configuration):
         '''
         not applicable for fl2k

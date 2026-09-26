@@ -74,8 +74,7 @@ class SDR_control(QObject):
                           "resolutions": [16, 24, 32],
                           "connection_type": "USB",
                           "watchdog": True,
-                          "volume_mode": "mean",
-                          "modulator": "P"}
+                          "volume_mode": "mean"}
         #connection type USB_Vethernet is virtual, as the device in reality is USB but communication occurs via TCP to IP 127.0.0.1
         return(device_ID_dict)
 
@@ -208,6 +207,22 @@ class SDR_control(QObject):
         # # start SDR server here (e.g. fl2k_tcp)
         # return(errorstate, value)
         
+
+    # === New unified adapter interface (Schritt 3) ===
+
+    def setup(self, configparams) -> bool:
+        """USB-direct: fl2k device access is managed by the worker via libdspfl2k.so.
+        No server setup needed at adapter level.
+        """
+        return True
+
+    def teardown(self) -> None:
+        """USB-direct: worker cleans up fl2k context on stop."""
+        pass
+
+    def is_ready(self) -> bool:
+        """fl2k readiness is checked by the worker; adapter-level always reports ready."""
+        return True
 
     def RPShutdown(self,configuration):
         '''

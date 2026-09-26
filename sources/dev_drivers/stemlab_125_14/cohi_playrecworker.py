@@ -172,13 +172,22 @@ class playrec_worker(QObject):
             junkspersecond = timescaler / self.JUNKSIZE
             count = 0
             # print(f"Junkspersec:{junkspersecond}")
+            _diag125_done = False
             while size > 0 and not self.stopix:
                 if not TEST:
                     if not self.get_pause():
+                        _send125 = gain*data[0:size].astype(np.float32)/normfactor
+                        if not _diag125_done:
+                            _diag125_done = True
+                            print(f"[stemlab_125_14 DIAG] fmt={format}, normfactor={normfactor}, "
+                                  f"gain={gain}, size={size}")
+                            print(f"[stemlab_125_14 DIAG] send_data: len={len(_send125)}, "
+                                  f"dtype={_send125.dtype}, bytes={len(_send125)*4}, "
+                                  f"min={_send125.min():.4f}, max={_send125.max():.4f}, "
+                                  f"rms={float(np.sqrt(np.mean(_send125**2))):.4f}")
+                            print(f"[stemlab_125_14 DIAG] first 8 values: {_send125[:8]}")
                         try:
-                            self.stemlabcontrol.data_sock.send(
-                                                    gain*data[0:size].astype(np.float32)
-                                                    /normfactor)  # send next DATABLOCKSIZE samples
+                            self.stemlabcontrol.data_sock.send(_send125)
                         except BlockingIOError:
                             print("Blocking data socket error in playloop worker")
                             time.sleep(0.1)

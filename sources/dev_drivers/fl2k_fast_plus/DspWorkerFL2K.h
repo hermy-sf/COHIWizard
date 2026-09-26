@@ -35,11 +35,12 @@ typedef void (*dsp_nextfile_cb_t)(const char* path,                void* ud);
 /* Audio overlay channel descriptor (same as fl2k_plus)               */
 /* ------------------------------------------------------------------ */
 typedef struct {
-    float freq_hz;        /* carrier frequency in Hz                    */
-    float bandwidth_hz;   /* audio low-pass bandwidth in Hz (e.g. 4500) */
-    char  name[64];       /* station name (display / log only)          */
-    int   udp_port;       /* local UDP port to receive audio from       */
-    float mod_index;      /* AM modulation index [0..1], typical 0.9    */
+    float freq_hz;          /* carrier frequency in Hz                    */
+    float bandwidth_hz;     /* audio low-pass bandwidth in Hz (e.g. 4500) */
+    char  name[64];         /* station name (display / log only)          */
+    int   udp_port;         /* local UDP port to receive audio from       */
+    float mod_index;        /* AM modulation index [0..1], typical 0.9    */
+    float schroeder_phase;  /* Schröder initial phase (rad), reduces crest factor */
 } DspAudioChannel;
 
 /* ------------------------------------------------------------------ */

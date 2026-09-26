@@ -299,6 +299,7 @@ class playrec_worker(QObject):
             )
             self.SigFinished.emit()
             self.mutex.unlock()
+            self.timer.sleep(2)  # give the GUI a moment to update before returning
             return
         self.mutex.unlock()
 
