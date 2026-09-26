@@ -81,27 +81,59 @@ static inline void _sock_set_nonblocking(int fd) { int f=fcntl(fd,F_GETFL,0); fc
 
 static constexpr int LUT_BITS = 12;
 static constexpr int LUT_SIZE = 1 << LUT_BITS;
-static int16_t g_lut_sin[LUT_SIZE];
-static int16_t g_lut_cos[LUT_SIZE];
-static bool    g_lut_ready = false;
+static float g_lut_sin[LUT_SIZE];
+static float g_lut_cos[LUT_SIZE];
+static bool  g_lut_ready = false;
 
 static void init_lut()
 {
     if (g_lut_ready) return;
     for (int i = 0; i < LUT_SIZE; ++i) {
         double a     = 2.0 * M_PI * i / LUT_SIZE;
-        g_lut_sin[i] = (int16_t)std::round(std::sin(a) * 32767.0);
-        g_lut_cos[i] = (int16_t)std::round(std::cos(a) * 32767.0);
+        g_lut_sin[i] = (float)std::sin(a);
+        g_lut_cos[i] = (float)std::cos(a);
     }
     g_lut_ready = true;
 }
 
-static inline int16_t lut_sin(uint32_t phase) { return g_lut_sin[phase >> (32 - LUT_BITS)]; }
-static inline int16_t lut_cos(uint32_t phase) { return g_lut_cos[phase >> (32 - LUT_BITS)]; }
+static inline float lut_sin(uint32_t phase) { return g_lut_sin[phase >> (32 - LUT_BITS)]; }
+static inline float lut_cos(uint32_t phase) { return g_lut_cos[phase >> (32 - LUT_BITS)]; }
+
+static constexpr int LUT_FRAC_BITS = 8;   /* sub-entry interpolation bits */
+
+/* Interpolated LUT sincos for the main upconversion VCO.
+ * Float LUT + 8-bit sub-interval interpolation: amplitude deviation < 1e-7,
+ * phase error < 6e-6 rad — both well below any audible threshold.
+ * Output: float ±1.0. */
+static inline void lut_sincos_lerp(uint32_t phase, float* s_out, float* c_out)
+{
+    uint32_t idx  = phase >> (32 - LUT_BITS);
+    float    frac = (float)((phase >> (32 - LUT_BITS - LUT_FRAC_BITS))
+                            & ((1u << LUT_FRAC_BITS) - 1))
+                   * (1.f / (float)(1u << LUT_FRAC_BITS));
+    uint32_t idx1 = (idx + 1) & (LUT_SIZE - 1);
+    *s_out = g_lut_sin[idx] + (g_lut_sin[idx1] - g_lut_sin[idx]) * frac;
+    *c_out = g_lut_cos[idx] + (g_lut_cos[idx1] - g_lut_cos[idx]) * frac;
+}
 
 static inline uint32_t freq_to_pinc(double freq_hz, double sample_rate)
 {
     return (uint32_t)(freq_hz / sample_rate * 4294967296.0);
+}
+
+/* Soft AM output limiter: linear for |x| ≤ 85, cubic Hermite ramp to
+ * ±127 for larger values.  Reduces harmonic distortion from overmodulation
+ * vs. hard clipping — the key cause of level-dependent 2/4 kHz spurs.
+ * Slope = 1 at the knee (85), slope = 0 at ±127 → smooth saturation. */
+static inline float soft_limit_127(float x)
+{
+    constexpr float knee = 85.f, ceil_ = 127.f, span = ceil_ - knee;
+    if (x >=  ceil_) return  ceil_;
+    if (x <= -ceil_) return -ceil_;
+    if (x > -knee && x < knee) return x;
+    const float s = (x >= 0.f) ? 1.f : -1.f;
+    const float t = (s * x - knee) / span;          /* t ∈ [0, 1] */
+    return s * (knee + span * t * (1.f + t * (1.f - t)));  /* -t³+t²+t */
 }
 
 /* ================================================================== */
@@ -196,11 +228,12 @@ struct DspWorkerFLMod {
      * Audio channels
      * ================================================================*/
     struct AudioChanCfg {
-        float freq_hz  = 0.f;
-        float bw_hz    = 4500.f;
-        float mod_idx  = 0.9f;
-        char  name[64] = {};
-        int   udp_port = -1;
+        float freq_hz         = 0.f;
+        float bw_hz           = 4500.f;
+        float mod_idx         = 0.9f;
+        char  name[64]        = {};
+        int   udp_port        = -1;
+        float schroeder_phase = 0.f;
     };
 
     struct AudioChanRT {
@@ -412,9 +445,15 @@ void DspWorkerFLMod::setup_channels()
         rt.aud_phase_inc = (double)audio_rate / basebandRate;
         rt.current_aud   = 0.f;
 
-        /* LUT NCO: carrier at delta_f within basebandRate */
-        double delta_f   = (double)cfg.freq_hz - centerFreq;
-        rt.nco_phase     = 0;
+        /* LUT NCO: carrier at delta_f within basebandRate.
+         * Schröder initial phase offsets carriers to minimise crest factor
+         * (φ_n = π·n·(n+1)/N, computed in Python and passed via config). */
+        double delta_f = (double)cfg.freq_hz - centerFreq;
+        {
+            double sp = fmod((double)cfg.schroeder_phase, 2.0 * M_PI);
+            if (sp < 0.0) sp += 2.0 * M_PI;
+            rt.nco_phase = (uint32_t)(sp / (2.0 * M_PI) * 4294967296.0);
+        }
         rt.nco_phase_inc = freq_to_pinc(delta_f, basebandRate);
 
         rt.udp_recv_buf.assign(16384, 0);
@@ -474,7 +513,6 @@ void DspWorkerFLMod::mix_audio_block_fast(IQf* x, size_t n_bb)
         }
 
         /* 2+3. ZOH + LUT NCO + AM accumulate */
-        const float inv32767 = 1.f / 32767.f;
         for (size_t k = 0; k < n_bb; ++k) {
 
             /* ZOH: pop next audio sample when phase crosses 1 */
@@ -484,9 +522,9 @@ void DspWorkerFLMod::mix_audio_block_fast(IQf* x, size_t n_bb)
                 rt.raw_fifo.pop(&rt.current_aud, 1);
             }
 
-            /* LUT NCO */
-            float cf = lut_cos(rt.nco_phase) * inv32767;
-            float sf = lut_sin(rt.nco_phase) * inv32767;
+            /* LUT NCO — float ±1.0, no inv32767 needed */
+            float cf = lut_cos(rt.nco_phase);
+            float sf = lut_sin(rt.nco_phase);
             rt.nco_phase += rt.nco_phase_inc;
 
             /* DSB-LC AM: (1 + m * audio) * carrier */
@@ -510,20 +548,35 @@ void DspWorkerFLMod::mix_audio_block_fast(IQf* x, size_t n_bb)
 }
 
 /* ================================================================== */
-/* 7-tap integer FIR (identical to fl2k_fast_plus)                    */
+/* Windowed-sinc (Hamming) lowpass FIR – designed at runtime          */
+/* Replaces the fixed 7-tap {4,16,26,36,26,16,4} which was not tuned */
+/* to the actual cutoff frequency, causing poor image rejection and   */
+/* cross-modulation between channels.                                 */
 /* ================================================================== */
 
-static constexpr int32_t FIR_COEFFS[7] = { 4, 16, 26, 36, 26, 16, 4 };
+static constexpr int FIR_SHIFT = 7;  /* coefficients scaled to sum = 2^FIR_SHIFT = 128 */
 
-static inline int32_t fir_step(int32_t* hist, int32_t new_val)
+static std::vector<int32_t> design_lowpass_fir(int num_taps, double cutoff_norm)
 {
-    hist[0]=hist[1]; hist[1]=hist[2]; hist[2]=hist[3];
-    hist[3]=hist[4]; hist[4]=hist[5]; hist[5]=hist[6];
-    hist[6] = new_val;
-    return (hist[0]*FIR_COEFFS[0] + hist[1]*FIR_COEFFS[1] +
-            hist[2]*FIR_COEFFS[2] + hist[3]*FIR_COEFFS[3] +
-            hist[4]*FIR_COEFFS[4] + hist[5]*FIR_COEFFS[5] +
-            hist[6]*FIR_COEFFS[6]) >> 7;
+    if (num_taps < 1) num_taps = 1;
+    if (num_taps % 2 == 0) ++num_taps;          /* force odd — symmetric, linear-phase */
+
+    std::vector<double> h(num_taps);
+    int    center = (num_taps - 1) / 2;
+    double sum    = 0.0;
+    for (int n = 0; n < num_taps; ++n) {
+        int    k    = n - center;
+        double sinc = (k == 0) ? cutoff_norm
+                                : std::sin(M_PI * cutoff_norm * k) / (M_PI * k);
+        double win  = 0.54 - 0.46 * std::cos(2.0 * M_PI * n / (num_taps - 1));
+        h[n]  = sinc * win;
+        sum  += h[n];
+    }
+    double scale = (double)(1 << FIR_SHIFT) / sum;
+    std::vector<int32_t> coeffs(num_taps);
+    for (int n = 0; n < num_taps; ++n)
+        coeffs[n] = (int32_t)std::lround(h[n] * scale);
+    return coeffs;
 }
 
 /* ================================================================== */
@@ -577,7 +630,16 @@ void DspWorkerFLMod::run_modulator()
 
     /* IQ interpolation state */
     int32_t lastI = 0, lastQ = 0, nextI = 0, nextQ = 0;
-    int32_t i_hist[7] = {}, q_hist[7] = {};
+
+    /* LCG state for TPDF dither — seeded from VCO phase for decorrelation */
+    uint32_t lcg = vco_phase ^ 0xdeadbeefU;
+
+    /* Runtime-designed Hamming sinc lowpass FIR, tuned to the actual cutoff */
+    const auto fir_coeffs = design_lowpass_fir(15, (double)basebandRate / targetRate);
+    const int  fir_n      = (int)fir_coeffs.size();
+    std::vector<int32_t> i_fir(2 * fir_n, 0);   /* doubled ring buffer */
+    std::vector<int32_t> q_fir(2 * fir_n, 0);
+    int fir_pos = 0;
 
     /* Buffers */
     std::vector<IQf>   x(DSP_BLOCK);
@@ -619,13 +681,15 @@ void DspWorkerFLMod::run_modulator()
         }
         peak_hold = 0.95f * peak_hold + 0.05f * bpeak;
 
+        /* Per-block clip guard — same rationale as fl2k_fast_plus.
+         * mixed ≈ bpeak × 32767, so safe gain = (bitScale-1)/(bpeak×32767×1.05). */
+        const float block_safe = (bitScale - 1.f) / (bpeak * 32767.f * 1.05f + 1e-4f);
         if (useAGC) {
-            /* tg: target gain so that peak output ≈ bitScale × 0.65
-             * peak_hold × 32767 × tg = bitScale × 0.65               */
             float tg = (bitScale * 0.65f) / ((peak_hold + 0.0001f) * 32767.f);
-            current_gain_fast = 0.98f * current_gain_fast + 0.02f * tg;
+            current_gain_fast = fminf(block_safe,
+                                     0.98f * current_gain_fast + 0.02f * tg);
         } else {
-            current_gain_fast = gainValue.load() * GAIN_SCALE / 32767.f;
+            current_gain_fast = fminf(gainValue.load() * GAIN_SCALE / 32767.f, block_safe);
         }
 
         /* Upsample basebandRate → targetRate + LUT NCO + int8 output
@@ -651,18 +715,37 @@ void DspWorkerFLMod::run_modulator()
                 int32_t currI = (int32_t)((float)lastI + mu2 * (float)(nextI - lastI));
                 int32_t currQ = (int32_t)((float)lastQ + mu2 * (float)(nextQ - lastQ));
 
-                int32_t fI = fir_step(i_hist, currI);
-                int32_t fQ = fir_step(q_hist, currQ);
+                /* FIR: doubled ring buffer, one modulo per output sample */
+                i_fir[fir_pos] = i_fir[fir_pos + fir_n] = currI;
+                q_fir[fir_pos] = q_fir[fir_pos + fir_n] = currQ;
+                const int32_t* iw = i_fir.data() + fir_pos + 1;
+                const int32_t* qw = q_fir.data() + fir_pos + 1;
+                int32_t acc_i = 0, acc_q = 0;
+                for (int t = 0; t < fir_n; ++t) {
+                    acc_i += iw[t] * fir_coeffs[t];
+                    acc_q += qw[t] * fir_coeffs[t];
+                }
+                int32_t fI = acc_i >> FIR_SHIFT;
+                int32_t fQ = acc_q >> FIR_SHIFT;
+                fir_pos = (fir_pos + 1) % fir_n;
 
-                int16_t c = lut_cos(vco_phase);
-                int16_t s = lut_sin(vco_phase);
+                /* Interpolated LUT VCO – eliminates targetRate/LUT_SIZE spur */
+                float vc, vs;
+                lut_sincos_lerp(vco_phase, &vs, &vc);
                 vco_phase += vco_phase_inc;
 
-                /* Real part of (fI+j*fQ) × exp(j*phi): fI*cos - fQ*sin
-                 * Product fits in int32: |fI*c| ≤ 32767² < 2^31       */
-                int32_t mixed = ((int32_t)fI * c - (int32_t)fQ * s) >> 15;
+                float mixed = (float)fI * vc - (float)fQ * vs;
+                float hf    = mixed * current_gain_fast;
+                /* block_safe (above) prevents reaching ceiling; no per-sample
+                 * limiter — its cubic expansion region adds more distortion. */
 
-                float hf = (float)mixed * current_gain_fast;
+                /* TPDF dither: two uniform ±0.5 LSB summed → triangular ±1 LSB.
+                 * Decorrelates quantisation error; prevents structured spurs. */
+                lcg = lcg * 1664525u + 1013904223u;
+                hf += (float)(lcg >> 24) * (1.f/256.f) - 0.5f;
+                lcg = lcg * 1664525u + 1013904223u;
+                hf += (float)(lcg >> 24) * (1.f/256.f) - 0.5f;
+
                 if      (hf >  127.f) hf =  127.f;
                 else if (hf < -128.f) hf = -128.f;
                 out8[out_pos++] = (int8_t)hf;
@@ -786,7 +869,8 @@ int dsp_flmod_configure_channels(DspFLModHandle        h,
                        ? channels[i].mod_index : 0.9f;
         strncpy(cfg.name, channels[i].name, 63);
         cfg.name[63] = '\0';
-        cfg.udp_port = channels[i].udp_port;
+        cfg.udp_port        = channels[i].udp_port;
+        cfg.schroeder_phase = channels[i].schroeder_phase;
 
         rt.active = false; rt.mod_idx = 0.9f; rt.gain = 0.f;
         rt.current_aud = 0.f; rt.aud_phase = 0.0; rt.aud_phase_inc = 0.0;

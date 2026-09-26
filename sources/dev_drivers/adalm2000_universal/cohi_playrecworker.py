@@ -507,6 +507,11 @@ class playrec_worker(QObject):
             _mix_level     = float(_cfg.get("audio_mix_level", 1.0))
             _base_port     = int(_cfg.get("audio_base_port", 1235))
             _mod_index     = float(_cfg.get("audio_mod_index", 0.9))
+            # Respect operating mode: in band_only mode suppress audio overlay
+            _op_mode = str(_cfg.get("last_modulator_type", "")).strip()
+            if _op_mode == "band_only":
+                _audioplaylist = ""
+                print("[adalm2000_univ] operating mode = band_only: audio overlay suppressed")
         except Exception as e:
             print(f"[adalm2000_univ] config read error: {e}")
 

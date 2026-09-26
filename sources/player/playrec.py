@@ -396,7 +396,8 @@ class playrec_c(QObject):
         
         self.m["sdr_configparams"] = {"ifreq":self.m["ifreq"], "irate":self.m["irate"],
                 "rates": self.m["rates"], "icorr":self.m["icorr"],
-                "HostAddress":self.m["HostAddress"], "LO_offset":self.m["LO_offset"]}
+                "HostAddress":self.m["HostAddress"], "LO_offset":self.m["LO_offset"],
+                "synth_only": self.m.get("modulator", False) and self.m.get("f1", "") == "no_file.dat"}
 
         self.m["sdr_configparams"]["QMAINWINDOWparent"] = self.m["QTMAINWINDOWparent"]
     ######################  TODO: change for general devicedrivers
@@ -1445,9 +1446,9 @@ class playrec_v(QObject):
             ###TODO: test / check after 24-07-2026 after implementing modulator_listselected(self,cf) instead of repetitions of same code
             if self.m["modulator_type"] == "all" and not (cf.find("__") == 0):
                 boxix = self.modulator_listselected(cf,boxix)
-            if self.m["modulator_type"] == "audio_only" and cf.endswith("_modulator") and not (cf.find("__") == 0 ):
+            if self.m["modulator_type"] == "audio_only" and (cf.endswith("_modulator") or cf == "fl2k_universal") and not (cf.find("__") == 0 ):
                 boxix = self.modulator_listselected(cf,boxix)
-            if self.m["modulator_type"] == "band_and_audio" and cf.endswith("_plus") and not (cf.find("__") == 0 ):
+            if self.m["modulator_type"] == "band_and_audio" and (cf.endswith("_plus") or cf.endswith("_universal")) and not (cf.find("__") == 0 ):
                 boxix = self.modulator_listselected(cf,boxix)
             if self.m["modulator_type"] == "band_only" and not (cf.endswith("_modulator") or cf.endswith("_plus") or (cf.find("__") == 0 )):
                 boxix = self.modulator_listselected(cf,boxix)
@@ -2050,7 +2051,16 @@ class playrec_v(QObject):
             if not self.gui.lineEdit_IPAddress.isReadOnly():
                 auxi.standard_errorbox("IP address has not been saved yet, please press 'save IP address' and hence confirm the validity of the address ! ")
                 return False
+            # Determine once whether this is a pure synthesiser (no IQ file needed).
+            # Used both in the fileopened gate and in the wavheader section below.
+            _dev_name     = self.gui.comboBox_stemlab.itemText(self.m["currentSDRindex"])
+            _is_synth_only = (_dev_name.endswith("_modulator") or
+                              (self.m.get("modulator_type") == "audio_only" and
+                               _dev_name == "fl2k_universal"))
+
             if "modulator" in self.m["device_ID_dict"] and self.m["device_ID_dict"]["modulator"] =="M":
+                self.m["fileopened"] = True
+            if _is_synth_only:
                 self.m["fileopened"] = True
 
             if not self.m["fileopened"]:
@@ -2073,17 +2083,15 @@ class playrec_v(QObject):
 
                 self.gui.radioButton_LO_bias.setEnabled(False)
                 #TODO TODO TODO. HOW TO CALL A CORE FUNCTION ?
-                #if self.cb_open_file() is False: #TODO TODO: check if works equally as before, 
+                #if self.cb_open_file() is False: #TODO TODO: check if works equally as before,
                 # now the quest is for fileopened and not, if open file returned True
-                if self.gui.comboBox_stemlab.itemText(self.m["currentSDRindex"]).endswith("_modulator"):
-                    self.m["fileopened"] = True
                 if not self.m["fileopened"]:
-                    #TODO TODO TODO: OBSOLETE ? check if the if query self.m["fileopened" is False is necessary. This is true anyway!
                     auxi.standard_errorbox("file must be opened before playing") #TODO TODO TODO: good errorhandling with errorstate, value; errorhandler
                     # restore automatic call of fileopen in this case
                     self.reset_playerbuttongroup()
                     return False
-                if not self.playrec_c.LO_bias_checkbounds():
+                # LO/center-freq bounds only relevant when an IQ file defines ifreq
+                if not _is_synth_only and not self.playrec_c.LO_bias_checkbounds():
                     self.reset_playerbuttongroup()
                     return False
                 self.gui.lineEdit_LO_bias.setEnabled(False)
@@ -2108,6 +2116,21 @@ class playrec_v(QObject):
                     self.m["ifreq"] = self.m["wavheader"]['centerfreq'] + self.m["LO_offset"]
                     self.m["irate"] = self.m["wavheader"]['nSamplesPerSec']
                     self.m["timescaler"] = self.m["wavheader"]['nSamplesPerSec']*self.m["wavheader"]['nBlockAlign']
+
+            elif _is_synth_only:
+                # fl2k_universal in audio_only: no IQ file – same dummy setup as type "M"
+                self.m["modulator"] = True
+                self.m["f1"] = "no_file.dat"
+                self.m["wavheader"]["wFormatTag"]    = 1
+                self.m["wavheader"]["nBlockAlign"]   = 2
+                self.m["wavheader"]["nBitsPerSample"] = 16
+                if self.numeraltest(self.gui.lineEdit_playrec_LO.text(), self.LO_LOW, self.LO_HIGH, "LO value in recorder tab"):
+                    self.m["ifreq"] = int(1000 * int(self.gui.lineEdit_playrec_LO.text()))
+                    self.m["irate"] = int(1000 * int(self.gui.comboBox_playrec_targetSR.currentText()))
+                    self.m["wavheader"]["nSamplesPerSec"]    = self.m["irate"]
+                    self.m["wavheader"]["nAvgBytesPerSec"]   = self.m["irate"] * self.m["wavheader"]["nBlockAlign"]
+                else:
+                    return False
 
             else:
                 self.m["modulator"] = False

@@ -38,11 +38,12 @@ typedef void (*flmod_error_cb_t)   (const char* msg,      void* ud);
 /* One AM overlay channel. ffmpeg must send mono u8 PCM to
  * udp://127.0.0.1:<udp_port> at <audio_rate> Hz. */
 typedef struct {
-    float freq_hz;       /* absolute carrier frequency (Hz)              */
-    float bandwidth_hz;  /* audio LP bandwidth (informational, Hz)       */
-    char  name[64];      /* station name (display / log only)            */
-    int   udp_port;      /* local UDP port to receive audio from         */
-    float mod_index;     /* AM modulation index [0..1], typical 0.9      */
+    float freq_hz;            /* absolute carrier frequency (Hz)                   */
+    float bandwidth_hz;       /* audio LP bandwidth (informational, Hz)             */
+    char  name[64];           /* station name (display / log only)                 */
+    int   udp_port;           /* local UDP port to receive audio from              */
+    float mod_index;          /* AM modulation index [0..1], typical 0.9           */
+    float schroeder_phase;    /* Schröder initial phase (rad), reduces crest factor */
 } DspFLModChannel;
 
 /* Lifecycle */

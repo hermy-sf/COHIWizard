@@ -125,6 +125,18 @@ static inline uint32_t freq_to_pinc(double freq_hz, double sample_rate)
     return (uint32_t)(freq_hz / sample_rate * 4294967296.0);
 }
 
+/* Soft AM output limiter — see DspWorkerFLMod.cpp for description. */
+static inline float soft_limit_127(float x)
+{
+    constexpr float knee = 85.f, ceil_ = 127.f, span = ceil_ - knee;
+    if (x >=  ceil_) return  ceil_;
+    if (x <= -ceil_) return -ceil_;
+    if (x > -knee && x < knee) return x;
+    const float s = (x >= 0.f) ? 1.f : -1.f;
+    const float t = (s * x - knee) / span;
+    return s * (knee + span * t * (1.f + t * (1.f - t)));
+}
+
 /* ================================================================== */
 /* IQf  –  lightweight float complex (no liquidDSP dependency)         */
 /* ================================================================== */
@@ -825,14 +837,19 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
                 }
                 peak_hold = 0.95f * peak_hold + 0.05f * bpeak;
 
+                /* Per-block clip guard: use THIS block's peak to cap the gain
+                 * before the hot loop.  The slow exponential AGC reacts too
+                 * late for audio transients; the IQ+audio baseband can suddenly
+                 * jump to 3× when audio overlay kicks in.  Unclipped output
+                 * prevents AM-envelope even-harmonic distortion (2 kHz spur
+                 * from 1 kHz audio).  FIR overshoot margin: 5 %. */
+                const float block_safe = (bitScale - 1.f) / (bpeak * 1.05f + 1e-4f);
                 if (useAGC) {
-                    /* IQ signal is float ±1.0; polyphase FIR preserves amplitude.
-                     * tg maps peak_hold → bitScale * 0.65 in the int8 output.
-                     * Time constant: τ ≈ 20 blocks ≈ 16 ms at 10 MHz. */
                     float tg = (bitScale * 0.65f) / (peak_hold + 0.0001f);
-                    current_gain_fast = 0.95f * current_gain_fast + 0.05f * tg;
+                    current_gain_fast = fminf(block_safe,
+                                             0.95f * current_gain_fast + 0.05f * tg);
                 } else {
-                    current_gain_fast = gainValue.load() * GAIN_SCALE;
+                    current_gain_fast = fminf(gainValue.load() * GAIN_SCALE, block_safe);
                 }
 
                 /* -- Upsample (polyphase sinc FIR) + LUT NCO + int8 output --
@@ -870,6 +887,8 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
 
                         float mixed = fI * c - fQ * s;
                         float hf    = mixed * current_gain_fast;
+                        /* block_safe (above) prevents reaching the ceiling;
+                         * no per-sample limiter needed — it only adds distortion. */
 
                         /* TPDF dither: two uniform ±0.5 → triangular ±1 LSB.
                          * Randomises quantisation error; prevents harmonic spurs. */

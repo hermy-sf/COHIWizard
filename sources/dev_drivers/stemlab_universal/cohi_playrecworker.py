@@ -507,6 +507,7 @@ class playrec_worker(QObject):
         _base_port     = 1234
         _mod_index     = 0.9
         _ffmpeg_bin    = "ffmpeg"
+        _op_mode       = ""
         try:
             with open("config_wizard.yaml", "r") as _f:
                 _cfg = yaml.safe_load(_f) or {}
@@ -516,10 +517,18 @@ class playrec_worker(QObject):
             _base_port     = int(_cfg.get("audio_base_port", 1234))
             _mod_index     = float(_cfg.get("audio_mod_index", 0.9))
             _ffmpeg_bin    = _resolve_ffmpeg_bin(str(_cfg.get("ffmpeg_path", "")))
+            # Respect the operating mode: in band_only mode suppress audio overlay
+            # even if audioplaylist is configured in config_wizard.yaml.
+            _op_mode = str(_cfg.get("last_modulator_type", "")).strip()
+            if _op_mode == "band_only":
+                _audioplaylist = ""
+                print("[stemlab_univ] operating mode = band_only: audio overlay suppressed")
         except Exception as _e:
             print(f"[stemlab_univ] config_wizard.yaml read error: {_e}; using defaults")
 
         has_iq    = bool(filenames)
+        if _op_mode == "audio_only":
+            has_iq = False   # pure synthesizer mode: IQ file is ignored even if loaded
         _stations = parse_audio_playlist(_audioplaylist) if _audioplaylist else []
         has_audio = bool(_stations)
 

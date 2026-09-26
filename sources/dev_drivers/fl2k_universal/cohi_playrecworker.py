@@ -152,11 +152,12 @@ def _setup_lib_mod(lib, libpath):
 
     class DspFLModChannel(ctypes.Structure):
         _fields_ = [
-            ("freq_hz",      ctypes.c_float),
-            ("bandwidth_hz", ctypes.c_float),
-            ("name",         ctypes.c_char * 64),
-            ("udp_port",     ctypes.c_int),
-            ("mod_index",    ctypes.c_float),
+            ("freq_hz",         ctypes.c_float),
+            ("bandwidth_hz",    ctypes.c_float),
+            ("name",            ctypes.c_char * 64),
+            ("udp_port",        ctypes.c_int),
+            ("mod_index",       ctypes.c_float),
+            ("schroeder_phase", ctypes.c_float),
         ]
     lib._DspFLModChannel = DspFLModChannel
 
@@ -608,6 +609,7 @@ class playrec_worker(QObject):
         _mod_index     = 0.9
         _bb_rate_yaml  = 0.0
         _ffmpeg_bin    = "ffmpeg"
+        _op_mode       = ""
         try:
             with open("config_wizard.yaml", "r") as _f:
                 _cfg = yaml.safe_load(_f) or {}
@@ -620,14 +622,21 @@ class playrec_worker(QObject):
             _mod_index     = float(_cfg.get("audio_mod_index",        0.9))
             _bb_rate_yaml  = float(_cfg.get("flmod_baseband_rate",    0.0))
             _ffmpeg_bin    = _resolve_ffmpeg_bin(str(_cfg.get("ffmpeg_path", "")))
+            # Respect operating mode: in band_only mode suppress audio overlay
+            _op_mode = str(_cfg.get("last_modulator_type", "")).strip()
+            if _op_mode == "band_only":
+                _audioplaylist = ""
+                print("[fl2k_universal] operating mode = band_only: audio overlay suppressed")
         except Exception as _e:
             print(f"[fl2k_universal] config_wizard.yaml read error: {_e}; using defaults")
 
         has_iq    = bool(filenames)
+        if _op_mode == "audio_only" or config.get("synth_only", False):
+            has_iq = False   # pure synthesizer mode: IQ file is ignored even if loaded
         _stations = parse_audio_playlist(_audioplaylist) if _audioplaylist else []
         has_audio = bool(_stations)
 
-        print(f"[fl2k_universal] mode: has_iq={has_iq}, has_audio={has_audio}")
+        print(f"[fl2k_universal] mode: has_iq={has_iq}, has_audio={has_audio}, op={_op_mode}")
 
         if has_iq:
             if _LIB_PLUS is None:
@@ -657,10 +666,16 @@ class playrec_worker(QObject):
                 _bb_rate_yaml,
             )
         else:
-            self.SigError.emit(
-                "fl2k_universal: Weder IQ-File noch Audio-Playlist konfiguriert.\n"
-                "Bitte IQ-WAV-Datei öffnen und/oder 'audioplaylist' in config_wizard.yaml setzen."
-            )
+            if _op_mode == "audio_only":
+                self.SigError.emit(
+                    "fl2k_universal (audio_only): Keine Audio-Playlist konfiguriert.\n"
+                    "Bitte 'audioplaylist' in config_wizard.yaml setzen (Pfad zur Stations-CSV)."
+                )
+            else:
+                self.SigError.emit(
+                    "fl2k_universal: Weder IQ-File noch Audio-Playlist konfiguriert.\n"
+                    "Bitte IQ-WAV-Datei öffnen und/oder 'audioplaylist' in config_wizard.yaml setzen."
+                )
             self.SigFinished.emit()
 
     # ----------------------------------------------------------------
@@ -847,8 +862,18 @@ class playrec_worker(QObject):
     ):
         LIB = _LIB_MOD
 
-        center_freq = float(config.get("ifreq",     0))
         _lo_offset  = float(config.get("LO_offset", 0.0))
+
+        # Auto-center on the carrier midpoint so the user doesn't need to
+        # manually match the LO field to the broadcast band.  ifreq from the
+        # GUI is ignored for carrier positioning; LO_offset handles fine shifts.
+        if stations:
+            _s_freqs    = [s["freq_hz"] for s in stations]
+            center_freq = (max(_s_freqs) + min(_s_freqs)) / 2.0
+            print(f"[fl2k_universal/mod] auto-center={center_freq/1e3:.1f} kHz "
+                  f"(carriers {min(_s_freqs)/1e3:.0f}–{max(_s_freqs)/1e3:.0f} kHz)")
+        else:
+            center_freq = float(config.get("ifreq", 0))
 
         # Baseband rate
         _bb_rate_min = float(config.get("irate", 1_250_000.0))
@@ -937,11 +962,12 @@ class playrec_worker(QObject):
             DspFLModChannel = LIB._DspFLModChannel
             ch_arr = (DspFLModChannel * len(_channels))()
             for i, ch in enumerate(_channels):
-                ch_arr[i].freq_hz      = ch["freq_hz"]
-                ch_arr[i].bandwidth_hz = ch["bw_hz"]
-                ch_arr[i].name         = ch["name"].encode("utf-8", errors="replace")[:63]
-                ch_arr[i].udp_port     = ch["udp_port"]
-                ch_arr[i].mod_index    = ch["mod_index"]
+                ch_arr[i].freq_hz         = ch["freq_hz"]
+                ch_arr[i].bandwidth_hz    = ch["bw_hz"]
+                ch_arr[i].name            = ch["name"].encode("utf-8", errors="replace")[:63]
+                ch_arr[i].udp_port        = ch["udp_port"]
+                ch_arr[i].mod_index       = ch["mod_index"]
+                ch_arr[i].schroeder_phase = ch.get("schroeder_phase", 0.0)
             rc = LIB.dsp_flmod_configure_channels(
                 handle, ch_arr,
                 ctypes.c_int(len(_channels)),
