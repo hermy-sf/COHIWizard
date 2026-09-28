@@ -260,6 +260,10 @@ struct DspWorkerFLMod {
     float                     audio_rate    = 25000.f;
     float                     audio_mix_lvl = 1.0f;
 
+    /* Pull-mode state (dsp_flmod_pull_*) */
+    float            pull_peak_hold = 0.1f;
+    std::vector<IQf> pull_x;
+
     /* helpers */
     void write_ring(const int8_t* data, size_t n);
     void drain_ring(int8_t* buf, size_t n);
@@ -1004,4 +1008,73 @@ int dsp_flmod_check_device()
     if (r != FL2K_SUCCESS) return -1;
     fl2k_close(dev);
     return 0;
+}
+
+/* ================================================================== */
+/* Pull-mode API  (STEMLAB TCP streaming, no fl2k device)             */
+/* ================================================================== */
+
+int dsp_flmod_pull_init(DspFLModHandle h)
+{
+    if (!h) return -1;
+    auto* w = static_cast<DspWorkerFLMod*>(h);
+    w->setup_channels();
+    w->pull_peak_hold = 0.1f;
+    w->pull_x.clear();
+    fprintf(stderr, "[fl2k_fast_mod] pull_init: %zu channel(s) ready  "
+            "center=%.0f Hz  bb_rate=%.0f Hz\n",
+            w->audio_rt.size(), (double)w->centerFreq, (double)w->basebandRate);
+    return 0;
+}
+
+/* Synthesise n_complex float32 IQ samples (I,Q interleaved) at basebandRate.
+ * Applies the same per-block gain guard as run_modulator(), but outputs
+ * normalised float ±1.0 instead of int8 – no upsampling, no fl2k write.
+ * Returns n_complex on success, -1 on error.                            */
+int dsp_flmod_pull_iq(DspFLModHandle h, float* iq_out, int n_complex)
+{
+    if (!h || !iq_out || n_complex <= 0) return -1;
+    auto* w = static_cast<DspWorkerFLMod*>(h);
+
+    if ((int)w->pull_x.size() < n_complex)
+        w->pull_x.assign(n_complex, IQf{0.f, 0.f});
+
+    std::fill(w->pull_x.begin(), w->pull_x.begin() + n_complex, IQf{0.f, 0.f});
+    if (!w->audio_rt.empty())
+        w->mix_audio_block_fast(w->pull_x.data(), (size_t)n_complex);
+
+    /* Peak tracking + per-block clip guard (mirrors run_modulator logic) */
+    float bpeak = 0.0001f;
+    for (int i = 0; i < n_complex; ++i) {
+        float m = sqrtf(w->pull_x[i].re * w->pull_x[i].re
+                      + w->pull_x[i].im * w->pull_x[i].im);
+        if (m > bpeak) bpeak = m;
+    }
+    w->pull_peak_hold = 0.95f * w->pull_peak_hold + 0.05f * bpeak;
+
+    float g;
+    if (w->useAGC) {
+        g = 0.65f / (w->pull_peak_hold + 0.0001f);
+    } else {
+        g = w->gainValue.load();
+    }
+    /* Prevent output from ever exceeding ±1.0 */
+    const float block_safe = 1.0f / (bpeak * 1.05f + 1e-4f);
+    g = fminf(g, block_safe);
+
+    for (int k = 0; k < n_complex; ++k) {
+        iq_out[2*k]   = g * w->pull_x[k].re;
+        iq_out[2*k+1] = g * w->pull_x[k].im;
+    }
+    return n_complex;
+}
+
+void dsp_flmod_pull_stop(DspFLModHandle h)
+{
+    if (!h) return;
+    auto* w = static_cast<DspWorkerFLMod*>(h);
+    w->teardown_channels();
+    w->pull_x.clear();
+    w->pull_x.shrink_to_fit();
+    fprintf(stderr, "[fl2k_fast_mod] pull_stop: channels torn down\n");
 }

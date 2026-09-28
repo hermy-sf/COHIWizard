@@ -527,7 +527,7 @@ class playrec_worker(QObject):
             print(f"[stemlab_univ] config_wizard.yaml read error: {_e}; using defaults")
 
         has_iq    = bool(filenames)
-        if _op_mode == "audio_only":
+        if _op_mode == "audio_only" or config.get("synth_only", False):
             has_iq = False   # pure synthesizer mode: IQ file is ignored even if loaded
         _stations = parse_audio_playlist(_audioplaylist) if _audioplaylist else []
         has_audio = bool(_stations)
@@ -772,8 +772,8 @@ class playrec_worker(QObject):
 
         # ---- Audio-only mode ------------------------------------------------
         elif has_audio:
-            N          = self.DATABLOCKSIZE // 2   # complex samples per block
-            block_time = N / sampling_rate
+            N = self.DATABLOCKSIZE // 2   # complex samples per block
+            # blocks_per_sec drives SigIncrementCurTime (time display).
             blocks_per_sec = max(1, int(sampling_rate / N))
             sample_offset  = 0
             self._block_count = 0
@@ -787,6 +787,8 @@ class playrec_worker(QObject):
                     )
                     sample_offset += N
 
+                    if ov_i is None:
+                        ov_i = ov_q = np.zeros(N, dtype=np.float32)
                     result_i  = np.clip(_mix_level * ov_i, -1.0, 1.0)
                     result_q  = np.clip(_mix_level * ov_q, -1.0, 1.0)
                     send_data = np.empty(2 * N, dtype=np.float32)
@@ -794,14 +796,16 @@ class playrec_worker(QObject):
                     send_data[1::2] = result_q
 
                     try:
+                        # No sleep here — TCP backpressure from sendall() paces the
+                        # loop to match the STEMLAB's consumption rate, exactly as in
+                        # the IQ+Audio path.  time.sleep() has ~1–10 ms jitter on Linux
+                        # which is far coarser than the 1.6 ms block budget at 1.25 MS/s
+                        # and causes buffer overflow / underflow → audible buzzing.
                         self.stemlabcontrol.data_sock.sendall(send_data)
                     except Exception as exc:
                         if not self.stopix:
                             self.SigError.emit(f"[stemlab_univ] TCP send error (audio-only): {exc}")
                         break
-
-                    # Pace to real-time (with slight safety margin)
-                    time.sleep(block_time * 0.85)
 
                     self._block_count += 1
                     if self._block_count >= blocks_per_sec:

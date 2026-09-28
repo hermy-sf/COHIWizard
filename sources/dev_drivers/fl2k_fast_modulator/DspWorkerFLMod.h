@@ -91,6 +91,19 @@ void dsp_flmod_set_pause(DspFLModHandle h, int paused);
 int  dsp_flmod_is_running(DspFLModHandle h);
 int  dsp_flmod_check_device(void);
 
+/* Pull-mode API (for STEMLAB TCP streaming; no fl2k device needed).
+ * Use instead of dsp_flmod_start / dsp_flmod_stop:
+ *   configure → configure_channels → prefill →
+ *   pull_init → [pull_iq × N] → pull_stop
+ *
+ * pull_iq() synthesises n_complex complex float32 samples at basebandRate
+ * and writes them as interleaved I/Q: [I0, Q0, I1, Q1, …] into iq_out.
+ * Returns n_complex on success, −1 on error.
+ */
+int  dsp_flmod_pull_init(DspFLModHandle h);
+int  dsp_flmod_pull_iq  (DspFLModHandle h, float* iq_out, int n_complex);
+void dsp_flmod_pull_stop(DspFLModHandle h);
+
 #ifdef __cplusplus
 }
 #endif

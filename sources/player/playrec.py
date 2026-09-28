@@ -1446,7 +1446,7 @@ class playrec_v(QObject):
             ###TODO: test / check after 24-07-2026 after implementing modulator_listselected(self,cf) instead of repetitions of same code
             if self.m["modulator_type"] == "all" and not (cf.find("__") == 0):
                 boxix = self.modulator_listselected(cf,boxix)
-            if self.m["modulator_type"] == "audio_only" and (cf.endswith("_modulator") or cf == "fl2k_universal") and not (cf.find("__") == 0 ):
+            if self.m["modulator_type"] == "audio_only" and (cf.endswith("_modulator") or cf in ("fl2k_universal", "stemlab_universal", "stemlab_eff_universal")) and not (cf.find("__") == 0 ):
                 boxix = self.modulator_listselected(cf,boxix)
             if self.m["modulator_type"] == "band_and_audio" and (cf.endswith("_plus") or cf.endswith("_universal")) and not (cf.find("__") == 0 ):
                 boxix = self.modulator_listselected(cf,boxix)
@@ -2056,7 +2056,8 @@ class playrec_v(QObject):
             _dev_name     = self.gui.comboBox_stemlab.itemText(self.m["currentSDRindex"])
             _is_synth_only = (_dev_name.endswith("_modulator") or
                               (self.m.get("modulator_type") == "audio_only" and
-                               _dev_name == "fl2k_universal"))
+                               _dev_name in ("fl2k_universal", "stemlab_universal",
+                                             "stemlab_eff_universal")))
 
             if "modulator" in self.m["device_ID_dict"] and self.m["device_ID_dict"]["modulator"] =="M":
                 self.m["fileopened"] = True
