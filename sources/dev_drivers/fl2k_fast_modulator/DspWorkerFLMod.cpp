@@ -630,7 +630,11 @@ void DspWorkerFLMod::run_modulator()
     const float bitScale    = 127.0f;
     const float GAIN_SCALE  = 256.0f * bitScale / 2.5f;   /* ≈12800, −8 dB */
     float current_gain_fast = gainValue.load() * GAIN_SCALE / 32767.f;
+    float prev_block_gain   = current_gain_fast;   /* for inter-block gain ramp */
     float peak_hold         = 0.1f;
+    /* Slow peak-hold for clip-guard: instant attack, ~60 s decay at 152.6 blocks/s.
+     * block_safe derived from this → nearly constant gain → no gain-step spurs. */
+    float peak_hold_slow    = 0.5f / 32767.f;
 
     /* IQ interpolation state */
     int32_t lastI = 0, lastQ = 0, nextI = 0, nextQ = 0;
@@ -685,14 +689,19 @@ void DspWorkerFLMod::run_modulator()
         }
         peak_hold = 0.95f * peak_hold + 0.05f * bpeak;
 
-        /* Per-block clip guard — same rationale as fl2k_fast_plus.
-         * mixed ≈ bpeak × 32767, so safe gain = (bitScale-1)/(bpeak×32767×1.05). */
-        const float block_safe = (bitScale - 1.f) / (bpeak * 32767.f * 1.05f + 1e-4f);
+        /* Slow peak-hold: instant attack, ~60 s decay.
+         * block_safe derived from this → nearly constant gain → no gain-step spurs. */
+        if (bpeak > peak_hold_slow) peak_hold_slow = bpeak;
+        else peak_hold_slow = 0.9999f * peak_hold_slow + 0.0001f * bpeak;
+        const float block_safe = (bitScale - 1.f) / (peak_hold_slow * 32767.f * 1.05f + 1e-4f);
         if (useAGC) {
             float tg = (bitScale * 0.65f) / ((peak_hold + 0.0001f) * 32767.f);
             current_gain_fast = fminf(block_safe,
                                      0.98f * current_gain_fast + 0.02f * tg);
         } else {
+            /* Manual mode: gain from slider, clipped to block_safe to prevent
+             * int8 overflow. block_safe uses slow peak_hold → nearly constant
+             * gain → no gain-step spurs. */
             current_gain_fast = fminf(gainValue.load() * GAIN_SCALE / 32767.f, block_safe);
         }
 
@@ -703,7 +712,19 @@ void DspWorkerFLMod::run_modulator()
          *   b) cosine-interpolate n_interp output samples to next sample
          *   c) 7-tap integer FIR
          *   d) LUT NCO mix (upconvert to centerFreq) → real
-         *   e) gain + clip → int8                                      */
+         *   e) gain + clip → int8
+         *
+         * Gain is linearly ramped from prev_block_gain to current_gain_fast
+         * across the block (piecewise-linear vs. piecewise-constant).
+         * This changes the gain signal's harmonic rolloff from 1/n to 1/n²,
+         * giving ~17 dB suppression at 1 kHz and ~22 dB at 2 kHz relative
+         * to abrupt block-boundary steps at the 152 Hz block rate.
+         * Safety cap: ramp start is clamped to block_safe so the peak
+         * amplitude never exceeds the computed safe ceiling.                */
+        const float gain_ramp_start = fminf(prev_block_gain, block_safe);
+        const float gain_ramp_step  = (current_gain_fast - gain_ramp_start)
+                                      / (float)(DSP_BLOCK * n_interp);
+        float gain_ramp = gain_ramp_start;
         size_t out_pos = 0;
         const float inv32767 = 1.f / 32767.f;
 
@@ -739,9 +760,10 @@ void DspWorkerFLMod::run_modulator()
                 vco_phase += vco_phase_inc;
 
                 float mixed = (float)fI * vc - (float)fQ * vs;
-                float hf    = mixed * current_gain_fast;
-                /* block_safe (above) prevents reaching ceiling; no per-sample
-                 * limiter — its cubic expansion region adds more distortion. */
+                float hf    = mixed * gain_ramp;
+                gain_ramp  += gain_ramp_step;
+                /* gain_ramp interpolates prev_block_gain→current_gain_fast;
+                 * block_safe cap at ramp start prevents clipping on transients. */
 
                 /* TPDF dither: two uniform ±0.5 LSB summed → triangular ±1 LSB.
                  * Decorrelates quantisation error; prevents structured spurs. */
@@ -757,6 +779,7 @@ void DspWorkerFLMod::run_modulator()
         }
 
         write_ring(out8.data(), out_pos);
+        prev_block_gain = current_gain_fast;
 
         /* Monitoring: baseband I, pre-upsampling */
         size_t n_mon = std::min(MON_SIZE - monIdx, DSP_BLOCK);

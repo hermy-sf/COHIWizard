@@ -723,6 +723,9 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
              * at a potentially huge gainValue * GAIN_SCALE. */
             float current_gain_fast = bitScale * 0.65f;
             float peak_hold         = 0.1f;
+            /* Slow peak-hold for clip-guard: instant attack, ~60 s decay.
+             * Keeps block_safe nearly constant → eliminates gain-step spurs. */
+            float peak_hold_slow    = 0.5f;
 
             /* IQ polyphase ring buffer: POLY_TAPS_MAX samples of history */
             float i_buf[POLY_TAPS_MAX] = {};
@@ -837,18 +840,20 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
                 }
                 peak_hold = 0.95f * peak_hold + 0.05f * bpeak;
 
-                /* Per-block clip guard: use THIS block's peak to cap the gain
-                 * before the hot loop.  The slow exponential AGC reacts too
-                 * late for audio transients; the IQ+audio baseband can suddenly
-                 * jump to 3× when audio overlay kicks in.  Unclipped output
-                 * prevents AM-envelope even-harmonic distortion (2 kHz spur
-                 * from 1 kHz audio).  FIR overshoot margin: 5 %. */
-                const float block_safe = (bitScale - 1.f) / (bpeak * 1.05f + 1e-4f);
+                /* Slow peak-hold: instant attack, ~60 s decay at 152.6 blocks/s.
+                 * block_safe derived from this → nearly constant gain → no gain-step spurs. */
+                if (bpeak > peak_hold_slow) peak_hold_slow = bpeak;
+                else peak_hold_slow = 0.9999f * peak_hold_slow + 0.0001f * bpeak;
+                const float block_safe = (bitScale - 1.f) / (peak_hold_slow * 1.05f + 1e-4f);
                 if (useAGC) {
                     float tg = (bitScale * 0.65f) / (peak_hold + 0.0001f);
                     current_gain_fast = fminf(block_safe,
                                              0.95f * current_gain_fast + 0.05f * tg);
                 } else {
+                    /* Manual mode: gain from slider, clipped to block_safe to prevent
+                     * int8 overflow. block_safe uses slow peak_hold → nearly constant
+                     * gain → no gain-step spurs. To clip intentionally, raise gain_correction
+                     * or use autoAGC_DspWorker: true with a high gainValue. */
                     current_gain_fast = fminf(gainValue.load() * GAIN_SCALE, block_safe);
                 }
 
@@ -888,7 +893,7 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
                         float mixed = fI * c - fQ * s;
                         float hf    = mixed * current_gain_fast;
                         /* block_safe (above) prevents reaching the ceiling;
-                         * no per-sample limiter needed — it only adds distortion. */
+                         * Unclipped output prevents AM-envelope even-harmonic distortion (2 kHz spur from 1 kHz audio) */
 
                         /* TPDF dither: two uniform ±0.5 → triangular ±1 LSB.
                          * Randomises quantisation error; prevents harmonic spurs. */

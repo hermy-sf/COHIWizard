@@ -791,6 +791,9 @@ class playrec_worker(QObject):
         def _on_monitor(data_ptr, n, _ud):
             try:
                 arr = np.ctypeslib.as_array(data_ptr, shape=(n,)).copy()
+                # C++ SCALE_MON=1048576; rescale to ±32767 so showRFdata AVC uses
+                # the same normfactor as IQ mode — same fix as in _run_flmod_path.
+                arr = arr * (32767.0 / 1048576.0)
                 self.set_data(arr)
                 self.SigIncrementCurTime.emit()
             except Exception as exc:
@@ -836,10 +839,11 @@ class playrec_worker(QObject):
         # Polling loop
         while LIB.dsp_fl2k_is_running(handle) and not self.stopix:
             LIB.dsp_fl2k_set_pause(handle, 1 if self.get_pause() else 0)
-            if not use_agc_cpp:
-                LIB.dsp_fl2k_set_gain(
-                    handle, ctypes.c_float(float(self.get_gain()) * gain_corr)
-                )
+            # Always send gain: in AGC mode gainValue is a level multiplier (0..1),
+            # in manual mode it is the direct gain.
+            LIB.dsp_fl2k_set_gain(
+                handle, ctypes.c_float(float(self.get_gain()) * gain_corr)
+            )
             QThread.msleep(50)
 
         # Cleanup
@@ -986,6 +990,10 @@ class playrec_worker(QObject):
         def _on_monitor(data_ptr, n, _ud):
             try:
                 arr = np.ctypeslib.as_array(data_ptr, shape=(n,)).copy()
+                # C++ SCALE_MON=1048576; rescale to ±32767 so showRFdata AVC uses
+                # the same normfactor as IQ mode — without this AVC drives gain
+                # to near-zero and RF output collapses to ~50 mV.
+                arr = arr * (32767.0 / 1048576.0)
                 self.set_data(arr)
                 self.SigIncrementCurTime.emit()
             except Exception as exc:
@@ -1024,10 +1032,11 @@ class playrec_worker(QObject):
         # Polling loop
         while LIB.dsp_flmod_is_running(handle) and not self.stopix:
             LIB.dsp_flmod_set_pause(handle, 1 if self.get_pause() else 0)
-            if not use_agc_cpp:
-                LIB.dsp_flmod_set_gain(
-                    handle, ctypes.c_float(float(self.get_gain()) * gain_corr)
-                )
+            # Always send gain: in AGC mode gainValue is a level multiplier (0..1),
+            # in manual mode it is the direct gain.
+            LIB.dsp_flmod_set_gain(
+                handle, ctypes.c_float(float(self.get_gain()) * gain_corr)
+            )
             QThread.msleep(50)
 
         # Cleanup
