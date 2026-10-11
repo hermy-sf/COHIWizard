@@ -726,6 +726,7 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
             /* Slow peak-hold for clip-guard: instant attack, ~60 s decay.
              * Keeps block_safe nearly constant → eliminates gain-step spurs. */
             float peak_hold_slow    = 0.5f;
+            float prev_block_gain   = current_gain_fast;
 
             /* IQ polyphase ring buffer: POLY_TAPS_MAX samples of history */
             float i_buf[POLY_TAPS_MAX] = {};
@@ -857,6 +858,18 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
                     current_gain_fast = fminf(gainValue.load() * GAIN_SCALE, block_safe);
                 }
 
+                /* Symmetric gain ramp: interpolate linearly from ramp_start to
+                 * current_gain_fast over DSP_BLOCK*n_interp output samples.
+                 * Converts block-boundary gain steps (→ 1/n rolloff) into slopes
+                 * (→ 1/n² rolloff) → ~17 dB reduction of 7th harmonic (1068 Hz)
+                 * and ~22 dB of 13th (1984 Hz).  ramp_start is clamped to the
+                 * current block's safety limit so the ramp never clips. */
+                const float ramp_start = fminf(prev_block_gain,
+                                               (bitScale - 1.f) / (bpeak * 1.05f + 1e-4f));
+                const float gain_ramp_step = (current_gain_fast - ramp_start)
+                                             / (float)(DSP_BLOCK * n_interp);
+                float gain_ramp = ramp_start;
+
                 /* -- Upsample (polyphase sinc FIR) + LUT NCO + int8 output --
                  *
                  * Adaptive quality: GOOD (16-tap/β7, ~70 dB) when CPU is idle,
@@ -891,9 +904,8 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
                         vco_phase += vco_phase_inc;
 
                         float mixed = fI * c - fQ * s;
-                        float hf    = mixed * current_gain_fast;
-                        /* block_safe (above) prevents reaching the ceiling;
-                         * Unclipped output prevents AM-envelope even-harmonic distortion (2 kHz spur from 1 kHz audio) */
+                        float hf    = mixed * gain_ramp;
+                        gain_ramp  += gain_ramp_step;
 
                         /* TPDF dither: two uniform ±0.5 → triangular ±1 LSB.
                          * Randomises quantisation error; prevents harmonic spurs. */
@@ -909,6 +921,7 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
                 }
 
                 write_ring(out8.data(), out_pos);
+                prev_block_gain = current_gain_fast;
 
                 /* -- Adaptive quality update --------------------------------
                  * Measure fraction of real-time budget used by this block.
