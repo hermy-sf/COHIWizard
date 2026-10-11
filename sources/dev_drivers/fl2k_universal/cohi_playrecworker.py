@@ -505,7 +505,7 @@ class playrec_worker(QObject):
                 cmd = [
                     ffmpeg_bin,
                     "-reconnect", "1", "-reconnect_streamed", "1",
-                    "-reconnect_delay_max", "5",
+                    "-reconnect_delay_max", "5", "-re",
                     "-i", _ffmpeg_url(url),
                     "-af", f"lowpass=f={lowpass_f},volume=0.8",
                     "-f", "u8", "-ar", str(audio_rate), "-ac", "1",
