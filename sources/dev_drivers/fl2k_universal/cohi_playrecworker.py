@@ -467,9 +467,12 @@ class playrec_worker(QObject):
                 except OSError as _exc:
                     print(f"[fl2k_universal] Cannot read m3u '{url}': {_exc}")
 
-                _entries = [e for e in _entries if os.path.isfile(e)]
+                _local_files = [e for e in _entries if os.path.isfile(e)]
+                _web_urls    = [e for e in _entries
+                                if e.lower().startswith(("http://", "https://"))]
+                _entries = _local_files + _web_urls
                 if not _entries:
-                    print(f"[fl2k_universal] m3u '{url}': no valid files – skipped.")
+                    print(f"[fl2k_universal] m3u '{url}': no valid files or URLs – skipped.")
                     continue
 
                 import tempfile as _tf
@@ -484,10 +487,17 @@ class playrec_worker(QObject):
                 _cf.close()
                 self._concat_files.append(_cf.name)
 
+                # HTTP/HTTPS entries in ffconcat require an explicit protocol whitelist
+                _proto_opts = (
+                    ["-protocol_whitelist", "file,http,https,tcp,tls,crypto"]
+                    if _web_urls else []
+                )
                 _curl_cmd = None
                 cmd = [
                     ffmpeg_bin, "-re",
-                    "-f", "concat", "-safe", "0", "-i", _cf.name,
+                    "-f", "concat", "-safe", "0",
+                    *_proto_opts,
+                    "-i", _cf.name,
                     "-af", f"lowpass=f={lowpass_f},volume=0.8",
                     "-f", "u8", "-ar", str(audio_rate), "-ac", "1",
                     f"udp://127.0.0.1:{port}?pkt_size=256",
