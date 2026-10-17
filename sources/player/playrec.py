@@ -1446,7 +1446,7 @@ class playrec_v(QObject):
             ###TODO: test / check after 24-07-2026 after implementing modulator_listselected(self,cf) instead of repetitions of same code
             if self.m["modulator_type"] == "all" and not (cf.find("__") == 0):
                 boxix = self.modulator_listselected(cf,boxix)
-            if self.m["modulator_type"] == "audio_only" and (cf.endswith("_modulator") or cf in ("fl2k_universal", "stemlab_universal", "stemlab_eff_universal")) and not (cf.find("__") == 0 ):
+            if self.m["modulator_type"] == "audio_only" and (cf.endswith("_modulator") or cf in ("fl2k_universal", "stemlab_universal", "stemlab_eff_universal", "ADALM2000_universal")) and not (cf.find("__") == 0 ):
                 boxix = self.modulator_listselected(cf,boxix)
             if self.m["modulator_type"] == "band_and_audio" and (cf.endswith("_plus") or cf.endswith("_universal")) and not (cf.find("__") == 0 ):
                 boxix = self.modulator_listselected(cf,boxix)
@@ -2057,7 +2057,7 @@ class playrec_v(QObject):
             _is_synth_only = (_dev_name.endswith("_modulator") or
                               (self.m.get("modulator_type") == "audio_only" and
                                _dev_name in ("fl2k_universal", "stemlab_universal",
-                                             "stemlab_eff_universal")))
+                                             "stemlab_eff_universal", "ADALM2000_universal")))
 
             if "modulator" in self.m["device_ID_dict"] and self.m["device_ID_dict"]["modulator"] =="M":
                 self.m["fileopened"] = True
@@ -2114,9 +2114,24 @@ class playrec_v(QObject):
                     else:
                         return False
                 if self.m["device_ID_dict"]["modulator"] =="P":
-                    self.m["ifreq"] = self.m["wavheader"]['centerfreq'] + self.m["LO_offset"]
-                    self.m["irate"] = self.m["wavheader"]['nSamplesPerSec']
-                    self.m["timescaler"] = self.m["wavheader"]['nSamplesPerSec']*self.m["wavheader"]['nBlockAlign']
+                    if _is_synth_only:
+                        # audio_only mode with modulator="P" device: no IQ file loaded,
+                        # build dummy wavheader like type "M"
+                        self.m["f1"] = "no_file.dat"
+                        self.m["wavheader"]["wFormatTag"]    = 1
+                        self.m["wavheader"]["nBlockAlign"]   = 2
+                        self.m["wavheader"]["nBitsPerSample"] = 16
+                        if self.numeraltest(self.gui.lineEdit_playrec_LO.text(), self.LO_LOW, self.LO_HIGH, "LO value in recorder tab"):
+                            self.m["ifreq"] = int(1000 * int(self.gui.lineEdit_playrec_LO.text()))
+                            self.m["irate"] = int(1000 * int(self.gui.comboBox_playrec_targetSR.currentText()))
+                            self.m["wavheader"]["nSamplesPerSec"]  = self.m["irate"]
+                            self.m["wavheader"]["nAvgBytesPerSec"] = self.m["irate"] * self.m["wavheader"]["nBlockAlign"]
+                        else:
+                            return False
+                    else:
+                        self.m["ifreq"] = self.m["wavheader"]['centerfreq'] + self.m["LO_offset"]
+                        self.m["irate"] = self.m["wavheader"]['nSamplesPerSec']
+                        self.m["timescaler"] = self.m["wavheader"]['nSamplesPerSec']*self.m["wavheader"]['nBlockAlign']
 
             elif _is_synth_only:
                 # fl2k_universal in audio_only: no IQ file – same dummy setup as type "M"
