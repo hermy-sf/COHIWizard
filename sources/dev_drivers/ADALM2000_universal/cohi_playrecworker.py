@@ -323,9 +323,12 @@ class playrec_worker(QObject):
                 except OSError as _exc:
                     print(f"[ADALM2000_univ] Cannot read m3u '{url}': {_exc}")
 
-                _valid = [e for e in _entries if os.path.isfile(e)]
-                if not _valid:
-                    print(f"[ADALM2000_univ] m3u '{url}': no valid files – skipped.")
+                _local_files = [e for e in _entries if os.path.isfile(e)]
+                _web_urls    = [e for e in _entries
+                                if e.lower().startswith(("http://", "https://"))]
+                _entries = _local_files + _web_urls
+                if not _entries:
+                    print(f"[ADALM2000_univ] m3u '{url}': no valid files or URLs – skipped.")
                     continue
 
                 import tempfile as _tf
@@ -335,17 +338,24 @@ class playrec_worker(QObject):
                 )
                 _cf.write("ffconcat version 1.0\n")
                 for _ in range(200):
-                    for _e in _valid:
+                    for _e in _entries:
                         _cf.write(f"file {_e!r}\n")
                 _cf.close()
                 self._concat_files.append(_cf.name)
+                # HTTP/HTTPS entries in ffconcat require an explicit protocol whitelist
+                _proto_opts = (
+                    ["-protocol_whitelist", "file,http,https,tcp,tls,crypto"]
+                    if _web_urls else []
+                )
                 _curl_cmd = None
                 cmd = [
                     ffmpeg_bin, "-re",
-                    "-f", "concat", "-safe", "0", "-i", _cf.name,
+                    "-f", "concat", "-safe", "0",
+                    *_proto_opts,
+                    "-i", _cf.name,
                     "-af", f"lowpass=f={lowpass_f},volume=0.8",
                     "-f", "u8", "-ar", str(audio_rate), "-ac", "1",
-                    f"udp://127.0.0.1:{port}?pkt_size=256&localport=0",
+                    f"udp://127.0.0.1:{port}?pkt_size=256",
                 ]
             elif _is_http and urlparse(url).params:
                 _curl_cmd = ["curl", "-s", "--max-time", "0", "--", url]
@@ -360,7 +370,7 @@ class playrec_worker(QObject):
                 cmd = [
                     ffmpeg_bin,
                     "-reconnect", "1", "-reconnect_streamed", "1",
-                    "-reconnect_delay_max", "5",
+                    "-reconnect_delay_max", "5", "-re",
                     "-i", _ffmpeg_url(url),
                     "-af", f"lowpass=f={lowpass_f},volume=0.8",
                     "-f", "u8", "-ar", str(audio_rate), "-ac", "1",
