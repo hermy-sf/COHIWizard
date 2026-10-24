@@ -352,9 +352,12 @@ class playrec_worker(QObject):
                             _entries.append(_line)
             except OSError as _exc:
                 print(f"[stemlab_eff] Cannot read m3u '{url}': {_exc}")
-            _entries = [e for e in _entries if os.path.isfile(e)]
+            _local_files = [e for e in _entries if os.path.isfile(e)]
+            _web_urls    = [e for e in _entries
+                            if e.lower().startswith(("http://", "https://"))]
+            _entries = _local_files + _web_urls
             if not _entries:
-                print(f"[stemlab_eff] m3u '{url}': no valid files – channel skipped.")
+                print(f"[stemlab_eff] m3u '{url}': no valid files or URLs – channel skipped.")
                 return None, None
             _cf = tempfile.NamedTemporaryFile(
                 mode="w", suffix=".txt", prefix="stemeff_concat_",
@@ -366,9 +369,16 @@ class playrec_worker(QObject):
                     _cf.write(f"file {_e!r}\n")
             _cf.close()
             self._concat_files.append(_cf.name)
+            # HTTP/HTTPS entries in ffconcat require an explicit protocol whitelist
+            _proto_opts = (
+                ["-protocol_whitelist", "file,http,https,tcp,tls,crypto"]
+                if _web_urls else []
+            )
             cmd = [
                 ffmpeg_bin, "-re",
-                "-f", "concat", "-safe", "0", "-i", _cf.name,
+                "-f", "concat", "-safe", "0",
+                *_proto_opts,
+                "-i", _cf.name,
                 "-af", f"lowpass=f={lowpass_f},volume=0.8",
                 "-f", pcm_format, "-ar", str(audio_rate), "-ac", "1",
                 f"udp://127.0.0.1:{port}?pkt_size={pkt_size}",
