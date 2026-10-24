@@ -1216,7 +1216,7 @@
         </sizepolicy>
        </property>
        <property name="text">
-        <string>correct times/nexfilenames</string>
+        <string>correct times/nextfilenames</string>
        </property>
       </widget>
      </item>

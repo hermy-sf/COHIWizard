@@ -2763,7 +2763,7 @@ class resample_v(QObject):
     def fillplaylist(self):
         #playlist = []
         ix = 0
-        for x in os.listdir(self.m["my_dirname"]):
+        for x in sorted(os.listdir(self.m["my_dirname"]), key = self.natural_sortkey):
             if x.endswith(".wav"):
                 if True: #x != (self.m["my_filename"] + self.m["ext"]): #TODO: obsolete old form when automatically loading opened file to playlist
                     #resfilelist.append(x) #TODO: used ?????????
@@ -2937,10 +2937,30 @@ class resample_v(QObject):
         #     item = self.gui.listWidget_playlist_2.item(row)
         #     self.gui.listWidget_sourcelist_2.addItem(item.text())
         # self.gui.listWidget_playlist_2.clear()
-        for row in range(self.gui.listWidget_sourcelist_2.count()-1):
+        #skip empty items: after fillplaylist the last item of sourcelist_2 is an empty placeholder item,
+        #after unselectall_reslist there is none
+        filenames = []
+        for row in range(self.gui.listWidget_sourcelist_2.count()):
             item = self.gui.listWidget_sourcelist_2.item(row)
-            self.gui.listWidget_playlist_2.addItem(item.text())
+            if item.text() != '':
+                filenames.append(item.text())
+        for filename in sorted(filenames, key = self.natural_sortkey):
+            self.gui.listWidget_playlist_2.addItem(filename)
         self.gui.listWidget_sourcelist_2.clear()
+
+    def natural_sortkey(self, filename):
+        """
+        sort key for 'natural' sorting of filenames: digit groups are compared as numbers, all other
+        parts as case-insensitive text, from left to right. Thus a running index after the prefix
+        (e.g. PREFIX_2_20240101_120000Z_1000kHz.wav < PREFIX_10_20231231_235959Z_1000kHz.wav) has priority
+        over the date/time stamp further back; the stamp only decides if the leading parts are equal.
+        :param: filename
+        :type: str
+        :return: sort key
+        :rtype: list
+        """
+        return [(0, int(part), part) if part.isdigit() else (1, 0, part.lower())
+                for part in re.split(r'(\d+)', filename) if part != '']
 
     def unselectall_reslist(self): #TODO: not yet used
         """
@@ -2954,9 +2974,15 @@ class resample_v(QObject):
         #     item = self.gui.listWidget_sourcelist_2.item(row)
         #     self.gui.listWidget_playlist_2.addItem(item.text())
         # self.gui.listWidget_sourcelist_2.clear()
-        for row in range(self.gui.listWidget_playlist_2.count()):
-            item = self.gui.listWidget_playlist_2.item(row)
-            self.gui.listWidget_sourcelist_2.addItem(item.text())
+        #merge the files of both lists and refill sourcelist_2 in natural sort order
+        filenames = []
+        for lw in (self.gui.listWidget_sourcelist_2, self.gui.listWidget_playlist_2):
+            for row in range(lw.count()):
+                if lw.item(row).text() != '':
+                    filenames.append(lw.item(row).text())
+        self.gui.listWidget_sourcelist_2.clear()
+        for filename in sorted(filenames, key = self.natural_sortkey):
+            self.gui.listWidget_sourcelist_2.addItem(filename)
         #item = QtWidgets.QListWidgetItem()
         #self.gui.listWidget_sourcelist_2.addItem(item)
         self.gui.listWidget_playlist_2.clear()
@@ -3423,56 +3449,57 @@ class resample_v(QObject):
             errorstate = True
             value = "NOCLEAR no files in list"
             return(errorstate, value)   
-        list_ix = 0
-        firstpass = True
+        #A filename ends with a string like: filenamebase_20231231_235959Z_xxHz.wav or filenamebase_20231231_235959_xxHz.wav 
+        pattern1 = r"_\d{8}_\d{6}Z_[A-Za-z0-9]+Hz."
+        pattern2 = r"_\d{8}_\d{6}_[A-Za-z0-9]+Hz."
+        #pass 1: calculate new times and names for all files without touching any file
+        #the time chain is built only from the starttime of the first file and the durations of the files;
+        #the (possibly wrong) times in the headers of the subsequent files are ignored, unless the option
+        #'correct_times_keep_gaps' in config_wizard.yaml is set: then the gap between the original starttime of a file
+        #and the original end of the previous file (original starttime + duration) is inserted; negative gaps are ignored.
+        #The second file is always attached seamlessly to the first one, because the header of the first file
+        #(reference) has usually been edited manually, so the original gap between file 1 and file 2 is meaningless
+        keep_gaps = bool(self.m.get("metadata", {}).get("correct_times_keep_gaps", False))
+        self.logger.debug(f"correct_times_nextfn: keep gaps = {keep_gaps}")
+        jobs = []
         for list_ix,input_file in enumerate(input_file_list):
             #here the filename does not contain the ful path, only the name
             file_under_operation = os.path.join(self.m["my_dirname"], input_file)
             wavheader = WAVheader_tools.get_sdruno_header(self,file_under_operation)
+            if not wavheader:
+                errorstate = True
+                value = f"cannot read wav header of {input_file}. Aborting procedure, no file has been changed"
+                return(errorstate, value)
             wavheader['nextfilename'] = "" 
-            spt = wavheader['stoptime_dt']
-            if firstpass:
-                #initialize time chain with starttime fo first file
-                stt = wavheader["starttime_dt"]
-                delta = timedelta(seconds = 0)
-            else:
-                #calculate time difference between starttime of current and stoptime of previous file
-                #for adding this as an offset to the next starttime
-                delta = wavheader["starttime_dt"] - old_stp
-            old_stp = spt
-            #add offset for starttime of current file
-            stt += delta
+            orig_stt = wavheader["starttime_dt"] + timedelta(milliseconds = wavheader["starttime"][7])
+            if list_ix == 0:
+                #initialize time chain with starttime of first file, including the milliseconds entry
+                stt = orig_stt
+            elif keep_gaps and list_ix >= 2:
+                gap = orig_stt - prev_orig_end
+                if gap > timedelta(0):
+                    stt += gap
             progress = (list_ix+1)/lenlist*maxprogress
-            #self.set_progress(progress)
             self.logger.debug(f'correct_times_nextfn progress: {progress}; next input file: {input_file}')
-            #self.SigPupdate.emit()
-            #time.sleep(0.1)
             if self.stopix is True: #CANCEL PROCESS
                 self.logger.debug("***correct_times_nextfn cancel process")
                 errorstate = True
                 value = "process cancelled by user"
                 return(errorstate, value)
-            #get duration of current file
-            file_under_operation_size = os.path.getsize(file_under_operation)
             #extract new datetime string from current filename to be edited
-            #A filename ends with a string like: filenamebase_20231231_235959Z_xxHz.wav or filenamebase_20231231_235959_xxHz.wav 
             filename = Path(file_under_operation).name
-            pattern1 = r"_\d{8}_\d{6}Z_[A-Za-z0-9]+Hz."
-            pattern2 = r"_\d{8}_\d{6}_[A-Za-z0-9]+Hz."
             match1 = re.search(pattern1, filename)
             match2 = re.search(pattern2, filename)
             if match1:
                 start_position = match1.start()
-                #match.span()[0] match.span()[1]
             elif match2:
                 start_position = match2.start()
             else:
                 errorstate = True
-                value = "Pattern not found in the filename. Aborting procedure"
+                value = f"Pattern not found in the filename {filename}. Aborting procedure, no file has been changed"
                 return(errorstate, value)
-            
             nametrunk = filename[:start_position+1]
-            aux = str(stt) # stt ?
+            aux = str(stt)
             if aux.find('.') < 1:
                 SDRUno_suff = aux
             else:
@@ -3481,41 +3508,46 @@ class resample_v(QObject):
             SDRUno_suff = SDRUno_suff.replace(":","")
             SDRUno_suff = SDRUno_suff.replace("-","")
             new_name = nametrunk + str(SDRUno_suff) + 'Z_' + str(int(np.round(wavheader["centerfreq"]/1000))) + 'kHz.wav'
-            new_path = os.path.join(self.m["my_dirname"], new_name) 
-            #calculate duration of current file
-            duration = (file_under_operation_size - 216)/wavheader["nAvgBytesPerSec"]
-            #get starttime of the whoe list from starttime of the first file
-            #calculate stoptime and other wavheader items
+            #calculate duration of current file and its stoptime
+            duration = (os.path.getsize(file_under_operation) - 216)/wavheader["nAvgBytesPerSec"]
             spt = stt + ndatetime.timedelta(seconds = np.floor(duration)) + ndatetime.timedelta(milliseconds = 1000*(duration - np.floor(duration)))
+            wavheader['starttime_dt'] = stt
             wavheader['stoptime_dt'] = spt
-            wavheader['stoptime'] = [spt.year, spt.month, 0, spt.day, spt.hour, spt.minute, spt.second, int(spt.microsecond/1000)] 
             wavheader['starttime'] = [stt.year, stt.month, 0, stt.day, stt.hour, stt.minute, stt.second, int(stt.microsecond/1000)] 
-            #write new wavheader with corrected times
+            wavheader['stoptime'] = [spt.year, spt.month, 0, spt.day, spt.hour, spt.minute, spt.second, int(spt.microsecond/1000)] 
+            jobs.append([file_under_operation, new_name, wavheader])
+            #starttime of the next file is the stoptime of the current file (plus gap, if keep_gaps)
+            stt = spt
+            prev_orig_end = orig_stt + timedelta(seconds = duration)
+
+        #check for name collisions before changing anything
+        new_names = [job[1] for job in jobs]
+        if len(set(new_names)) < len(new_names):
+            errorstate = True
+            value = "new filenames would not be unique (zero length files ?). Aborting procedure, no file has been changed"
+            return(errorstate, value)
+        old_paths = set(os.path.normpath(job[0]) for job in jobs)
+        for new_name in new_names:
+            new_path = os.path.normpath(os.path.join(self.m["my_dirname"], new_name))
+            if os.path.exists(new_path) and new_path not in old_paths:
+                errorstate = True
+                value = f"target file {new_name} already exists and is not part of the list. Aborting procedure, no file has been changed"
+                return(errorstate, value)
+
+        #pass 2: write corrected wavheaders including the nextfilename of each file
+        for ix, (file_under_operation, new_name, wavheader) in enumerate(jobs):
+            if ix < len(jobs) - 1:
+                wavheader['nextfilename'] = jobs[ix + 1][1]
             WAVheader_tools.write_sdruno_header(self,file_under_operation,wavheader,True) ##TODO TODO TODO Linux conf: self.m["f1"],self.m["wavheader"] must be in Windows format
-            #generate new filename: use the trunk of the old filename and add the standard string with new date/starttime/kHz entry
-            if not firstpass:
-                prev_wavheader = WAVheader_tools.get_sdruno_header(self,previous_filepath)
-                prev_wavheader["nextfilename"] = new_name
-                WAVheader_tools.write_sdruno_header(self,previous_filepath,prev_wavheader,True)
-                #calculate new starttime for next file
-            firstpass = False
-            stt = spt #+ delta  #TODO: False summation, must be corrected
-            previous_filepath = new_path
-            rename_done = False
-            #rename file
-            while not rename_done:
-                try:
-                    #print(f"merge2Gworker try shutil {file_under_operation_path} to {new_name}")
-                    shutil.move(file_under_operation, new_path)
-                    rename_done = True
-                except:
-                    #print(f"merge2Gworker renamefile trial {str(jx)}")
-                    print("Warning correct wavheader: cannot rename file, retry in 0.5 s")
-                    time.sleep(0.5)
-                    #TODO: abort after n trials
-            #self.logger.debug("break correct wavheader")
-            #wavheader['starttime_dt'] = wavheader['stoptime_dt']
-            #wavheader['starttime'] = wavheader['stoptime']     
+
+        #pass 3: rename files via temporary names, so that a new name cannot overwrite a file of the list which has not yet been renamed
+        tmp_paths = []
+        for ix, (file_under_operation, new_name, wavheader) in enumerate(jobs):
+            tmp_path = os.path.join(self.m["my_dirname"], f"__correct_times_tmp_{ix}.wav")
+            shutil.move(file_under_operation, tmp_path)
+            tmp_paths.append(tmp_path)
+        for tmp_path, (file_under_operation, new_name, wavheader) in zip(tmp_paths, jobs):
+            shutil.move(tmp_path, os.path.join(self.m["my_dirname"], new_name))
 
         self.logger.debug("correct_times_nextfn: job done")
         auxi.standard_infobox("correct times and nextfilenames as well as filenames: job done")

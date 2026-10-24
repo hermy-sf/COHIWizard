@@ -677,7 +677,7 @@ class Ui_resampler_widget(object):
         self.pushButton_resample_GainOnly.setText(_translate("resampler_widget", "Gain only"))
         self.checkBox_resampler_speedcorr.setText(_translate("resampler_widget", "Speed corr"))
         self.checkBox_Cut.setText(_translate("resampler_widget", "Cut Start/End"))
-        self.pushButton_resample_correctwavheaders.setText(_translate("resampler_widget", "correct times/nexfilenames"))
+        self.pushButton_resample_correctwavheaders.setText(_translate("resampler_widget", "correct times/nextfilenames"))
         self.radioButton_advanced_sampling.setToolTip(_translate("resampler_widget", "Allow for resampling of whole file lists"))
         self.radioButton_advanced_sampling.setText(_translate("resampler_widget", "ADVANCED SAMPLING"))
         self.label.setText(_translate("resampler_widget", " "))

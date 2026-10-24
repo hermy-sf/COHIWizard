@@ -1064,7 +1064,7 @@
      <item row="15" column="5">
       <widget class="QPushButton" name="pushButton_resample_correctwavheaders">
        <property name="text">
-        <string>correct times/nexfilenames</string>
+        <string>correct times/nextfilenames</string>
        </property>
       </widget>
      </item>

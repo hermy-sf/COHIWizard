@@ -1,4 +1,4 @@
-#Version 2.3.3
+#Version 2.3.4
 # -*- coding: utf-8 -*-logfile
 # For reducing to RFCorder: disable all modules except resample in the config_modules.yaml file
 #
@@ -668,6 +668,7 @@ class core_v(QObject):
             self.m["metadata"]["autoAGC_DspWorker"] = False
             self.m["metadata"]["gain_correction_fl2k_C"] = 0.2
             self.m["metadata"]["playlist_continuation_mode"] = 1
+            self.m["metadata"]["correct_times_keep_gaps"] = False
             # base_dir = Path(__file__).resolve().parent #TODO make part of the configuration
             # doc_dir = base_dir.parent / "documentation"
             doc_dir = os.path.join(os.fspath(Path(self.m["rootpath"]).parent),  "documentation")
@@ -1922,7 +1923,7 @@ if __name__ == '__main__':
         xcore_v.logger.debug("startup Tab not defined in configuration file config_wizard.yaml")
         xcore_v.gui.tabWidget.setCurrentIndex(0)
     xcore_v.timethread.start()
-    print("COHIWIzard Version 2.3.3 , 14-10-2026, (C) Hermann Scharfetter")
+    print("COHIWIzard Version 2.3.4 , 14-10-2026, (C) Hermann Scharfetter")
 
 
 

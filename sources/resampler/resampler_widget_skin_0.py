@@ -558,7 +558,7 @@ class Ui_resampler_widget(object):
         self.pushButton_resample_split2G.setText(_translate("resampler_widget", "split/merge to 2GB"))
         self.pushButton_resample_resample.setToolTip(_translate("resampler_widget", "start resampling procedure"))
         self.pushButton_resample_resample.setText(_translate("resampler_widget", "Resample"))
-        self.pushButton_resample_correctwavheaders.setText(_translate("resampler_widget", "correct times/nexfilenames"))
+        self.pushButton_resample_correctwavheaders.setText(_translate("resampler_widget", "correct times/nextfilenames"))
         self.checkBox_merge_selectall.setToolTip(_translate("resampler_widget", "select/unselect all list elements"))
         self.checkBox_merge_selectall.setText(_translate("resampler_widget", "Select all"))
         self.pushButton_resample_GainOnly.setToolTip(_translate("resampler_widget", "start resampling procedure and splt reulting files in 2GB tranches"))
