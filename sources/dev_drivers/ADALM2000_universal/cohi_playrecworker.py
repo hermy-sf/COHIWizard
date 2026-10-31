@@ -57,6 +57,13 @@ LW_MAX_CARRIER_HZ = 300e3
 LW_BAND_EDGE_HZ   = 400e3
 MW_BAND_EDGE_HZ   = 1750e3
 
+# Push pacing: libm2k's SWIG binding never releases the GIL, so a pushRaw()
+# that waits for a free kernel buffer stalls every other Python thread (GUI,
+# STOP button).  The push thread therefore keeps at most PUSH_MAX_LEAD_S of
+# samples queued ahead of the DAC (by wall clock) and sleeps otherwise, so
+# pushRaw() always finds a free buffer and returns immediately.
+PUSH_MAX_LEAD_S = 1.0
+
 
 def audioonly_band_edge(stations):
     f_top = max(s["freq_hz"] + s["bw_hz"] / 2 for s in stations)
@@ -997,6 +1004,8 @@ class playrec_worker(QObject):
                 _max_push_ms = 0.0
                 _last_diag = time.time()
                 _paused_prev = False
+                _t0_wall = None     # pacing reference (perf_counter)
+                _pushed  = 0        # samples pushed since _t0_wall
 
                 while not stopev.is_set():
                     if self.get_pause():
@@ -1008,14 +1017,28 @@ class playrec_worker(QObject):
                     if _paused_prev:
                         _lib_adlm.dsp_adlm_set_pause(handle, ctypes.c_int(0))
                         _paused_prev = False
+                        _t0_wall = None     # DAC ran empty: re-anchor pacing
                     n = _lib_adlm.dsp_adlm_pull(handle, pull_buf, BLOCK)
                     if n < 0:
                         break
                     if n > 0 and ao is not None:
+                        # Pace pushes: wait (GIL released) while more than
+                        # PUSH_MAX_LEAD_S is queued ahead of the DAC.
+                        _now_p = time.perf_counter()
+                        if _t0_wall is None:
+                            _t0_wall, _pushed = _now_p, 0
+                        _lead = _pushed / SRAdalm - (_now_p - _t0_wall)
+                        if _lead < 0.0:
+                            # producer fell behind (underrun): re-anchor
+                            _t0_wall, _pushed = _now_p, 0
+                        elif _lead > PUSH_MAX_LEAD_S:
+                            if stopev.wait(_lead - PUSH_MAX_LEAD_S):
+                                break
                         ctypes.memmove(out_arr.buffer_info()[0], pull_buf, n * 2)
                         _t0 = time.perf_counter()
                         try:
                             ao.pushRaw(0, out_arr if n == BLOCK else out_arr[:n])
+                            _pushed += n
                         except Exception as e:
                             print(f"[ADALM2000_univ] pushRaw error: {e}", flush=True)
                             break

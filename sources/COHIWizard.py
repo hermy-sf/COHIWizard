@@ -1210,6 +1210,8 @@ class core_v(QObject):
             self.m["modulator_playlist"] = value
             self.SigRelay.emit("cm_all_",["modulator_playlist",value])
             auxi.update_configyaml("audioplaylist", value)
+            if isinstance(self.m.get("metadata"), dict):
+                self.m["metadata"]["audioplaylist"] = value   # keep cached copy consistent
             self.gui.label_csv_filename.setText(str(Path(value).stem) + str(Path(value).suffix))
         if errorstate:
             auxi.standard_errorbox(value)

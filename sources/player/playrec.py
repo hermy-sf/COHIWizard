@@ -1359,6 +1359,10 @@ class playrec_v(QObject):
                 self.m["currentSDRindex"] = value
             else:
                 pass
+            # the index depends on the modulator-type specific list; prefer the name
+            error,value = auxi.fetch_configyaml("last_device_name")
+            if not error and self.gui.comboBox_stemlab.findText(str(value)) >= 0:
+                self.m["currentSDRindex"] = self.gui.comboBox_stemlab.findText(str(value))
             #auxi.standard_errorbox(value)
         except:
             pass
@@ -1442,9 +1446,17 @@ class playrec_v(QObject):
     def modulator_type_handler(self):
         """
         handles filling of the device combobox according to the value of self.m["modulator_type"]
-        
+        The previously selected device is kept if it is also available for the
+        new modulator type; otherwise the standard device (stemlab_125_14, if
+        listed) or the first entry is selected. The combobox signals are blocked
+        while the list is rebuilt; the caller re-identifies the device.
         """
+        prev_device = self.gui.comboBox_stemlab.currentText()
+        self.gui.comboBox_stemlab.blockSignals(True)
         self.gui.comboBox_stemlab.clear()
+        self.m["imported_device_modules"] = []
+        self.m["imported_sdr_controllers"] = []
+        self.m["standardSDRindex"] = 0
         boxix = 0
         for ix, cf in enumerate(self.m["devicelist"]):
 
@@ -1458,6 +1470,12 @@ class playrec_v(QObject):
             if self.m["modulator_type"] == "band_only" and not (cf.endswith("_modulator") or cf.endswith("_plus") or (cf.find("__") == 0 )):
                 boxix = self.modulator_listselected(cf,boxix)
 
+        newix = self.gui.comboBox_stemlab.findText(prev_device) if prev_device else -1
+        if newix < 0:
+            newix = self.m["standardSDRindex"]
+        self.m["currentSDRindex"] = newix
+        self.gui.comboBox_stemlab.setCurrentIndex(newix)
+        self.gui.comboBox_stemlab.blockSignals(False)
 
         # error,value = auxi.fetch_configyaml("last_device")
         
@@ -1575,23 +1593,31 @@ class playrec_v(QObject):
         errorstate = False
         value = ""
 
-        self.m["imported_device_modules"] = []
-        self.m["imported_sdr_controllers"] = []
-
         modulatorindex = self.gui.comboBox_modulator_type.currentIndex()
         if modulatorindex == 0:
             self.m["modulator_type"] = "band_only"
-            self.modulator_type_handler()
         if modulatorindex == 1:
             self.m["modulator_type"] = "band_and_audio"
-            self.modulator_type_handler()
         if modulatorindex == 2:
             self.m["modulator_type"] = "audio_only"
       
         #if self.m["modulator_type"] = "all" and not (cf.find("__") == 0):
         auxi.update_configyaml("last_modulator_type",self.m["modulator_type"])
-        self.gui.comboBox_stemlab.clear()
+        if self.m["modulator_type"] == "band_only":
+            # a modulator playlist (csv) is meaningless for pure IQ playback:
+            # unload it (state, config entry and GUI label)
+            self.m["modulator_playlist"] = ""
+            self.m["playlist_opened"] = False
+            self.SigRelay.emit("cm_all_",["modulator_playlist",""])
+            self.SigRelay.emit("cm_all_",["playlist_opened",False])
+            auxi.update_configyaml("audioplaylist", "")
+            if isinstance(self.m.get("metadata"), dict):
+                self.m["metadata"]["audioplaylist"] = ""   # keep cached copy consistent
+            self.gui.label_csv_filename.setText("")
+        # rebuild the device list for the new type; keeps the current device
+        # if compatible, then re-identify it (module lists were re-imported)
         self.modulator_type_handler()
+        self.sdrdevice_changehandler()
 
 
 
@@ -1668,6 +1694,8 @@ class playrec_v(QObject):
             value = f"THIS DEVICE DRIVER IS NOT YET AVAILABLE (still under development)"
         else:
             errorstate, value = auxi.update_configyaml("last_device",self.m["currentSDRindex"] )
+            if not errorstate:
+                errorstate, value = auxi.update_configyaml("last_device_name", self.gui.comboBox_stemlab.currentText())
         if errorstate:
             auxi.standard_errorbox(value)
             self.gui.comboBox_stemlab.setCurrentIndex(self.m["standardSDRindex"])
@@ -2433,7 +2461,10 @@ class playrec_v(QObject):
         self.gui.label_32.setEnabled(False)
         self.m["playlist_active"] = False
         self.gui.lineEditCurTime.setText("")
-        self.gui.label_csv_filename.setText("")
+        # the modulator playlist stays loaded after STOP (Play resumes with it),
+        # so keep showing its name; empty only if no playlist is loaded
+        _pl = self.m.get("modulator_playlist", "")
+        self.gui.label_csv_filename.setText(Path(_pl).name if _pl else "")
 
     def indicate_bufoverflow(self):
         """_indicate if during recording a buffer underflow occurred
