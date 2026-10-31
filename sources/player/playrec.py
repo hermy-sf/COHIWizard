@@ -1097,18 +1097,18 @@ class playrec_c(QObject):
         :return: True if successful, otherwise False
         :rtype: Boolean
         """
-        eff_ifreq = self.m["LO_offset"] + self.m["ifreq"]
-        if not self.update_LO_bias():
-            return False                 
+        # LO_offset is already updated from the GUI by the view
+        # (update_LO_bias at the start of Play); the caller resets the
+        # player button group on False, so no STOP here (it would unload
+        # the file while no playback is active)
+        eff_ifreq = self.m["wavheader"]["centerfreq"] + self.m["LO_offset"]
         if (eff_ifreq <= 0):
             auxi.standard_errorbox("invalid negative center frequency offset, magnitude greater than LO frequency of the record, please correct value")
             self.SigRelay.emit("cexex_playrec",["resetLObias",0])
-            self.cb_Butt_STOP()
             return False
         if (eff_ifreq > 60000000):
             auxi.standard_errorbox("invalid  center frequency offset, sum of record LO and offset must be < 60000 kHz, please correct value")
             self.SigRelay.emit("cexex_playrec",["resetLObias",0])
-            self.cb_Butt_STOP()
             return False
         return True
 
@@ -1846,10 +1846,13 @@ class playrec_v(QObject):
         #self.cb_Butt_STOP()
         self.gui.listWidget_playlist.clear()
         self.gui.listWidget_sourcelist.clear()
-        self.gui.label_Filename_Player.setText("")
         self.SigRelay.emit("cexex_view_spectra",["reset_GUI",0])
         self.SigRelay.emit("cexex_resample",["reset_GUI",0])
-        self.gui.label_Filename_Player.setText('')
+        # an IQ file kept loaded after STOP stays displayed
+        if self.m["fileopened"]:
+            self.gui.label_Filename_Player.setText(self.m["my_filename"] + self.m["ext"])
+        else:
+            self.gui.label_Filename_Player.setText('')
 
         if self.m["playlist_active"] == True:
             self.gui.pushButton_act_playlist.setChecked(False)
@@ -2093,12 +2096,19 @@ class playrec_v(QObject):
                                _dev_name in ("fl2k_universal", "stemlab_universal",
                                              "ADALM2000_universal")))
 
-            if "modulator" in self.m["device_ID_dict"] and self.m["device_ID_dict"]["modulator"] =="M":
-                self.m["fileopened"] = True
-            if _is_synth_only:
+            _no_iq_file = (_is_synth_only or ("modulator" in self.m["device_ID_dict"]
+                                              and self.m["device_ID_dict"]["modulator"] == "M"))
+            if _no_iq_file:
                 self.m["fileopened"] = True
 
             if not self.m["fileopened"]:
+                auxi.standard_errorbox("file must be opened before playing") #TODO TODO TODO: good errorhandling with errorstate, value; errorhandler
+                self.reset_playerbuttongroup()
+                return False
+
+            # LO offset query and bounds check on every IQ-file Play (the file
+            # may stay loaded across STOP, the LO offset may have changed)
+            if not _no_iq_file:
                 if self.gui.radioButton_LO_bias.isChecked():
                     #TODO TODO TODO: replace by query method
                     msg = QMessageBox()
@@ -2117,16 +2127,8 @@ class playrec_v(QObject):
                         return False
 
                 self.gui.radioButton_LO_bias.setEnabled(False)
-                #TODO TODO TODO. HOW TO CALL A CORE FUNCTION ?
-                #if self.cb_open_file() is False: #TODO TODO: check if works equally as before,
-                # now the quest is for fileopened and not, if open file returned True
-                if not self.m["fileopened"]:
-                    auxi.standard_errorbox("file must be opened before playing") #TODO TODO TODO: good errorhandling with errorstate, value; errorhandler
-                    # restore automatic call of fileopen in this case
-                    self.reset_playerbuttongroup()
-                    return False
                 # LO/center-freq bounds only relevant when an IQ file defines ifreq
-                if not _is_synth_only and not self.playrec_c.LO_bias_checkbounds():
+                if not self.playrec_c.LO_bias_checkbounds():
                     self.reset_playerbuttongroup()
                     return False
                 self.gui.lineEdit_LO_bias.setEnabled(False)
@@ -2436,8 +2438,13 @@ class playrec_v(QObject):
         # close and crashing. EOF_manager() now resets it once
         # self.playthread.wait() confirms the old thread is truly done.
         self.SigActivateOtherTabs.emit("Player","activate",[])
-        self.m["fileopened"] = False ###CHECK
-        self.SigRelay.emit("cm_all_",["fileopened",False])
+        # Keep a real IQ file loaded after STOP/EOF so Play can restart it.
+        # Only the synthesizer dummy (f1 = 'no_file.dat', fileopened forced
+        # True at Play for modulator/audio_only devices) is unloaded.
+        _f1 = self.m.get("f1", "")
+        _keep = bool(_f1) and _f1 != "no_file.dat" and os.path.isfile(_f1)
+        self.m["fileopened"] = _keep
+        self.SigRelay.emit("cm_all_",["fileopened",_keep])
         self.gui.radioButton_LO_bias.setEnabled(True)
         self.gui.lineEdit_LO_bias.setEnabled(True)
         self.gui.ScrollBar_playtime.setEnabled(False)
@@ -2800,8 +2807,8 @@ class playrec_v(QObject):
                     except:
                          #TODO: intro standard errorhandling
                          auxi.standard_errorbox("Cannot activate background thread (tworker), maybe SDR device (STEMLAB ?) is not connected")
-                         self.SigRelay.emit("cexex_all_",["reset_GUI",0])
                          self.SigRelay.emit("cm_all_",["fileopened",False]) ###TODO: Test after 09-04-2024 !
+                         self.SigRelay.emit("cexex_all_",["reset_GUI",0])
                          print("updatecurtime playrec tworker.get4() not callable")
                          return False
                     try:
