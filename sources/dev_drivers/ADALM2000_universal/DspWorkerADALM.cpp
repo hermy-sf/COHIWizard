@@ -526,11 +526,22 @@ std::string DspWorkerADALM::process_file(const std::string& path)
 
             setup_audio_for_file(sampleRate);
 
-            /* int16_t output: bitScale = 32767 */
+            /* int16_t output: bitScale = 32767
+             * Manual gain is absolute: current_gain_fast = gainValue * GAIN_SCALE
+             * maps a full-scale IQ file (peak 1.0) to the former level.  It used
+             * to be gainValue * block_safe, i.e. every block normalised to its
+             * own peak: the output then ignored the file level, while the AVC
+             * (monitor × slider gain) sees the true level → for low-level files
+             * the AVC raised gainValue far above 1 → massive clipping. */
             const float bitScale    = 32767.0f;
+            const float GAIN_SCALE  = (bitScale - 1.f) / 1.05f;
             float current_gain_fast = bitScale * 0.65f;
             float peak_hold         = 0.1f;
             float prev_block_gain   = current_gain_fast;
+            /* Emergency limiter ceiling: instant attack on overload, slow
+             * release (~6 dB/s), as in DspWorkerFL2K. */
+            const float lim_release = powf(10.f, 6.f / 20.f * (float)DSP_BLOCK / sampleRate);
+            float       lim_ceiling = 1e9f;
 
             float i_buf[2 * POLY_TAPS_MAX] = {};
             float q_buf[2 * POLY_TAPS_MAX] = {};
@@ -641,16 +652,16 @@ std::string DspWorkerADALM::process_file(const std::string& path)
                 peak_hold = 0.95f * peak_hold + 0.05f * bpeak;
 
                 const float block_safe = (bitScale - 1.f) / (bpeak * 1.05f + 1e-4f);
+                lim_ceiling = fminf(block_safe, fminf(lim_ceiling * lim_release, 1e9f));
                 if (useAGC) {
                     float tg = (bitScale * 0.65f) / (peak_hold + 0.0001f);
-                    current_gain_fast = fminf(block_safe,
+                    current_gain_fast = fminf(lim_ceiling,
                                              0.95f * current_gain_fast + 0.05f * tg);
                 } else {
-                    current_gain_fast = gainValue.load() * block_safe;
+                    current_gain_fast = fminf(gainValue.load() * GAIN_SCALE, lim_ceiling);
                 }
 
-                const float ramp_start = fminf(prev_block_gain,
-                                               (bitScale - 1.f) / (bpeak * 1.05f + 1e-4f));
+                const float ramp_start = fminf(prev_block_gain, block_safe);
                 const float gain_ramp_step = (current_gain_fast - ramp_start)
                                              / (float)(DSP_BLOCK * n_interp);
                 float gain_ramp = ramp_start;
