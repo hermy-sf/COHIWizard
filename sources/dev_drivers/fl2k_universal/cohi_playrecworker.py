@@ -7,17 +7,17 @@ three input modes; the backend C++ library is selected at runtime:
 
   Mode A  IQ-file + optional audio overlay
           filenames  non-empty
-          library    libdspfl2k.so  (from fl2k_fast_plus)
+          library    libdspfl2k.so  (from dev_drivers/libs)
 
   Mode B  Pure AM audio synthesis (no IQ file)
           audioplaylist configured, filenames empty
-          library    libdspflmod.so  (from fl2k_fast_modulator)
+          library    libdspflmod.so  (from dev_drivers/libs)
 
   Error   Neither file nor playlist → SigError emitted
 
 Library search order for each .so:
   1. fl2k_universal/  (own directory – place rebuilt .so here)
-  2. fl2k_fast_plus/  or  fl2k_fast_modulator/  sibling directories
+  2. dev_drivers/libs/  (shared libraries, built with make there)
 
 config_wizard.yaml keys used:
   autoAGC_DspWorker       bool   (default False)
@@ -200,19 +200,21 @@ def _setup_lib_mod(lib, libpath):
 
 
 def _load_lib_plus() -> "ctypes.CDLL | None":
-    """Load libdspfl2k.so – own dir first, then fl2k_fast_plus sibling."""
+    """Load libdspfl2k.so – own dir first, then dev_drivers/libs."""
     import platform
     here     = os.path.dirname(os.path.abspath(__file__))
+    libs_dir = os.path.normpath(os.path.join(here, "..", "libs"))
     _libname = "libdspfl2k.dll" if platform.system() == "Windows" else "libdspfl2k.so"
     candidates = [
         os.path.join(here, _libname),
-        os.path.join(here, "..", "fl2k_fast_plus", _libname),
+        os.path.join(libs_dir, _libname),
     ]
     if platform.system() == "Windows":
-        try:
-            os.add_dll_directory(here)
-        except (AttributeError, OSError):
-            pass
+        for _dlldir in (here, libs_dir):
+            try:
+                os.add_dll_directory(_dlldir)
+            except (AttributeError, OSError, FileNotFoundError):
+                pass
     for libpath in candidates:
         if os.path.isfile(libpath):
             try:
@@ -227,19 +229,21 @@ def _load_lib_plus() -> "ctypes.CDLL | None":
 
 
 def _load_lib_mod() -> "ctypes.CDLL | None":
-    """Load libdspflmod.so – own dir first, then fl2k_fast_modulator sibling."""
+    """Load libdspflmod.so – own dir first, then dev_drivers/libs."""
     import platform
     here     = os.path.dirname(os.path.abspath(__file__))
+    libs_dir = os.path.normpath(os.path.join(here, "..", "libs"))
     _libname = "libdspflmod.dll" if platform.system() == "Windows" else "libdspflmod.so"
     candidates = [
         os.path.join(here, _libname),
-        os.path.join(here, "..", "fl2k_fast_modulator", _libname),
+        os.path.join(libs_dir, _libname),
     ]
     if platform.system() == "Windows":
-        try:
-            os.add_dll_directory(here)
-        except (AttributeError, OSError):
-            pass
+        for _dlldir in (here, libs_dir):
+            try:
+                os.add_dll_directory(_dlldir)
+            except (AttributeError, OSError, FileNotFoundError):
+                pass
     for libpath in candidates:
         if os.path.isfile(libpath):
             try:
@@ -652,7 +656,7 @@ class playrec_worker(QObject):
             if _LIB_PLUS is None:
                 self.SigError.emit(
                     "libdspfl2k.so not found.\n"
-                    "Build it with:  cd dev_drivers/fl2k_fast_plus && make"
+                    "Build it with:  cd dev_drivers/libs && make"
                 )
                 self.SigFinished.emit()
                 return
@@ -665,7 +669,7 @@ class playrec_worker(QObject):
             if _LIB_MOD is None:
                 self.SigError.emit(
                     "libdspflmod.so not found.\n"
-                    "Build it with:  cd dev_drivers/fl2k_fast_modulator && make"
+                    "Build it with:  cd dev_drivers/libs && make"
                 )
                 self.SigFinished.emit()
                 return
@@ -770,7 +774,7 @@ class playrec_worker(QObject):
         if _audio_active and _channels and not getattr(LIB, "_has_audio_api", False):
             self.SigError.emit(
                 "Audio overlay deaktiviert: libdspfl2k.so enthält keine "
-                "dsp_fl2k_configure_audio-Funktion. Bitte neu bauen: cd fl2k_fast_plus && make"
+                "dsp_fl2k_configure_audio-Funktion. Bitte neu bauen: cd dev_drivers/libs && make"
             )
             _audio_active = False
         if _audio_active and _channels:

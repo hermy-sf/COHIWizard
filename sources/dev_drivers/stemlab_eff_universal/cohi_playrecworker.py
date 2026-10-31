@@ -4,7 +4,7 @@ COHIWizard device-driver worker for STEMlab 125-14.
 
 Identical to stemlab_universal for IQ-only and IQ+Audio modes.
 Audio-only mode replaces the NumPy AM synthesis with the C++ NCO engine
-from libdspflmod.so (fl2k_fast_modulator) via a pull API, eliminating the
+from libdspflmod.so (dev_drivers/libs) via a pull API, eliminating the
 5–15 ms per-block DSP penalty that caused buzzing with 15+ carriers.
 
 Signal chain (audio-only):
@@ -222,18 +222,20 @@ def _setup_lib_mod(lib, libpath):
 
 
 def _load_lib_mod():
-    """Load libdspflmod.so; own dir first, then fl2k_fast_modulator sibling."""
+    """Load libdspflmod.so; own dir first, then dev_drivers/libs."""
     here     = os.path.dirname(os.path.abspath(__file__))
+    libs_dir = os.path.normpath(os.path.join(here, "..", "libs"))
     _libname = "libdspflmod.dll" if platform.system() == "Windows" else "libdspflmod.so"
     candidates = [
         os.path.join(here, _libname),
-        os.path.join(here, "..", "fl2k_fast_modulator", _libname),
+        os.path.join(libs_dir, _libname),
     ]
     if platform.system() == "Windows":
-        try:
-            os.add_dll_directory(here)
-        except (AttributeError, OSError):
-            pass
+        for _dlldir in (here, libs_dir):
+            try:
+                os.add_dll_directory(_dlldir)
+            except (AttributeError, OSError, FileNotFoundError):
+                pass
     for libpath in candidates:
         if os.path.isfile(libpath):
             try:
@@ -564,7 +566,7 @@ class playrec_worker(QObject):
         if lib is None:
             self.SigError.emit(
                 "[stemlab_eff] Cannot load libdspflmod.so – "
-                "build it in dev_drivers/fl2k_fast_modulator/ with 'make'."
+                "build it in dev_drivers/libs/ with 'make'."
             )
             return None, None
 

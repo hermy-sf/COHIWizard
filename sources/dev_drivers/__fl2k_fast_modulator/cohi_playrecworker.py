@@ -56,20 +56,21 @@ def _load_lib() -> ctypes.CDLL | None:
     import platform
     here     = os.path.dirname(os.path.abspath(__file__))
     _libname = "libdspflmod.dll" if platform.system() == "Windows" else "libdspflmod.so"
-    libpath  = os.path.join(here, _libname)
+    libs_dir = os.path.normpath(os.path.join(here, "..", "libs"))
+    libpath  = os.path.join(libs_dir, _libname)
     if platform.system() == "Windows":
         # Since Python 3.8, PATH is no longer searched for a DLL's own
         # dependencies (libosmo-fl2k.dll, libusb-1.0.dll, libwinpthread-1.dll);
         # the directory has to be registered explicitly.
         try:
-            os.add_dll_directory(here)
+            os.add_dll_directory(libs_dir)
         except (AttributeError, OSError):
             pass
     try:
         lib = ctypes.CDLL(libpath)
     except OSError as exc:
         print(f"[fl2k_mod] Cannot load {_libname}: {exc}\n"
-              f"  Build it with:  cd {here} && make")
+              f"  Build it with:  cd {libs_dir} && make")
         return None
 
     VoidP  = ctypes.c_void_p
@@ -490,7 +491,7 @@ class playrec_worker(QObject):
         if _LIB is None:
             self.SigError.emit(
                 "libdspflmod.so not found – build it with  make  in "
-                "the fl2k_modulator driver directory."
+                "the dev_drivers/libs directory."
             )
             self.SigFinished.emit()
             return

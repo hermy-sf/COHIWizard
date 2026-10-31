@@ -83,7 +83,12 @@ class playrec_m(QObject):
         self.logger.addHandler(warning_handler)
         self.logger.addHandler(debug_handler)
         self.logger.debug('Init logger in playrec  reached')
-        self.mdl["devicelist"] = os.listdir(os.path.join(os.getcwd(), "dev_drivers"))
+        #only directories containing a driver worker count as drivers; this excludes e.g. dev_drivers/libs
+        #(shared DSP libraries) and hidden directories like .claude or .git
+        _drvdir = os.path.join(os.getcwd(), "dev_drivers")
+        self.mdl["devicelist"] = [cf for cf in os.listdir(_drvdir)
+                                  if not cf.startswith(".")
+                                  and os.path.isfile(os.path.join(_drvdir, cf, "cohi_playrecworker.py"))]
         self.mdl["SDRcontrol"] = None
         self.mdl["device_ID_dict"] = {}
         self.mdl["REC_AGC"] = False

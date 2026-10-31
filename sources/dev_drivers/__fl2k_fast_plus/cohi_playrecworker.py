@@ -53,20 +53,21 @@ def _load_lib() -> ctypes.CDLL | None:
     import platform
     here     = os.path.dirname(os.path.abspath(__file__))
     _libname = "libdspfl2k.dll" if platform.system() == "Windows" else "libdspfl2k.so"
-    libpath  = os.path.join(here, _libname)
+    libs_dir = os.path.normpath(os.path.join(here, "..", "libs"))
+    libpath  = os.path.join(libs_dir, _libname)
     if platform.system() == "Windows":
         # Since Python 3.8, PATH is no longer searched for a DLL's own
         # dependencies (libosmo-fl2k.dll, libusb-1.0.dll, libwinpthread-1.dll);
         # the directory has to be registered explicitly.
         try:
-            os.add_dll_directory(here)
+            os.add_dll_directory(libs_dir)
         except (AttributeError, OSError):
             pass
     try:
         lib = ctypes.CDLL(libpath)
     except OSError as exc:
         print(f"[fl2k_plus] Cannot load {_libname}: {exc}\n"
-              f"  Build it with:  cd {here} && make")
+              f"  Build it with:  cd {libs_dir} && make")
         return None
 
     VoidP  = ctypes.c_void_p
@@ -113,7 +114,7 @@ def _load_lib() -> ctypes.CDLL | None:
         print(f"[fl2k_plus] WARNING: dsp_fl2k_configure_audio not found in "
               f"{libpath}.\n"
               f"  The library is probably from fl2k_C (no audio overlay).\n"
-              f"  Run:  cd {here} && make   to rebuild.")
+              f"  Run:  cd {libs_dir} && make   to rebuild.")
     else:
         lib.dsp_fl2k_configure_audio.restype  = Int
         lib.dsp_fl2k_configure_audio.argtypes = [
@@ -595,7 +596,7 @@ class playrec_worker(QObject):
         if _LIB is None:
             self.SigError.emit(
                 "libdspfl2k.so not found – build it with  make  in "
-                "the fl2k_plus driver directory."
+                "the dev_drivers/libs directory."
             )
             self.SigFinished.emit()
             return
@@ -725,7 +726,7 @@ class playrec_worker(QObject):
             self.SigError.emit(
                 "Audio overlay deaktiviert: libdspfl2k.so enthält keine "
                 "dsp_fl2k_configure_audio-Funktion.\n"
-                "Bitte neu bauen:  cd fl2k_plus && make"
+                "Bitte neu bauen:  cd dev_drivers/libs && make"
             )
             _audio_active = False
         if _audio_active and _channels:
