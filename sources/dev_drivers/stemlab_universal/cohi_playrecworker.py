@@ -1,5 +1,5 @@
 """
-stemlab_eff_universal/cohi_playrecworker.py
+stemlab_universal/cohi_playrecworker.py
 COHIWizard device-driver worker for STEMlab 125-14.
 
 Identical to stemlab_universal for IQ-only and IQ+Audio modes.
@@ -32,6 +32,14 @@ import numpy as np
 import yaml
 from PyQt5.QtCore import QObject, QMutex, QThread, pyqtSignal
 
+# AVC level calibration relative to fl2k_stream (reference driver).
+# showRFdata (playrec) computes the AVC volume from the monitor data times the
+# slider gain and regulates towards AGC_targetvolume (0.9 for all drivers).
+# Scaling the monitor data by +X dB makes the AVC settle X dB lower at the
+# RF output; manual gain operation is not affected.
+AVC_MONITOR_CAL_DB = 3.5
+_AVC_MONITOR_CAL   = 10.0 ** (AVC_MONITOR_CAL_DB / 20.0)
+
 
 # ---------------------------------------------------------------------------
 # Helpers (identical to stemlab_universal)
@@ -57,7 +65,7 @@ def _resolve_ffmpeg_bin(raw: str) -> str:
         candidate = os.path.join(raw, exe_name)
         if os.path.isfile(candidate):
             return candidate
-        print(f"[stemlab_eff] ffmpeg_path '{raw}' has no {exe_name} – falling back to PATH.")
+        print(f"[stemlab_universal] ffmpeg_path '{raw}' has no {exe_name} – falling back to PATH.")
         return "ffmpeg"
     return raw
 
@@ -90,7 +98,7 @@ def parse_audio_playlist(csv_path: str) -> list:
                 if not parts or parts[0].strip().startswith("#"):
                     continue
                 if len(parts) < 4:
-                    print(f"[stemlab_eff] CSV line {lineno}: expected 4 columns – skipped")
+                    print(f"[stemlab_universal] CSV line {lineno}: expected 4 columns – skipped")
                     continue
                 freq_s, bw_s, name_s, url_s = (p.strip() for p in parts[:4])
                 if freq_s.lower() in ("frequenz", "frequency", "freq"):
@@ -99,12 +107,12 @@ def parse_audio_playlist(csv_path: str) -> list:
                     freq_hz = _parse_freq(freq_s)
                     bw_hz   = _parse_freq(bw_s) if bw_s else 9000.0
                 except ValueError:
-                    print(f"[stemlab_eff] CSV line {lineno}: cannot parse '{freq_s}'/'{bw_s}' – skipped")
+                    print(f"[stemlab_universal] CSV line {lineno}: cannot parse '{freq_s}'/'{bw_s}' – skipped")
                     continue
                 stations.append({"freq_hz": freq_hz, "bw_hz": bw_hz,
                                  "name": name_s, "url": url_s})
     except OSError as exc:
-        print(f"[stemlab_eff] Cannot read playlist '{csv_path}': {exc}")
+        print(f"[stemlab_universal] Cannot read playlist '{csv_path}': {exc}")
     return stations
 
 
@@ -143,7 +151,7 @@ class _AudioBuffer:
                 pass
             except Exception as exc:
                 if not self._stop:
-                    print(f"[stemlab_eff] AudioBuffer UDP reader error: {exc}")
+                    print(f"[stemlab_universal] AudioBuffer UDP reader error: {exc}")
 
     def read(self, n: int) -> np.ndarray:
         out = np.zeros(n, dtype=np.float32)
@@ -241,11 +249,11 @@ def _load_lib_mod():
             try:
                 lib = ctypes.CDLL(libpath)
                 _setup_lib_mod(lib, libpath)
-                print(f"[stemlab_eff] Loaded libdspflmod from {libpath}")
+                print(f"[stemlab_universal] Loaded libdspflmod from {libpath}")
                 return lib
             except OSError as exc:
-                print(f"[stemlab_eff] Cannot load {libpath}: {exc}")
-    print(f"[stemlab_eff] libdspflmod.so not found – searched: {candidates}")
+                print(f"[stemlab_universal] Cannot load {libpath}: {exc}")
+    print(f"[stemlab_universal] libdspflmod.so not found – searched: {candidates}")
     return None
 
 
@@ -254,7 +262,7 @@ def _load_lib_mod():
 # ---------------------------------------------------------------------------
 
 class playrec_worker(QObject):
-    """Worker for STEMlab 125-14 (eff_universal variant).
+    """Worker for STEMlab 125-14 (stemlab_universal).
 
     IQ-only and IQ+Audio modes: identical to stemlab_universal.
     Audio-only mode: C++ NCO synthesis via libdspflmod pull API.
@@ -353,13 +361,13 @@ class playrec_worker(QObject):
                         if _line and not _line.startswith("#"):
                             _entries.append(_line)
             except OSError as _exc:
-                print(f"[stemlab_eff] Cannot read m3u '{url}': {_exc}")
+                print(f"[stemlab_universal] Cannot read m3u '{url}': {_exc}")
             _local_files = [e for e in _entries if os.path.isfile(e)]
             _web_urls    = [e for e in _entries
                             if e.lower().startswith(("http://", "https://"))]
             _entries = _local_files + _web_urls
             if not _entries:
-                print(f"[stemlab_eff] m3u '{url}': no valid files or URLs – channel skipped.")
+                print(f"[stemlab_universal] m3u '{url}': no valid files or URLs – channel skipped.")
                 return None, None
             _cf = tempfile.NamedTemporaryFile(
                 mode="w", suffix=".txt", prefix="stemeff_concat_",
@@ -436,7 +444,7 @@ class playrec_worker(QObject):
                         cmd, stdout=subprocess.DEVNULL,
                         stderr=open(_logfile, "w"), close_fds=True,
                     )
-                print(f"[stemlab_eff] ffmpeg ch[{idx}] '{sta['name']}' "
+                print(f"[stemlab_universal] ffmpeg ch[{idx}] '{sta['name']}' "
                       f"@ {sta['freq_hz'] / 1e3:.1f} kHz -> UDP {port} (PID {proc.pid})")
                 self._ffmpeg_procs.append(proc)
                 schroeder_phase = math.pi * idx * (idx + 1) / max(1, N_total)
@@ -449,7 +457,7 @@ class playrec_worker(QObject):
                     "schroeder_phase": schroeder_phase,
                 })
             except OSError as exc:
-                print(f"[stemlab_eff] Failed to start ffmpeg for '{sta['name']}': {exc}")
+                print(f"[stemlab_universal] Failed to start ffmpeg for '{sta['name']}': {exc}")
         return channels
 
     def _start_ffmpeg_procs(self, stations: list, base_port: int,
@@ -485,11 +493,11 @@ class playrec_worker(QObject):
                         cmd, stdout=subprocess.DEVNULL,
                         stderr=open(_logfile, "w"), close_fds=True,
                     )
-                print(f"[stemlab_eff] ffmpeg ch[{idx}] '{sta['name']}' "
+                print(f"[stemlab_universal] ffmpeg ch[{idx}] '{sta['name']}' "
                       f"@ {sta['freq_hz'] / 1e3:.1f} kHz -> UDP {port} (PID {proc.pid})")
                 self._ffmpeg_procs.append(proc)
             except OSError as exc:
-                print(f"[stemlab_eff] Failed to start ffmpeg for '{sta['name']}': {exc}")
+                print(f"[stemlab_universal] Failed to start ffmpeg for '{sta['name']}': {exc}")
 
     def _stop_audio_streams(self):
         for proc in self._ffmpeg_procs:
@@ -514,7 +522,7 @@ class playrec_worker(QObject):
             except OSError:
                 pass
         self._concat_files.clear()
-        print("[stemlab_eff] Audio streams stopped.")
+        print("[stemlab_universal] Audio streams stopped.")
 
     # ----------------------------------------------------------- AM DSP (IQ+Audio mode only)
     def _modulate_audio_channels(self, audio_buffers, channels,
@@ -565,14 +573,14 @@ class playrec_worker(QObject):
         lib = _load_lib_mod()
         if lib is None:
             self.SigError.emit(
-                "[stemlab_eff] Cannot load libdspflmod.so – "
+                "[stemlab_universal] Cannot load libdspflmod.so – "
                 "build it in dev_drivers/libs/ with 'make'."
             )
             return None, None
 
         handle = lib.dsp_flmod_create()
         if not handle:
-            self.SigError.emit("[stemlab_eff] dsp_flmod_create() returned NULL")
+            self.SigError.emit("[stemlab_universal] dsp_flmod_create() returned NULL")
             return None, None
 
         gain        = self.get_gain()
@@ -587,7 +595,7 @@ class playrec_worker(QObject):
             ctypes.c_int(1 if use_agc else 0),    # AGC on/off
         )
         if r < 0:
-            self.SigError.emit("[stemlab_eff] dsp_flmod_configure() failed")
+            self.SigError.emit("[stemlab_universal] dsp_flmod_configure() failed")
             lib.dsp_flmod_destroy(handle)
             return None, None
 
@@ -611,25 +619,25 @@ class playrec_worker(QObject):
             ctypes.c_float(float(mix_level)),
         )
         if r < 0:
-            self.SigError.emit("[stemlab_eff] dsp_flmod_configure_channels() failed")
+            self.SigError.emit("[stemlab_universal] dsp_flmod_configure_channels() failed")
             lib.dsp_flmod_destroy(handle)
             return None, None
 
-        print(f"[stemlab_eff] C++ overlay: center={center_freq/1e3:.1f} kHz, "
+        print(f"[stemlab_universal] C++ overlay: center={center_freq/1e3:.1f} kHz, "
               f"SR={sampling_rate:.0f} Hz, ch={n_ch}, "
               f"AGC={'on' if use_agc else 'off'}, gain_corr={gain_corr}")
 
         # C++ has bound UDP sockets — launch ffmpeg now
         self._kill_orphaned_ffmpeg(base_port, n_ch)
         self._start_ffmpeg_procs(stations, base_port, audio_rate, ffmpeg_bin)
-        print("[stemlab_eff] Waiting 1 s for ffmpeg to start streaming...")
+        print("[stemlab_universal] Waiting 1 s for ffmpeg to start streaming...")
         time.sleep(1.0)
 
         lib.dsp_flmod_prefill(handle, ctypes.c_int(500))
 
         r = lib.dsp_flmod_pull_init(handle)
         if r < 0:
-            self.SigError.emit("[stemlab_eff] dsp_flmod_pull_init() failed")
+            self.SigError.emit("[stemlab_universal] dsp_flmod_pull_init() failed")
             lib.dsp_flmod_destroy(handle)
             self._stop_audio_streams()
             return None, None
@@ -669,7 +677,7 @@ class playrec_worker(QObject):
             blocks_per_sec = max(1, int(sampling_rate / N))
             self._block_count = 0
 
-            print(f"[stemlab_eff] audio-only pull loop: N={N}, "
+            print(f"[stemlab_universal] audio-only pull loop: N={N}, "
                   f"blocks_per_sec={blocks_per_sec}")
 
             while not self.stopix:
@@ -679,7 +687,7 @@ class playrec_worker(QObject):
 
                     n_got = lib.dsp_flmod_pull_iq(handle, iq_ptr, ctypes.c_int(N))
                     if n_got <= 0:
-                        self.SigError.emit("[stemlab_eff] dsp_flmod_pull_iq() returned error")
+                        self.SigError.emit("[stemlab_universal] dsp_flmod_pull_iq() returned error")
                         break
 
                     np.clip(iq_buf, -1.0, 1.0, out=send_buf)
@@ -688,7 +696,7 @@ class playrec_worker(QObject):
                         self.stemlabcontrol.data_sock.sendall(send_buf)
                     except Exception as exc:
                         if not self.stopix:
-                            self.SigError.emit(f"[stemlab_eff] TCP send error: {exc}")
+                            self.SigError.emit(f"[stemlab_universal] TCP send error: {exc}")
                         break
 
                     self._block_count += 1
@@ -698,7 +706,7 @@ class playrec_worker(QObject):
                         show_data = (
                             send_buf[:self.DATASHOWSIZE] * 32767.0
                         ).astype(np.int16)
-                        self.set_data(show_data)
+                        self.set_data(show_data * _AVC_MONITOR_CAL)
                         self._block_count = 0
                 else:
                     time.sleep(0.1)
@@ -743,9 +751,9 @@ class playrec_worker(QObject):
             _gain_corr     = float(_cfg.get("gain_correction_fl2k_C", 1.0))
             if _op_mode == "band_only":
                 _audioplaylist = ""
-                print("[stemlab_eff] operating mode = band_only: audio overlay suppressed")
+                print("[stemlab_universal] operating mode = band_only: audio overlay suppressed")
         except Exception as _e:
-            print(f"[stemlab_eff] config_wizard.yaml read error: {_e}; using defaults")
+            print(f"[stemlab_universal] config_wizard.yaml read error: {_e}; using defaults")
 
         has_iq    = bool(filenames)
         if _op_mode == "audio_only" or config.get("synth_only", False):
@@ -755,7 +763,7 @@ class playrec_worker(QObject):
 
         sampling_rate = config["irate"]
 
-        print(f"[stemlab_eff] mode: has_iq={has_iq}, has_audio={has_audio}, "
+        print(f"[stemlab_universal] mode: has_iq={has_iq}, has_audio={has_audio}, "
               f"SR={sampling_rate} S/s, stations={len(_stations)}")
 
         # ---- TEST mode ------------------------------------------------------
@@ -776,7 +784,7 @@ class playrec_worker(QObject):
                                 size = fh.readinto(data)
                                 count += 1
                                 if count >= junkspersecond:
-                                    self.set_data(data[:self.DATASHOWSIZE].astype(np.float32))
+                                    self.set_data(data[:self.DATASHOWSIZE].astype(np.float32) * _AVC_MONITOR_CAL)
                                     self.SigIncrementCurTime.emit()
                                     count = 0
                     except OSError as exc:
@@ -791,7 +799,7 @@ class playrec_worker(QObject):
         if not hasattr(self.stemlabcontrol, "data_sock") or \
                 self.stemlabcontrol.data_sock is None:
             self.SigError.emit(
-                "[stemlab_eff] No TCP data socket – call config_socket() first."
+                "[stemlab_universal] No TCP data socket – call config_socket() first."
             )
             self.SigFinished.emit()
             return
@@ -847,7 +855,7 @@ class playrec_worker(QObject):
 
                     normfactor     = (int(2 ** int(fmt[2] - 1)) - 1) if fmt[0] == 1 else 1
                     size           = fileHandle.readinto(data)
-                    self.set_data(data)
+                    self.set_data(data * _AVC_MONITOR_CAL)
                     timescaler     = self.get_timescaler()
                     junkspersecond = timescaler / (self.DATABLOCKSIZE * data.itemsize)
                     count          = 0
@@ -899,11 +907,11 @@ class playrec_worker(QObject):
                             if not _diag_done:
                                 _diag_done = True
                                 _nbytes = len(send_data) * send_data.itemsize
-                                print(f"[stemlab_eff DIAG] fmt={fmt}, normfactor={normfactor}, "
+                                print(f"[stemlab_universal DIAG] fmt={fmt}, normfactor={normfactor}, "
                                       f"n_elems={n_elems}, gain={gain}, has_audio={has_audio}")
-                                print(f"[stemlab_eff DIAG] send_data: len={len(send_data)}, "
+                                print(f"[stemlab_universal DIAG] send_data: len={len(send_data)}, "
                                       f"dtype={send_data.dtype}, bytes={_nbytes}")
-                                print(f"[stemlab_eff DIAG] SR={sampling_rate}, "
+                                print(f"[stemlab_universal DIAG] SR={sampling_rate}, "
                                       f"ifreq={config.get('ifreq','?')}, "
                                       f"DSP time={_last_dsp_ms:.2f} ms, "
                                       f"budget={_block_budget_ms:.2f} ms")
@@ -912,12 +920,12 @@ class playrec_worker(QObject):
                                 self.stemlabcontrol.data_sock.sendall(send_data)
                             except BlockingIOError:
                                 time.sleep(0.1)
-                                self.SigError.emit("Blocking TCP socket error in stemlab_eff worker")
+                                self.SigError.emit("Blocking TCP socket error in stemlab_universal worker")
                                 self._cleanup(_cpp_lib, _cpp_handle)
                                 return
                             except ConnectionResetError:
                                 time.sleep(0.1)
-                                self.SigError.emit("TCP connection reset in stemlab_eff worker")
+                                self.SigError.emit("TCP connection reset in stemlab_universal worker")
                                 self._cleanup(_cpp_lib, _cpp_handle)
                                 return
                             except Exception as exc:
@@ -933,7 +941,7 @@ class playrec_worker(QObject):
                                 self.SigIncrementCurTime.emit()
                                 count = 0
                                 gain  = self.get_gain()
-                                self.set_data(data)
+                                self.set_data(data * _AVC_MONITOR_CAL)
 
                             _now = time.perf_counter()
                             if _now - _last_periodic_diag >= _PERIODIC_DIAG_INTERVAL:
@@ -941,13 +949,13 @@ class playrec_worker(QObject):
                                 if _dsp_times:
                                     _dsp_avg = sum(_dsp_times) / len(_dsp_times)
                                     _dsp_max = max(_dsp_times)
-                                    print(f"[stemlab_eff PERIODIC] "
+                                    print(f"[stemlab_universal PERIODIC] "
                                           f"dsp_avg={_dsp_avg:.2f}ms dsp_max={_dsp_max:.2f}ms "
                                           f"({len(_dsp_times)} blk) "
                                           f"budget={_block_budget_ms:.2f}ms")
                                     _dsp_times.clear()
                                 if has_audio and _cpp_handle:
-                                    print(f"[stemlab_eff PERIODIC] "
+                                    print(f"[stemlab_universal PERIODIC] "
                                           f"iq_only_blk={_iq_only_blocks}")
                                     _iq_only_blocks = 0
                         else:
@@ -959,11 +967,11 @@ class playrec_worker(QObject):
                     fileHandle.close()
 
                 except OSError as exc:
-                    self.SigError.emit(f"[stemlab_eff] File error: {exc}")
+                    self.SigError.emit(f"[stemlab_universal] File error: {exc}")
 
         else:
             self.SigError.emit(
-                "[stemlab_eff] Neither IQ file nor audio playlist configured.\n"
+                "[stemlab_universal] Neither IQ file nor audio playlist configured.\n"
                 "Open a WAV file and/or set 'audioplaylist' in config_wizard.yaml."
             )
 
@@ -996,7 +1004,7 @@ class playrec_worker(QObject):
 
         if not hasattr(self.stemlabcontrol, "data_sock") or \
                 self.stemlabcontrol.data_sock is None:
-            self.SigError.emit("[stemlab_eff] No TCP socket for recording.")
+            self.SigError.emit("[stemlab_universal] No TCP socket for recording.")
             self.SigFinished.emit()
             return
 
@@ -1009,7 +1017,7 @@ class playrec_worker(QObject):
                 arr = (arr * 32767.0).astype(np.int16)
                 fileHandle.write(arr.tobytes())
         except Exception as exc:
-            self.SigError.emit(f"[stemlab_eff] Recording error: {exc}")
+            self.SigError.emit(f"[stemlab_universal] Recording error: {exc}")
         finally:
             fileHandle.close()
             self.set_fileHandle(None)

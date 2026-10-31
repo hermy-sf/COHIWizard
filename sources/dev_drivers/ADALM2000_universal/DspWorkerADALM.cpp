@@ -392,8 +392,15 @@ void DspWorkerADALM::mix_audio_block_fast(IQf* x, size_t n_iq)
 
 /* ================================================================== */
 /* Polyphase sinc FIR for IQ upsampling  (identical to fl2k variant)  */
+/*                                                                    */
+/* The ring buffer is doubled (2*POLY_TAPS_MAX) so that the newest    */
+/* taps samples are always contiguous → vectorisable dot product.     */
+/* Cutoff at fs_in/2.  Image rejection for a band filling ±0.45 fs_in: */
+/* GOOD: taps=32, beta=7  →  -76 dB beyond 0.6 fs_in, 0.2 dB droop    */
 /* ================================================================== */
-static constexpr int POLY_TAPS_MAX = 16;
+static constexpr int POLY_TAPS_MAX  = 32;   /* MUST be power of 2 */
+static constexpr int POLY_TAPS_GOOD = 32;
+static constexpr int POLY_TAPS_FAST = 16;
 
 static double bessel_i0(double x)
 {
@@ -412,7 +419,11 @@ build_poly_coeffs(int L, int taps, double beta)
     const int    total  = L * taps;
     const int    center = total / 2;
     const double i0b    = bessel_i0(beta);
-    const double cut    = 0.9 / L;
+    /* Cutoff at the input Nyquist frequency (normalised to the output
+     * rate).  Was 0.9/L = 0.9·fs_in, which passed the first image band
+     * unattenuated: the interpolated output then peaked ~5 dB above the
+     * baseband peak the clip guard measures → hard clipping. */
+    const double cut    = 0.5 / L;
 
     std::vector<float> h(total, 0.f);
     for (int i = 0; i < total; ++i) {
@@ -428,11 +439,13 @@ build_poly_coeffs(int L, int taps, double beta)
     float scale = (norm > 0.0) ? (float)(L / norm) : 1.f;
     for (auto& v : h) v *= scale;
 
+    /* poly[p][j] = h[p + (taps-1-j)*L]: taps in time order oldest→newest
+     * to match the contiguous ring-buffer window. */
     std::vector<std::vector<float>> poly(L, std::vector<float>(taps, 0.f));
     for (int p = 0; p < L; ++p)
         for (int t = 0; t < taps; ++t)
             if (p + t * L < total)
-                poly[p][t] = h[p + t * L];
+                poly[p][taps - 1 - t] = h[p + t * L];
     return poly;
 }
 
@@ -498,12 +511,13 @@ std::string DspWorkerADALM::process_file(const std::string& path)
             int    n_interp = (int)std::round(upRatio);
             if (n_interp < 1) n_interp = 1;
 
-            auto poly_good = build_poly_coeffs(n_interp, 16, 7.0);
-            auto poly_fast = build_poly_coeffs(n_interp,  4, 3.0);
-            printf("[ADALM2000_univ] polyphase FIR: L=%d  GOOD=16t/β7  FAST=4t/β3\n", n_interp);
+            auto poly_good = build_poly_coeffs(n_interp, POLY_TAPS_GOOD, 7.0);
+            auto poly_fast = build_poly_coeffs(n_interp, POLY_TAPS_FAST, 6.0);
+            printf("[ADALM2000_univ] polyphase FIR: L=%d  GOOD=%dt/β7  FAST=%dt/β6\n",
+                   n_interp, POLY_TAPS_GOOD, POLY_TAPS_FAST);
 
             const decltype(poly_good)* active_poly      = &poly_good;
-            int                        active_poly_taps  = 16;
+            int                        active_poly_taps  = POLY_TAPS_GOOD;
             float                      dsp_load_smooth   = 0.0f;
             const double               block_real_time   = (double)DSP_BLOCK / (double)sampleRate;
 
@@ -518,9 +532,9 @@ std::string DspWorkerADALM::process_file(const std::string& path)
             float peak_hold         = 0.1f;
             float prev_block_gain   = current_gain_fast;
 
-            float i_buf[POLY_TAPS_MAX] = {};
-            float q_buf[POLY_TAPS_MAX] = {};
-            int   buf_ptr             = 0;
+            float i_buf[2 * POLY_TAPS_MAX] = {};
+            float q_buf[2 * POLY_TAPS_MAX] = {};
+            int   buf_ptr                 = 0;
 
             std::vector<IQf>     x(DSP_BLOCK);
             std::vector<int16_t> rb16(DSP_BLOCK * 2);
@@ -557,8 +571,8 @@ std::string DspWorkerADALM::process_file(const std::string& path)
                             ring_head = ring_tail = ring_count = 0;
                             ring_not_full.notify_all();
                         }
-                        std::fill(i_buf, i_buf + POLY_TAPS_MAX, 0.f);
-                        std::fill(q_buf, q_buf + POLY_TAPS_MAX, 0.f);
+                        std::fill(i_buf, i_buf + 2 * POLY_TAPS_MAX, 0.f);
+                        std::fill(q_buf, q_buf + 2 * POLY_TAPS_MAX, 0.f);
                         buf_ptr = 0;
                     }
                 }
@@ -647,18 +661,20 @@ std::string DspWorkerADALM::process_file(const std::string& path)
                 uint32_t lcg = vco_phase ^ 0xdeadbeefU;
 
                 for (size_t bi = 0; bi < DSP_BLOCK; ++bi) {
-                    int wptr = buf_ptr & (POLY_TAPS_MAX - 1);
-                    i_buf[wptr] = x[bi].re;
-                    q_buf[wptr] = x[bi].im;
-                    ++buf_ptr;
+                    buf_ptr = (buf_ptr + 1) & (POLY_TAPS_MAX - 1);
+                    i_buf[buf_ptr] = i_buf[buf_ptr + POLY_TAPS_MAX] = x[bi].re;
+                    q_buf[buf_ptr] = q_buf[buf_ptr + POLY_TAPS_MAX] = x[bi].im;
+                    /* newest active_poly_taps samples, oldest first */
+                    const int    w0 = buf_ptr + POLY_TAPS_MAX - active_poly_taps + 1;
+                    const float* wi = i_buf + w0;
+                    const float* wq = q_buf + w0;
 
                     for (int k = 0; k < n_interp; ++k) {
                         const float* pc = (*active_poly)[k].data();
                         float fI = 0.f, fQ = 0.f;
                         for (int t = 0; t < active_poly_taps; ++t) {
-                            int idx = (buf_ptr - 1 - t) & (POLY_TAPS_MAX - 1);
-                            fI += pc[t] * i_buf[idx];
-                            fQ += pc[t] * q_buf[idx];
+                            fI += pc[t] * wi[t];
+                            fQ += pc[t] * wq[t];
                         }
 
                         float c, s;

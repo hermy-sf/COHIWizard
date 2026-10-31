@@ -16,6 +16,14 @@ import numpy as np
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
+
+# AVC level calibration relative to fl2k_stream (reference driver).
+# showRFdata (playrec) computes the AVC volume from the monitor data times the
+# slider gain and regulates towards AGC_targetvolume (0.9 for all drivers).
+# Scaling the monitor data by +X dB makes the AVC settle X dB lower at the
+# RF output; manual gain operation is not affected.
+AVC_MONITOR_CAL_DB = 3.5
+_AVC_MONITOR_CAL   = 10.0 ** (AVC_MONITOR_CAL_DB / 20.0)
 # from PyQt5 import QtGui
 # #from scipy import signal as sig
 # import yaml
@@ -168,7 +176,7 @@ class playrec_worker(QObject):
             elif format[2] == 24:
                 data = self.read24(format,data,fileHandle)
                 size = len(data)
-            self.set_data(data)
+            self.set_data(data * _AVC_MONITOR_CAL)
             junkspersecond = timescaler / self.JUNKSIZE
             count = 0
             # print(f"Junkspersec:{junkspersecond}")
@@ -224,7 +232,7 @@ class playrec_worker(QObject):
                             #self.mutex.lock()
                             gain = self.get_gain()
                             #print(f"diagnostic: gain in worker: {gain}")
-                            self.set_data(data)
+                            self.set_data(data * _AVC_MONITOR_CAL)
                             #self.mutex.unlock()
                     else:
                         #print("Pause, do not do anything")
@@ -252,7 +260,7 @@ class playrec_worker(QObject):
                             #print(f"diagnostic: gain in worker: {gain}")
                             #print(f"maximum: {np.max(data)}")
                             #self.set_data(gain*data)
-                            self.set_data(data)
+                            self.set_data(data * _AVC_MONITOR_CAL)
                             count = 0
                     else:
                         time.sleep(1)

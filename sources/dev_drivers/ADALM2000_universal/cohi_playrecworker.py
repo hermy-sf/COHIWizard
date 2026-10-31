@@ -14,7 +14,7 @@ config_wizard.yaml keys used:
   audio_base_port   int    first UDP port (default 1235)
   audio_mod_index   float  AM modulation index 0–1 (default 0.9)
   ffmpeg_path       str    ffmpeg binary (default 'ffmpeg')
-  relaxfactor_OSR   float  OSR safety margin (default 1.2)
+  relaxfactor_OSR   float  OSR safety margin (default 1.2); SRAdalm >= 2*relax*band edge
   volumefactor      float  global volume scale (default 1.0)
 """
 
@@ -33,6 +33,35 @@ import numpy as np
 import yaml
 
 from PyQt5.QtCore import QObject, QMutex, QThread, pyqtSignal
+
+# AVC level calibration relative to fl2k_stream (reference driver).
+# showRFdata (playrec) computes the AVC volume from the monitor data times the
+# slider gain and regulates towards AGC_targetvolume (0.9 for all drivers).
+# Scaling the monitor data by +X dB makes the AVC settle X dB lower at the
+# RF output; manual gain operation is not affected.
+AVC_MONITOR_CAL_DB = -8.0
+_AVC_MONITOR_CAL   = 10.0 ** (AVC_MONITOR_CAL_DB / 20.0)
+
+# Band edge for the OSR choice in audio_only mode.
+# The ADALM2000 holds each sample for OSR DAC clocks (ZOH, no reconstruction
+# filter), so every carrier f has a strong image at SRAdalm - f.  Deriving the
+# rate from the highest playlist carrier alone puts these images into the
+# band (e.g. carriers <= 781 kHz -> 1.875 MS/s -> images mirrored at 937.5 kHz).
+# The playback receiver's band is therefore assumed from the carriers:
+#   all carriers + BW/2 <= LW_MAX_CARRIER_HZ  -> band edge LW_BAND_EDGE_HZ
+#   otherwise                                 -> band edge MW_BAND_EDGE_HZ
+# (never below the highest carrier + BW/2).  The largest OSR with
+# SRAdalm >= 2 * relaxfactor_OSR * band edge is then used, as in IQ mode
+# where the WAV header (ifreq + irate/2) defines the band edge.
+LW_MAX_CARRIER_HZ = 300e3
+LW_BAND_EDGE_HZ   = 400e3
+MW_BAND_EDGE_HZ   = 1750e3
+
+
+def audioonly_band_edge(stations):
+    f_top = max(s["freq_hz"] + s["bw_hz"] / 2 for s in stations)
+    edge  = LW_BAND_EDGE_HZ if f_top <= LW_MAX_CARRIER_HZ else MW_BAND_EDGE_HZ
+    return max(edge, f_top)
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
@@ -807,10 +836,10 @@ class playrec_worker(QObject):
         SRDAC = 75_000_000
 
         if audio_only:
-            max_carrier   = max(s["freq_hz"] for s in stations)
-            max_bw        = max(s["bw_hz"]   for s in stations)
-            OSR           = self.maximize_OSR(SRDAC, max_carrier, max_bw)
+            band_edge     = audioonly_band_edge(stations)
+            OSR           = self.maximize_OSR(SRDAC, band_edge, 0.0)
             lo_shift      = 0.0
+            print(f"[ADALM2000_univ] audio_only band edge: {band_edge/1e3:.0f} kHz")
         else:
             sampling_rate = config["irate"]
             lo_shift      = config["ifreq"]
@@ -918,7 +947,7 @@ class playrec_worker(QObject):
             def _on_monitor(data_ptr, n, _ud):
                 try:
                     arr = np.ctypeslib.as_array(data_ptr, shape=(n,)).copy()
-                    self.set_data(arr)
+                    self.set_data(arr * _AVC_MONITOR_CAL)
                     self.SigIncrementCurTime.emit()
                 except Exception as _exc:
                     print(f"[ADALM2000_univ] _on_monitor exception: {_exc}", flush=True)

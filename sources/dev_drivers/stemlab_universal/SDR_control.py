@@ -1,7 +1,7 @@
 """
-stemlab_eff_universal/SDR_control.py
+stemlab_universal/SDR_control.py
 Adapter for STEMlab 125-14 with C++ synthesis engine for audio_only mode.
-Identical hardware interface to stemlab_universal; only device_name differs.
+Identical hardware interface to stemlab_125_14; only device_name differs.
 """
 
 from PyQt5.QtCore import *
@@ -41,7 +41,7 @@ class SDR_control(QObject):
             "rate_type":       "discrete",
             "RX":              True,
             "TX":              True,
-            "device_name":     "stemlab_eff_universal",
+            "device_name":     "stemlab_universal",
             "device_ID":       0,
             "max_IFREQ":       62500000,
             "min_IFREQ":       0,
@@ -147,7 +147,7 @@ class SDR_control(QObject):
             try:
                 self.ssh.exec_command(shcomm[count])
             except Exception:
-                print("stemlab_eff_universal sshsendcommandseq: command cannot be sent")
+                print("stemlab_universal sshsendcommandseq: command cannot be sent")
             count += 1
             time.sleep(0.1)
         self.SigMessage.emit("ssh command sent")

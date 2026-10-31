@@ -3596,7 +3596,7 @@
                  <bool>true</bool>
                 </property>
                 <property name="text">
-                 <string>LO frequency (kHz): </string>
+                 <string>Rec LO (kHz): </string>
                 </property>
                 <property name="alignment">
                  <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>

@@ -2775,7 +2775,7 @@ class Ui_MainWindow(object):
         item.setText(_translate("MainWindow", "___-80 dB"))
         self.tableWidget.setSortingEnabled(__sortingEnabled)
         self.label_LO.setToolTip(_translate("MainWindow", "set center frequency in kHz (LO)"))
-        self.label_LO.setText(_translate("MainWindow", "LO frequency (kHz): "))
+        self.label_LO.setText(_translate("MainWindow", "Rec LO (kHz): "))
         self.checkBox_UTC.setToolTip(_translate("MainWindow", "switch to UTC"))
         self.checkBox_UTC.setText(_translate("MainWindow", "UTC"))
         self.label_42.setText(_translate("MainWindow", "Playlist:"))

@@ -2866,7 +2866,7 @@ class Ui_MainWindow(object):
         self.label_presetband.setText(_translate("MainWindow", "Preset Band"))
         self.listWidget_sourcelist.setToolTip(_translate("MainWindow", "<html><head/><body><p>selection list window. drag items to playlist</p></body></html>"))
         self.label_LO.setToolTip(_translate("MainWindow", "set center frequency in kHz (LO)"))
-        self.label_LO.setText(_translate("MainWindow", "LO frequency (kHz): "))
+        self.label_LO.setText(_translate("MainWindow", "Rec LO (kHz): "))
         self.listWidget_playlist.setToolTip(_translate("MainWindow", "<html><head/><body><p>playlist window. drag items from selection list</p></body></html>"))
         self.pushButton_act_playlist.setToolTip(_translate("MainWindow", "toggles betweensingle file and playlist, activates playlist tool"))
         self.radioButton_AGC.setToolTip(_translate("MainWindow", "enable automatic volume control during playback"))

@@ -77,7 +77,7 @@ class SDR_control(QObject):
                           "rate_type": "continuous",
                           "RX": False,
                           "TX": True,
-                          "device_name": "adalm_2000",
+                          "device_name": "ADALM2000",
                           "device_ID": 0,
                           "max_IFREQ": 2500000,
                           "min_IFREQ": 0,

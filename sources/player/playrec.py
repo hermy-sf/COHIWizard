@@ -1451,7 +1451,7 @@ class playrec_v(QObject):
             ###TODO: test / check after 24-07-2026 after implementing modulator_listselected(self,cf) instead of repetitions of same code
             if self.m["modulator_type"] == "all" and not (cf.find("__") == 0):
                 boxix = self.modulator_listselected(cf,boxix)
-            if self.m["modulator_type"] == "audio_only" and (cf.endswith("_modulator") or cf in ("fl2k_universal", "stemlab_universal", "stemlab_eff_universal", "ADALM2000_universal")) and not (cf.find("__") == 0 ):
+            if self.m["modulator_type"] == "audio_only" and (cf.endswith("_modulator") or cf in ("fl2k_universal", "stemlab_universal", "ADALM2000_universal")) and not (cf.find("__") == 0 ):
                 boxix = self.modulator_listselected(cf,boxix)
             if self.m["modulator_type"] == "band_and_audio" and (cf.endswith("_plus") or cf.endswith("_universal")) and not (cf.find("__") == 0 ):
                 boxix = self.modulator_listselected(cf,boxix)
@@ -1529,8 +1529,9 @@ class playrec_v(QObject):
         #self.gui.lineEdit_playrec_LO.setEnabled(value)
         self.gui.comboBox_playrec_targetSR_2.setEnabled(value)
         self.gui.lineEdit_LO_bias.setEnabled(value)
-        self.gui.lineEdit_LO_bias.setEnabled(value)
-        self.gui.label_LO.setEnabled(value)
+        # label_LO belongs to lineEdit_playrec_LO, which is controlled by
+        # recordinggroup_activate; keep the label in sync with its field
+        self.gui.label_LO.setEnabled(self.gui.lineEdit_playrec_LO.isEnabled())
 
 
     def recordinggroup_activate(self,value):
@@ -2062,7 +2063,7 @@ class playrec_v(QObject):
             _is_synth_only = (_dev_name.endswith("_modulator") or
                               (self.m.get("modulator_type") == "audio_only" and
                                _dev_name in ("fl2k_universal", "stemlab_universal",
-                                             "stemlab_eff_universal", "ADALM2000_universal")))
+                                             "ADALM2000_universal")))
 
             if "modulator" in self.m["device_ID_dict"] and self.m["device_ID_dict"]["modulator"] =="M":
                 self.m["fileopened"] = True

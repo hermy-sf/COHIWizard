@@ -22,6 +22,14 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 
+# AVC level calibration relative to fl2k_stream (reference driver).
+# showRFdata (playrec) computes the AVC volume from the monitor data times the
+# slider gain and regulates towards AGC_targetvolume (0.9 for all drivers).
+# Scaling the monitor data by +X dB makes the AVC settle X dB lower at the
+# RF output; manual gain operation is not affected.
+AVC_MONITOR_CAL_DB = 15.0
+_AVC_MONITOR_CAL   = 10.0 ** (AVC_MONITOR_CAL_DB / 20.0)
+
 #from dev_drivers.fl2k_stream.test_fl2kstreaming_from_file_tofl2k_file_outputfile import gen_ffmpeg_cmd
 
 
@@ -507,11 +515,11 @@ class playrec_worker(QObject):
                     print(f"++++++ DATASHOWSIZE: {self.DATASHOWSIZE} len(showdata):   {len(data[0:int(6*np.floor(self.DATASHOWSIZE/6))])}")
                     showdata = self.convert24_32(data[5:int(6*np.floor(self.DATASHOWSIZE/6))+5])
                     if not np.isnan(showdata).any():
-                        self.set_data(showdata)
+                        self.set_data(showdata * _AVC_MONITOR_CAL)
                     else:
                         print("############# NaN NaN NaN NaN in showdata ################")
                 else:
-                    self.set_data(data[0:self.DATASHOWSIZE])
+                    self.set_data(data[0:self.DATASHOWSIZE] * _AVC_MONITOR_CAL)
             #self.set_data(data)
 
             junkspersecond = sampling_rate / self.JUNKSIZE
@@ -610,11 +618,11 @@ class playrec_worker(QObject):
                             print(f"++++++ DATASHOWSIZE: {self.DATASHOWSIZE} len(showdata):   {len(data[0:int(6*np.floor(self.DATASHOWSIZE/6))])}")
                             showdata = self.convert24_32(data[5:int(6*np.floor(self.DATASHOWSIZE/6))+5])
                             if not np.isnan(showdata).any():
-                                self.set_data(showdata)
+                                self.set_data(showdata * _AVC_MONITOR_CAL)
                             else:
                                 print("############# NaN NaN NaN NaN in showdata ################")
                         else:
-                            self.set_data(data[0:self.DATASHOWSIZE])
+                            self.set_data(data[0:self.DATASHOWSIZE] * _AVC_MONITOR_CAL)
                         self.SigIncrementCurTime.emit()
                         count = 0
                         gain = self.get_gain()

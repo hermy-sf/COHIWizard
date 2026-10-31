@@ -212,6 +212,7 @@ struct DspWorkerFL2K {
     float              shiftFreq   = 0.f;
     std::atomic<float> gainValue   {0.65f};
     bool               useAGC      = true;
+    std::atomic<bool>  useDither   {false};
     std::vector<std::string> filenames;
 
     /* --- callbacks ------------------------------------------------- */
@@ -574,14 +575,19 @@ void DspWorkerFL2K::mix_audio_block_fast(IQf* x, size_t n_iq)
 /* ================================================================== */
 /* Polyphase sinc FIR for IQ upsampling                               */
 /*                                                                    */
-/* POLY_TAPS_MAX = 16: ring-buffer size (power of 2 for fast modulo). */
-/* Actual taps used per arm is runtime-selectable (4 or 16) for       */
-/* adaptive CPU-load quality switching.                                */
+/* POLY_TAPS_MAX = 32: ring-buffer size (power of 2 for fast modulo). */
+/* The ring buffer is doubled (2*POLY_TAPS_MAX) so that the newest    */
+/* taps samples are always contiguous → vectorisable dot product.     */
+/* Actual taps used per arm is runtime-selectable for adaptive        */
+/* CPU-load quality switching.                                         */
 /*                                                                    */
-/* GOOD mode: taps=16, beta=7  →  ~70 dB stopband                    */
-/* FAST mode: taps= 4, beta=3  →  ~30 dB stopband, ~4× faster        */
+/* Cutoff at fs_in/2.  Image rejection for a band filling ±0.45 fs_in: */
+/* GOOD mode: taps=32, beta=7  →  -76 dB beyond 0.6 fs_in, 0.2 dB droop */
+/* FAST mode: taps=16, beta=6  →  -38 dB beyond 0.6 fs_in, 1.5 dB droop */
 /* ================================================================== */
-static constexpr int POLY_TAPS_MAX = 16;   /* ring-buffer size — MUST be power of 2 */
+static constexpr int POLY_TAPS_MAX = 32;   /* ring-buffer size — MUST be power of 2 */
+static constexpr int POLY_TAPS_GOOD = 32;
+static constexpr int POLY_TAPS_FAST = 16;
 
 static double bessel_i0(double x)
 {
@@ -597,14 +603,20 @@ static double bessel_i0(double x)
 /* Build polyphase coefficient table for upsampling by integer ratio L.
  * taps:  number of taps per polyphase arm (≤ POLY_TAPS_MAX)
  * beta:  Kaiser window shape parameter (7 → 70 dB, 3 → 30 dB)
- * Returns poly[L][taps]: poly[phase p][tap t] = h[p + t*L] */
+ * Returns poly[L][taps]: poly[phase p][j] = h[p + (taps-1-j)*L],
+ * i.e. taps in time order oldest→newest to match the contiguous
+ * ring-buffer window. */
 static std::vector<std::vector<float>>
 build_poly_coeffs(int L, int taps, double beta)
 {
     const int    total  = L * taps;
     const int    center = total / 2;
     const double i0b    = bessel_i0(beta);
-    const double cut    = 0.9 / L;
+    /* Cutoff at the input Nyquist frequency (normalised to the output
+     * rate).  Was 0.9/L = 0.9·fs_in, which passed the first image band
+     * unattenuated: the interpolated output then peaked ~5 dB above the
+     * baseband peak the clip guard measures → hard int8 clipping. */
+    const double cut    = 0.5 / L;
 
     std::vector<float> h(total, 0.f);
     for (int i = 0; i < total; ++i) {
@@ -624,7 +636,7 @@ build_poly_coeffs(int L, int taps, double beta)
     for (int p = 0; p < L; ++p)
         for (int t = 0; t < taps; ++t)
             if (p + t * L < total)
-                poly[p][t] = h[p + t * L];
+                poly[p][taps - 1 - t] = h[p + t * L];
     return poly;
 }
 
@@ -685,8 +697,8 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
             /* ----------------------------------------------------------
              * Polyphase sinc FIR — two quality levels for adaptive switching.
              *
-             * GOOD (default): 16 taps/arm, Kaiser β=7  → ~70 dB alias reject.
-             * FAST (fallback):  4 taps/arm, Kaiser β=3  → ~30 dB, ~4× faster.
+             * GOOD (default): 32 taps/arm, Kaiser β=7  → ~76 dB image reject.
+             * FAST (fallback): 16 taps/arm, Kaiser β=6  → ~38 dB, ~2× faster.
              *
              * Quality switches at DSP-block boundaries based on measured
              * ratio of block processing time to real-time budget.
@@ -695,15 +707,18 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
             int    n_interp = (int)std::round(upRatio);
             if (n_interp < 1) n_interp = 1;
 
-            auto poly_good = build_poly_coeffs(n_interp, 16, 7.0); /* GOOD */
-            auto poly_fast = build_poly_coeffs(n_interp,  4, 3.0); /* FAST */
-            printf("[fl2k_fast_plus] polyphase FIR: L=%d  GOOD=16t/β7  FAST=4t/β3\n", n_interp);
+            auto poly_good = build_poly_coeffs(n_interp, POLY_TAPS_GOOD, 7.0);
+            auto poly_fast = build_poly_coeffs(n_interp, POLY_TAPS_FAST, 6.0);
+            printf("[fl2k_fast_plus] polyphase FIR: L=%d  GOOD=%dt/β7  FAST=%dt/β6\n",
+                   n_interp, POLY_TAPS_GOOD, POLY_TAPS_FAST);
 
             /* Adaptive quality state */
             const decltype(poly_good)* active_poly      = &poly_good;
-            int                        active_poly_taps  = 16;
+            int                        active_poly_taps  = POLY_TAPS_GOOD;
             float                      dsp_load_smooth   = 0.0f;
-            const double               block_real_time   = (double)DSP_BLOCK / (double)targetRate;
+            /* One block = DSP_BLOCK input samples at sampleRate (was divided
+             * by targetRate → load overestimated by n_interp → always FAST). */
+            const double               block_real_time   = (double)DSP_BLOCK / (double)sampleRate;
 
             /* Main LUT NCO: shift IQ baseband to shiftFreq at targetRate */
             uint32_t vco_phase     = 0;
@@ -724,11 +739,19 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
             float current_gain_fast = bitScale * 0.65f;
             float peak_hold         = 0.1f;
             float prev_block_gain   = current_gain_fast;
+            /* Emergency limiter ceiling: instant attack on overload, slow
+             * release (~6 dB/s).  Replaces the former per-block cap to the
+             * block peak, which modulated the gain at block rate whenever the
+             * output was driven near full scale (spectral skirts, raised floor). */
+            const float lim_release = powf(10.f, 6.f / 20.f * (float)DSP_BLOCK / sampleRate);
+            float       lim_ceiling = 1e9f;
 
-            /* IQ polyphase ring buffer: POLY_TAPS_MAX samples of history */
-            float i_buf[POLY_TAPS_MAX] = {};
-            float q_buf[POLY_TAPS_MAX] = {};
-            int   buf_ptr             = 0;
+            /* IQ polyphase ring buffer: POLY_TAPS_MAX samples of history,
+             * doubled so the window [buf_ptr+1 .. buf_ptr+POLY_TAPS_MAX] is
+             * contiguous (oldest→newest). */
+            float i_buf[2 * POLY_TAPS_MAX] = {};
+            float q_buf[2 * POLY_TAPS_MAX] = {};
+            int   buf_ptr                 = 0;
 
             /* Buffers */
             std::vector<IQf>   x(DSP_BLOCK);
@@ -768,8 +791,8 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
                             ring_not_full.notify_all();
                         }
                         /* Reset polyphase ring buffer after seek */
-                        std::fill(i_buf, i_buf + POLY_TAPS_MAX, 0.f);
-                        std::fill(q_buf, q_buf + POLY_TAPS_MAX, 0.f);
+                        std::fill(i_buf, i_buf + 2 * POLY_TAPS_MAX, 0.f);
+                        std::fill(q_buf, q_buf + 2 * POLY_TAPS_MAX, 0.f);
                         buf_ptr = 0;
                     }
                 }
@@ -842,12 +865,13 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
                  * Fast attack prevents clipping on transients (e.g. file switch,
                  * audio overlay kick-in). FIR overshoot margin: 5 %. */
                 const float block_safe = (bitScale - 1.f) / (bpeak * 1.05f + 1e-4f);
+                lim_ceiling = fminf(block_safe, fminf(lim_ceiling * lim_release, 1e9f));
                 if (useAGC) {
                     float tg = (bitScale * 0.65f) / (peak_hold + 0.0001f);
-                    current_gain_fast = fminf(block_safe,
+                    current_gain_fast = fminf(lim_ceiling,
                                              0.95f * current_gain_fast + 0.05f * tg);
                 } else {
-                    current_gain_fast = fminf(gainValue.load() * GAIN_SCALE, block_safe);
+                    current_gain_fast = fminf(gainValue.load() * GAIN_SCALE, lim_ceiling);
                 }
 
                 /* Symmetric gain ramp: interpolate linearly from ramp_start to
@@ -874,21 +898,24 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
 
                 /* LCG state for TPDF dither — seeded from VCO phase for variety */
                 uint32_t lcg = vco_phase ^ 0xdeadbeefU;
+                const bool dither = useDither.load(std::memory_order_relaxed);
 
                 for (size_t bi = 0; bi < DSP_BLOCK; ++bi) {
-                    /* Push new sample into ring buffer (power-of-2 modulo) */
-                    int wptr = buf_ptr & (POLY_TAPS_MAX - 1);
-                    i_buf[wptr] = x[bi].re;
-                    q_buf[wptr] = x[bi].im;
-                    ++buf_ptr;
+                    /* Push new sample into doubled ring buffer (power-of-2 modulo) */
+                    buf_ptr = (buf_ptr + 1) & (POLY_TAPS_MAX - 1);
+                    i_buf[buf_ptr] = i_buf[buf_ptr + POLY_TAPS_MAX] = x[bi].re;
+                    q_buf[buf_ptr] = q_buf[buf_ptr + POLY_TAPS_MAX] = x[bi].im;
+                    /* newest active_poly_taps samples, oldest first */
+                    const int    w0 = buf_ptr + POLY_TAPS_MAX - active_poly_taps + 1;
+                    const float* wi = i_buf + w0;
+                    const float* wq = q_buf + w0;
 
                     for (int k = 0; k < n_interp; ++k) {
                         const float* pc = (*active_poly)[k].data();
                         float fI = 0.f, fQ = 0.f;
                         for (int t = 0; t < active_poly_taps; ++t) {
-                            int idx = (buf_ptr - 1 - t) & (POLY_TAPS_MAX - 1);
-                            fI += pc[t] * i_buf[idx];
-                            fQ += pc[t] * q_buf[idx];
+                            fI += pc[t] * wi[t];
+                            fQ += pc[t] * wq[t];
                         }
 
                         float c, s;
@@ -900,11 +927,15 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
                         gain_ramp  += gain_ramp_step;
 
                         /* TPDF dither: two uniform ±0.5 → triangular ±1 LSB.
-                         * Randomises quantisation error; prevents harmonic spurs. */
-                        lcg = lcg * 1664525u + 1013904223u;
-                        hf += (float)(lcg >> 24) * (1.f/256.f) - 0.5f;
-                        lcg = lcg * 1664525u + 1013904223u;
-                        hf += (float)(lcg >> 24) * (1.f/256.f) - 0.5f;
+                         * Randomises quantisation error; prevents harmonic spurs.
+                         * Off by default: costs ~4.8 dB noise floor, and a dense
+                         * multi-carrier band dithers itself. */
+                        if (dither) {
+                            lcg = lcg * 1664525u + 1013904223u;
+                            hf += (float)(lcg >> 24) * (1.f/256.f) - 0.5f;
+                            lcg = lcg * 1664525u + 1013904223u;
+                            hf += (float)(lcg >> 24) * (1.f/256.f) - 0.5f;
+                        }
 
                         if      (hf >  127.f) hf =  127.f;
                         else if (hf < -128.f) hf = -128.f;
@@ -912,35 +943,42 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
                     }
                 }
 
+                /* Stop the load clock before write_ring(): it blocks until the
+                 * fl2k has drained the ring, so including it reads ~100 % load
+                 * in steady state and forces FAST quality permanently. */
+                auto t1_blk = std::chrono::steady_clock::now();
+
                 write_ring(out8.data(), out_pos);
                 prev_block_gain = current_gain_fast;
 
                 /* -- Adaptive quality update --------------------------------
-                 * Measure fraction of real-time budget used by this block.
-                 * Switch GOOD↔FAST with hysteresis (70% / 40%). */
+                 * Measure fraction of real-time budget used by the DSP work
+                 * of this block.  Switch GOOD↔FAST with hysteresis (70% / 40%). */
                 {
-                    auto t1_blk  = std::chrono::steady_clock::now();
                     float load   = (float)(std::chrono::duration<double>(t1_blk - t0_blk).count()
                                           / block_real_time);
                     dsp_load_smooth = 0.95f * dsp_load_smooth + 0.05f * load;
 
-                    if (dsp_load_smooth > 0.70f && active_poly_taps == 16) {
+                    if (dsp_load_smooth > 0.70f && active_poly_taps == POLY_TAPS_GOOD) {
                         active_poly      = &poly_fast;
-                        active_poly_taps = 4;
+                        active_poly_taps = POLY_TAPS_FAST;
                         printf("[fl2k_fast_plus] quality → FAST (load=%.0f%%)\n",
                                dsp_load_smooth * 100.f);
-                    } else if (dsp_load_smooth < 0.40f && active_poly_taps == 4) {
+                    } else if (dsp_load_smooth < 0.40f && active_poly_taps == POLY_TAPS_FAST) {
                         active_poly      = &poly_good;
-                        active_poly_taps = 16;
+                        active_poly_taps = POLY_TAPS_GOOD;
                         printf("[fl2k_fast_plus] quality → GOOD (load=%.0f%%)\n",
                                dsp_load_smooth * 100.f);
                     }
                 }
 
-                /* -- monitoring (pre-upsample IQ real part) -- */
-                size_t n_mon = std::min(MON_SIZE - monIdx, DSP_BLOCK);
-                for (size_t k = 0; k < n_mon; ++k)
+                /* -- monitoring (pre-upsample IQ, interleaved re/im like the
+                 *    IQ file data that showRFdata expects) -- */
+                size_t n_mon = std::min((MON_SIZE - monIdx) / 2, DSP_BLOCK);
+                for (size_t k = 0; k < n_mon; ++k) {
                     mon[monIdx++] = x[k].re * SCALE_MON;
+                    mon[monIdx++] = x[k].im * SCALE_MON;
+                }
 
                 ++blockCnt;
                 if (blockCnt >= blocksPerSec) {
@@ -1210,6 +1248,9 @@ void dsp_fl2k_set_pause(DspFL2KHandle h, int p)
 
 void dsp_fl2k_set_gain(DspFL2KHandle h, float gain)
 { if (h) static_cast<DspWorkerFL2K*>(h)->gainValue.store(gain); }
+
+void dsp_fl2k_set_dither(DspFL2KHandle h, int enable)
+{ if (h) static_cast<DspWorkerFL2K*>(h)->useDither.store(enable != 0); }
 
 int dsp_fl2k_is_running(DspFL2KHandle h)
 { return h ? (static_cast<DspWorkerFL2K*>(h)->running.load() ? 1 : 0) : 0; }

@@ -199,6 +199,7 @@ struct DspWorkerFLMod {
     float              basebandRate = 1'250'000.f;
     std::atomic<float> gainValue    {0.65f};
     bool               useAGC       = true;
+    std::atomic<bool>  useDither    {false};
 
     /* callbacks */
     flmod_monitor_cb_t  mon_cb  = nullptr; void* mon_ud  = nullptr;
@@ -726,6 +727,7 @@ void DspWorkerFLMod::run_modulator()
                                       / (float)(DSP_BLOCK * n_interp);
         float gain_ramp = gain_ramp_start;
         size_t out_pos = 0;
+        const bool dither = useDither.load(std::memory_order_relaxed);
         const float inv32767 = 1.f / 32767.f;
 
         for (size_t bi = 0; bi < DSP_BLOCK; ++bi) {
@@ -766,11 +768,15 @@ void DspWorkerFLMod::run_modulator()
                  * block_safe cap at ramp start prevents clipping on transients. */
 
                 /* TPDF dither: two uniform ±0.5 LSB summed → triangular ±1 LSB.
-                 * Decorrelates quantisation error; prevents structured spurs. */
-                lcg = lcg * 1664525u + 1013904223u;
-                hf += (float)(lcg >> 24) * (1.f/256.f) - 0.5f;
-                lcg = lcg * 1664525u + 1013904223u;
-                hf += (float)(lcg >> 24) * (1.f/256.f) - 0.5f;
+                 * Decorrelates quantisation error; prevents structured spurs.
+                 * Off by default: costs ~4.8 dB noise floor, and a dense
+                 * multi-carrier band dithers itself. */
+                if (dither) {
+                    lcg = lcg * 1664525u + 1013904223u;
+                    hf += (float)(lcg >> 24) * (1.f/256.f) - 0.5f;
+                    lcg = lcg * 1664525u + 1013904223u;
+                    hf += (float)(lcg >> 24) * (1.f/256.f) - 0.5f;
+                }
 
                 if      (hf >  127.f) hf =  127.f;
                 else if (hf < -128.f) hf = -128.f;
@@ -781,10 +787,13 @@ void DspWorkerFLMod::run_modulator()
         write_ring(out8.data(), out_pos);
         prev_block_gain = current_gain_fast;
 
-        /* Monitoring: baseband I, pre-upsampling */
-        size_t n_mon = std::min(MON_SIZE - monIdx, DSP_BLOCK);
-        for (size_t k = 0; k < n_mon; ++k)
+        /* Monitoring: baseband IQ, pre-upsampling, interleaved re/im like
+         * the IQ file data that showRFdata expects */
+        size_t n_mon = std::min((MON_SIZE - monIdx) / 2, DSP_BLOCK);
+        for (size_t k = 0; k < n_mon; ++k) {
             mon[monIdx++] = x[k].re * SCALE_MON;
+            mon[monIdx++] = x[k].im * SCALE_MON;
+        }
 
         ++blockCnt;
         if (blockCnt >= blocksPerSec) {
@@ -1016,6 +1025,9 @@ void dsp_flmod_stop(DspFLModHandle h)
 
 void dsp_flmod_set_gain(DspFLModHandle h, float gain)
 { if (h) static_cast<DspWorkerFLMod*>(h)->gainValue.store(gain); }
+
+void dsp_flmod_set_dither(DspFLModHandle h, int enable)
+{ if (h) static_cast<DspWorkerFLMod*>(h)->useDither.store(enable != 0); }
 
 void dsp_flmod_set_pause(DspFLModHandle h, int paused)
 { if (h) static_cast<DspWorkerFLMod*>(h)->paused.store(paused != 0); }

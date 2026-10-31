@@ -29,6 +29,7 @@ config_wizard.yaml keys used:
   audio_mod_index         float  AM modulation index 0–1 (default 0.9)
   flmod_baseband_rate     float  optional baseband rate override in Hz (default 0 = auto)
   ffmpeg_path             str    ffmpeg binary (default 'ffmpeg')
+  fl2k_dither             bool   TPDF dither before int8 quantisation (default False)
 """
 
 import csv
@@ -43,6 +44,28 @@ import numpy as np
 import psutil
 import yaml
 from PyQt5.QtCore import QObject, QMutex, QThread, pyqtSignal
+
+# AVC level calibration relative to fl2k_stream (reference driver).
+# showRFdata (playrec) computes the AVC volume from the monitor data (IQ,
+# interleaved re/im) times the slider gain and regulates towards
+# AGC_targetvolume (0.9 for all drivers).  fl2k_stream delivers
+# monitor = 32 * int16 while its ffmpeg chain outputs int8 = int16 * gain / 8
+# (sine filter amplitude 1/8, amix 1/2, volume 512), i.e. 256 monitor units
+# per int8 LSB and unit gain.  The C++ engines output
+#     int8 = int16 * gain * gain_correction_fl2k_C * GAIN_SCALE / 32767,
+# so the monitor (int16 units) is scaled by 256 * gain_corr * GAIN_SCALE / 32767
+# to give the same int8 level at the same AVC volume.
+# AVC_MONITOR_CAL_DB is a residual empirical trim: +X dB makes the AVC
+# settle X dB lower at the RF output; manual gain operation is not affected.
+_FL2K_STREAM_MON_PER_LSB = 256.0
+_GAIN_SCALE_PLUS  = 256.0 * 127.0          # DspWorkerFL2K.cpp  (Mode A)
+_GAIN_SCALE_MOD   = 256.0 * 127.0 / 2.5    # DspWorkerFLMod.cpp (Mode B)
+AVC_MONITOR_CAL_DB = 0.0
+
+
+def _avc_monitor_cal(gain_corr, gain_scale):
+    return (_FL2K_STREAM_MON_PER_LSB * gain_corr * gain_scale / 32767.0
+            * 10.0 ** (AVC_MONITOR_CAL_DB / 20.0))
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +144,10 @@ def _setup_lib_plus(lib, libpath):
     lib.dsp_fl2k_set_pause.argtypes = [VoidP, Int]
     lib.dsp_fl2k_set_gain.restype   = None
     lib.dsp_fl2k_set_gain.argtypes  = [VoidP, Float]
+    lib._has_dither_api = hasattr(lib, "dsp_fl2k_set_dither")
+    if lib._has_dither_api:
+        lib.dsp_fl2k_set_dither.restype  = None
+        lib.dsp_fl2k_set_dither.argtypes = [VoidP, Int]
     lib.dsp_fl2k_is_running.restype  = Int
     lib.dsp_fl2k_is_running.argtypes = [VoidP]
     lib.dsp_fl2k_check_device.restype  = Int
@@ -189,6 +216,10 @@ def _setup_lib_mod(lib, libpath):
     lib.dsp_flmod_set_pause.argtypes = [VoidP, Int]
     lib.dsp_flmod_set_gain.restype   = None
     lib.dsp_flmod_set_gain.argtypes  = [VoidP, Float]
+    lib._has_dither_api = hasattr(lib, "dsp_flmod_set_dither")
+    if lib._has_dither_api:
+        lib.dsp_flmod_set_dither.restype  = None
+        lib.dsp_flmod_set_dither.argtypes = [VoidP, Int]
     lib.dsp_flmod_is_running.restype  = Int
     lib.dsp_flmod_is_running.argtypes = [VoidP]
     lib.dsp_flmod_check_device.restype  = Int
@@ -622,6 +653,7 @@ class playrec_worker(QObject):
         _base_port     = 1234
         _mod_index     = 0.9
         _bb_rate_yaml  = 0.0
+        self._dither   = False
         _ffmpeg_bin    = "ffmpeg"
         _op_mode       = ""
         try:
@@ -635,6 +667,7 @@ class playrec_worker(QObject):
             _base_port     = int(_cfg.get("audio_base_port",          1234))
             _mod_index     = float(_cfg.get("audio_mod_index",        0.9))
             _bb_rate_yaml  = float(_cfg.get("flmod_baseband_rate",    0.0))
+            self._dither   = bool(_cfg.get("fl2k_dither",             False))
             _ffmpeg_bin    = _resolve_ffmpeg_bin(str(_cfg.get("ffmpeg_path", "")))
             # Respect operating mode: in band_only mode suppress audio overlay
             _op_mode = str(_cfg.get("last_modulator_type", "")).strip()
@@ -755,6 +788,9 @@ class playrec_worker(QObject):
             return
         self._handle = handle
         self.set_fileHandle(_SeekProxy(handle, LIB))
+        if LIB._has_dither_api:
+            LIB.dsp_fl2k_set_dither(handle, ctypes.c_int(1 if self._dither else 0))
+        _mon_cal = _avc_monitor_cal(gain_corr, _GAIN_SCALE_PLUS)
 
         # Configure IQ
         fname_array = (ctypes.c_char_p * len(filenames))(
@@ -807,7 +843,7 @@ class playrec_worker(QObject):
                 arr = np.ctypeslib.as_array(data_ptr, shape=(n,)).copy()
                 # C++ SCALE_MON=1048576; rescale to ±32767 so showRFdata AVC uses
                 # the same normfactor as IQ mode — same fix as in _run_flmod_path.
-                arr = arr * (32767.0 / 1048576.0)
+                arr = arr * (32767.0 / 1048576.0) * _mon_cal
                 self.set_data(arr)
                 self.SigIncrementCurTime.emit()
             except Exception as exc:
@@ -964,6 +1000,9 @@ class playrec_worker(QObject):
             self.SigFinished.emit()
             return
         self._handle = handle
+        if LIB._has_dither_api:
+            LIB.dsp_flmod_set_dither(handle, ctypes.c_int(1 if self._dither else 0))
+        _mon_cal = _avc_monitor_cal(gain_corr, _GAIN_SCALE_MOD)
 
         # Configure synthesis
         LIB.dsp_flmod_configure(
@@ -1007,7 +1046,7 @@ class playrec_worker(QObject):
                 # C++ SCALE_MON=1048576; rescale to ±32767 so showRFdata AVC uses
                 # the same normfactor as IQ mode — without this AVC drives gain
                 # to near-zero and RF output collapses to ~50 mV.
-                arr = arr * (32767.0 / 1048576.0)
+                arr = arr * (32767.0 / 1048576.0) * _mon_cal
                 self.set_data(arr)
                 self.SigIncrementCurTime.emit()
             except Exception as exc:

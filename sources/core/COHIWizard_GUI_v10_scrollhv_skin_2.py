@@ -3156,7 +3156,7 @@ class Ui_MainWindow(object):
         self.comboBox_playrec_targetSR_2.setItemText(5, _translate("MainWindow", "SW 25m"))
         self.comboBox_playrec_targetSR_2.setItemText(6, _translate("MainWindow", "SW 19m"))
         self.label_LO.setToolTip(_translate("MainWindow", "set center frequency in kHz (LO)"))
-        self.label_LO.setText(_translate("MainWindow", "LO frequency (kHz): "))
+        self.label_LO.setText(_translate("MainWindow", "Rec LO (kHz): "))
         self.lineEdit_playrec_LO.setToolTip(_translate("MainWindow", "enter LO frequency here (kHz)"))
         self.radioButton.setToolTip(_translate("MainWindow", "enable automatic gain control during recording"))
         self.radioButton.setText(_translate("MainWindow", "AGC"))

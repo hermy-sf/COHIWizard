@@ -87,6 +87,8 @@ void dsp_flmod_set_error_cb   (DspFLModHandle h, flmod_error_cb_t    cb, void* u
 int  dsp_flmod_start    (DspFLModHandle h);
 void dsp_flmod_stop     (DspFLModHandle h);
 void dsp_flmod_set_gain (DspFLModHandle h, float gain);
+/* TPDF dither before int8 quantisation in the fl2k push path (default off) */
+void dsp_flmod_set_dither(DspFLModHandle h, int enable);
 void dsp_flmod_set_pause(DspFLModHandle h, int paused);
 int  dsp_flmod_is_running(DspFLModHandle h);
 int  dsp_flmod_check_device(void);

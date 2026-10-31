@@ -66,7 +66,7 @@ class SDR_control(QObject):
                           "rate_type": "discrete",
                           "RX": True,
                           "TX": True,
-                          "device_name": "STEMlab 125-14",
+                          "device_name": "stemlab_125_14",
                           "device_ID": 0,
                           "max_IFREQ": 62500000,
                           "min_IFREQ": 0,
