@@ -22,6 +22,7 @@ import array
 import ctypes
 import csv
 import os
+import platform
 import subprocess
 import threading
 import time
@@ -172,7 +173,13 @@ _lib_adlm = None
 def _load_libdspadlm():
     global _lib_adlm
     _dir = os.path.dirname(os.path.abspath(__file__))
-    _so  = os.path.join(_dir, "libdspadlm.so")
+    _libname = "libdspadlm.dll" if platform.system() == "Windows" else "libdspadlm.so"
+    _so = os.path.join(_dir, _libname)
+    if platform.system() == "Windows":
+        try:
+            os.add_dll_directory(_dir)
+        except (AttributeError, OSError, FileNotFoundError):
+            pass
     try:
         lib = ctypes.CDLL(_so)
         lib.dsp_adlm_create.restype  = ctypes.c_void_p
