@@ -84,6 +84,8 @@ int  dsp_fl2k_start    (DspFL2KHandle h);
 void dsp_fl2k_stop     (DspFL2KHandle h);
 void dsp_fl2k_set_pause(DspFL2KHandle h, int paused);
 void dsp_fl2k_set_gain (DspFL2KHandle h, float gain);
+/* Change mix_level of dsp_fl2k_configure_audio at runtime (ramped over one block) */
+void dsp_fl2k_set_audio_mix(DspFL2KHandle h, float mix_level);
 /* TPDF dither before int8 quantisation (default off) */
 void dsp_fl2k_set_dither(DspFL2KHandle h, int enable);
 int  dsp_fl2k_is_running(DspFL2KHandle h);

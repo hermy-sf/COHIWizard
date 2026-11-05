@@ -177,6 +177,130 @@
            <layout class="QGridLayout" name="gridLayout_2">
             <item row="0" column="0">
              <layout class="QGridLayout" name="gridLayout_10" rowstretch="2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0" columnstretch="1,0,0,0,0,0,0,0,0,0,0,0,0,0">
+              <item row="0" column="8" rowspan="8">
+               <widget class="QFrame" name="frame_Mixer">
+                <property name="frameShape"><enum>QFrame::NoFrame</enum></property>
+                <layout class="QVBoxLayout" name="verticalLayout_Mixer">
+                 <property name="leftMargin"><number>0</number></property>
+                 <property name="topMargin"><number>0</number></property>
+                 <property name="rightMargin"><number>0</number></property>
+                 <property name="bottomMargin"><number>0</number></property>
+                 <item>
+                  <layout class="QHBoxLayout" name="horizontalLayout_Mixer">
+                   <item>
+                    <widget class="QSlider" name="verticalSlider_Mixer">
+                     <property name="toolTip"><string>Balance of the audio modulator relative to the IQ band in dB (only for IQ band and audio modulator)</string></property>
+                     <property name="minimum"><number>-30</number></property>
+                     <property name="maximum"><number>30</number></property>
+                     <property name="pageStep"><number>2</number></property>
+                     <property name="value"><number>0</number></property>
+                     <property name="orientation"><enum>Qt::Vertical</enum></property>
+                     <property name="tickPosition"><enum>QSlider::TicksBothSides</enum></property>
+                     <property name="tickInterval"><number>10</number></property>
+                    </widget>
+                   </item>
+                   <item>
+                    <layout class="QVBoxLayout" name="verticalLayout_Mixer_scale">
+                     <property name="spacing"><number>0</number></property>
+                    <item>
+                     <widget class="QLabel" name="label_Mixer_scale_p30">
+                      <property name="font"><font><pointsize>8</pointsize></font></property>
+                      <property name="text"><string>+30</string></property>
+                      <property name="alignment"><set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set></property>
+                     </widget>
+                    </item>
+                    <item>
+                     <spacer name="verticalSpacer_Mixer_0">
+                      <property name="orientation"><enum>Qt::Vertical</enum></property>
+                      <property name="sizeHint" stdset="0"><size><width>1</width><height>1</height></size></property>
+                     </spacer>
+                    </item>
+                    <item>
+                     <widget class="QLabel" name="label_Mixer_scale_p20">
+                      <property name="font"><font><pointsize>8</pointsize></font></property>
+                      <property name="text"><string>+20</string></property>
+                      <property name="alignment"><set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set></property>
+                     </widget>
+                    </item>
+                    <item>
+                     <spacer name="verticalSpacer_Mixer_1">
+                      <property name="orientation"><enum>Qt::Vertical</enum></property>
+                      <property name="sizeHint" stdset="0"><size><width>1</width><height>1</height></size></property>
+                     </spacer>
+                    </item>
+                    <item>
+                     <widget class="QLabel" name="label_Mixer_scale_p10">
+                      <property name="font"><font><pointsize>8</pointsize></font></property>
+                      <property name="text"><string>+10</string></property>
+                      <property name="alignment"><set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set></property>
+                     </widget>
+                    </item>
+                    <item>
+                     <spacer name="verticalSpacer_Mixer_2">
+                      <property name="orientation"><enum>Qt::Vertical</enum></property>
+                      <property name="sizeHint" stdset="0"><size><width>1</width><height>1</height></size></property>
+                     </spacer>
+                    </item>
+                    <item>
+                     <widget class="QLabel" name="label_Mixer_scale_0">
+                      <property name="font"><font><pointsize>8</pointsize></font></property>
+                      <property name="text"><string>0</string></property>
+                      <property name="alignment"><set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set></property>
+                     </widget>
+                    </item>
+                    <item>
+                     <spacer name="verticalSpacer_Mixer_3">
+                      <property name="orientation"><enum>Qt::Vertical</enum></property>
+                      <property name="sizeHint" stdset="0"><size><width>1</width><height>1</height></size></property>
+                     </spacer>
+                    </item>
+                    <item>
+                     <widget class="QLabel" name="label_Mixer_scale_m10">
+                      <property name="font"><font><pointsize>8</pointsize></font></property>
+                      <property name="text"><string>-10</string></property>
+                      <property name="alignment"><set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set></property>
+                     </widget>
+                    </item>
+                    <item>
+                     <spacer name="verticalSpacer_Mixer_4">
+                      <property name="orientation"><enum>Qt::Vertical</enum></property>
+                      <property name="sizeHint" stdset="0"><size><width>1</width><height>1</height></size></property>
+                     </spacer>
+                    </item>
+                    <item>
+                     <widget class="QLabel" name="label_Mixer_scale_m20">
+                      <property name="font"><font><pointsize>8</pointsize></font></property>
+                      <property name="text"><string>-20</string></property>
+                      <property name="alignment"><set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set></property>
+                     </widget>
+                    </item>
+                    <item>
+                     <spacer name="verticalSpacer_Mixer_5">
+                      <property name="orientation"><enum>Qt::Vertical</enum></property>
+                      <property name="sizeHint" stdset="0"><size><width>1</width><height>1</height></size></property>
+                     </spacer>
+                    </item>
+                    <item>
+                     <widget class="QLabel" name="label_Mixer_scale_m30">
+                      <property name="font"><font><pointsize>8</pointsize></font></property>
+                      <property name="text"><string>-30</string></property>
+                      <property name="alignment"><set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set></property>
+                     </widget>
+                    </item>
+                    </layout>
+                   </item>
+                  </layout>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="label_Mixer">
+                   <property name="frameShape"><enum>QFrame::StyledPanel</enum></property>
+                   <property name="text"><string>Mixer</string></property>
+                   <property name="alignment"><set>Qt::AlignCenter</set></property>
+                  </widget>
+                 </item>
+                </layout>
+               </widget>
+              </item>
               <property name="sizeConstraint">
                <enum>QLayout::SetNoConstraint</enum>
               </property>
@@ -360,7 +484,7 @@
                 </property>
                </widget>
               </item>
-              <item row="4" column="7">
+              <item row="4" column="6">
                <widget class="QLabel" name="label_43">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -982,7 +1106,7 @@
                 </item>
                </widget>
               </item>
-              <item row="0" column="4">
+              <item row="0" column="3">
                <widget class="QLabel" name="label_2">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
@@ -3229,7 +3353,7 @@
                 </property>
                </widget>
               </item>
-              <item row="0" column="7">
+              <item row="0" column="6">
                <widget class="QLabel" name="label_5">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
@@ -3475,7 +3599,7 @@
                 </property>
                </widget>
               </item>
-              <item row="1" column="1" rowspan="4" colspan="6">
+              <item row="1" column="0" rowspan="4" colspan="6">
                <widget class="QLabel" name="label_LOGO">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -3603,7 +3727,7 @@
                 </property>
                </widget>
               </item>
-              <item row="0" column="3">
+              <item row="0" column="2">
                <widget class="QLabel" name="label">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
@@ -3691,12 +3815,12 @@
                 </property>
                 <property name="icon">
                  <iconset>
-                  <normaloff>../../Button_Playlist_Activate.png</normaloff>
-                  <normalon>../../Button_Playlist_Select.png</normalon>
-                  <activeoff>../../Button_Playlist_Activate.png</activeoff>
-                  <activeon>../../Button_Playlist_Select.png</activeon>
-                  <selectedoff>../../Button_Playlist_Activate.png</selectedoff>
-                  <selectedon>../../Button_Playlist_Select.png</selectedon>../../Button_Playlist_Activate.png</iconset>
+                  <normaloff>icons/Button_Playlist_Activate.png</normaloff>
+                  <normalon>icons/Button_Playlist_Select.png</normalon>
+                  <activeoff>icons/Button_Playlist_Activate.png</activeoff>
+                  <activeon>icons/Button_Playlist_Select.png</activeon>
+                  <selectedoff>icons/Button_Playlist_Activate.png</selectedoff>
+                  <selectedon>icons/Button_Playlist_Select.png</selectedon>icons/Button_Playlist_Activate.png</iconset>
                 </property>
                 <property name="iconSize">
                  <size>
@@ -3727,7 +3851,7 @@
                 </property>
                </widget>
               </item>
-              <item row="0" column="1">
+              <item row="0" column="0">
                <widget class="QLabel" name="label_6">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
@@ -4394,7 +4518,7 @@
                 </property>
                </widget>
               </item>
-              <item row="0" column="6">
+              <item row="0" column="5">
                <widget class="QLabel" name="label_4">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
@@ -5143,7 +5267,7 @@
                 </property>
                </widget>
               </item>
-              <item row="0" column="5">
+              <item row="0" column="4">
                <widget class="QLabel" name="label_3">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
@@ -5156,7 +5280,7 @@
                 </property>
                </widget>
               </item>
-              <item row="7" column="8">
+              <item row="7" column="7">
                <widget class="QLabel" name="Label_Recindicator">
                 <property name="enabled">
                  <bool>true</bool>
@@ -6061,7 +6185,7 @@
                 </property>
                </widget>
               </item>
-              <item row="7" column="1" colspan="7">
+              <item row="7" column="0" colspan="7">
                <widget class="QLineEdit" name="lineEditCurTime">
                 <property name="sizePolicy">
                  <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -6824,7 +6948,7 @@
                 </property>
                </widget>
               </item>
-              <item row="5" column="1" rowspan="2">
+              <item row="5" column="0" rowspan="2">
                <widget class="QPushButton" name="pushButton_REW">
                 <property name="enabled">
                  <bool>true</bool>
@@ -6863,8 +6987,8 @@
                 </property>
                 <property name="icon">
                  <iconset>
-                  <normaloff>../../rew_v4.PNG</normaloff>
-                  <normalon>icons/rew_v4.PNG</normalon>../../rew_v4.PNG</iconset>
+                  <normaloff>icons/rew_v4.PNG</normaloff>
+                  <normalon>icons/rew_v4.PNG</normalon>icons/rew_v4.PNG</iconset>
                 </property>
                 <property name="iconSize">
                  <size>
@@ -6886,7 +7010,7 @@
                 </property>
                </widget>
               </item>
-              <item row="5" column="2" rowspan="2">
+              <item row="5" column="1" rowspan="2">
                <widget class="QPushButton" name="pushButton_Stop">
                 <property name="enabled">
                  <bool>true</bool>
@@ -6925,12 +7049,12 @@
                 </property>
                 <property name="icon">
                  <iconset>
-                  <normaloff>../../stop_v4.PNG</normaloff>
+                  <normaloff>icons/stop_v4.PNG</normaloff>
                   <normalon>icons/stop_v4.PNG</normalon>
-                  <activeoff>../../stop_v4.PNG</activeoff>
-                  <activeon>../../stop_v4.PNG</activeon>
-                  <selectedoff>../../stop_v4.PNG</selectedoff>
-                  <selectedon>../../stop_v4.PNG</selectedon>../../stop_v4.PNG</iconset>
+                  <activeoff>icons/stop_v4.PNG</activeoff>
+                  <activeon>icons/stop_v4.PNG</activeon>
+                  <selectedoff>icons/stop_v4.PNG</selectedoff>
+                  <selectedon>icons/stop_v4.PNG</selectedon>icons/stop_v4.PNG</iconset>
                 </property>
                 <property name="iconSize">
                  <size>
@@ -6949,7 +7073,7 @@
                 </property>
                </widget>
               </item>
-              <item row="5" column="3" rowspan="2">
+              <item row="5" column="2" rowspan="2">
                <widget class="QPushButton" name="pushButton_Play">
                 <property name="enabled">
                  <bool>true</bool>
@@ -6988,12 +7112,12 @@
                 </property>
                 <property name="icon">
                  <iconset>
-                  <normaloff>../../play_v4.PNG</normaloff>
+                  <normaloff>icons/play_v4.PNG</normaloff>
                   <normalon>icons/play_v4.PNG</normalon>
-                  <activeoff>../../play_v4.PNG</activeoff>
-                  <activeon>../../play_v4.PNG</activeon>
-                  <selectedoff>../../play_v4.PNG</selectedoff>
-                  <selectedon>../../play_v4.PNG</selectedon>../../play_v4.PNG</iconset>
+                  <activeoff>icons/play_v4.PNG</activeoff>
+                  <activeon>icons/play_v4.PNG</activeon>
+                  <selectedoff>icons/play_v4.PNG</selectedoff>
+                  <selectedon>icons/play_v4.PNG</selectedon>icons/play_v4.PNG</iconset>
                 </property>
                 <property name="iconSize">
                  <size>
@@ -7012,7 +7136,7 @@
                 </property>
                </widget>
               </item>
-              <item row="5" column="4" rowspan="2">
+              <item row="5" column="3" rowspan="2">
                <widget class="QPushButton" name="pushButton_Loop">
                 <property name="enabled">
                  <bool>true</bool>
@@ -7071,7 +7195,7 @@
                 </property>
                </widget>
               </item>
-              <item row="5" column="5" rowspan="2">
+              <item row="5" column="4" rowspan="2">
                <widget class="QPushButton" name="pushButton_FF">
                 <property name="enabled">
                  <bool>true</bool>
@@ -7137,7 +7261,7 @@
                 </property>
                </widget>
               </item>
-              <item row="5" column="6" rowspan="2">
+              <item row="5" column="5" rowspan="2">
                <widget class="QPushButton" name="pushButton_REC">
                 <property name="enabled">
                  <bool>true</bool>
@@ -7406,7 +7530,7 @@
                 </property>
                </widget>
               </item>
-              <item row="5" column="7" rowspan="2">
+              <item row="5" column="6" rowspan="2">
                <widget class="QPushButton" name="pushButton_adv1byte">
                 <property name="enabled">
                  <bool>true</bool>
@@ -7511,7 +7635,7 @@
                 </item>
                </widget>
               </item>
-              <item row="1" column="7">
+              <item row="1" column="6">
                <widget class="QLabel" name="label_32">
                 <property name="enabled">
                  <bool>false</bool>
@@ -7614,7 +7738,7 @@ UFL</string>
     </item>
    </layout>
   </widget>
-  <widget class="File" name="menubar">
+  <widget class="QMenuBar" name="menubar">
    <property name="geometry">
     <rect>
      <x>0</x>
@@ -7696,13 +7820,6 @@ UFL</string>
    </property>
   </action>
  </widget>
- <customwidgets>
-  <customwidget>
-   <class>File</class>
-   <extends>QMenuBar</extends>
-   <header>file.h</header>
-  </customwidget>
- </customwidgets>
  <resources/>
  <connections/>
 </ui>

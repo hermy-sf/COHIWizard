@@ -261,7 +261,6 @@ struct DspWorkerFL2K {
         bool     active        = false;
         int      udp_fd        = -1;
         float    mod_idx       = 0.9f;
-        float    gain          = 0.f;
 
         /* ZOH audio position tracking */
         float    current_aud   = 0.f;  /* currently held sample (ZOH)       */
@@ -282,7 +281,8 @@ struct DspWorkerFL2K {
     std::vector<AudioChanCfg> audio_cfgs;
     std::vector<AudioChanRT>  audio_rt;
     float                     audio_rate    = 25000.f;
-    float                     audio_mix_lvl = 1.0f;
+    std::atomic<float>        audio_mix_lvl {1.0f};
+    float                     audio_gain_cur = 0.f;   /* carrier gain at end of last block */
 
     /* --- helpers -------------------------------------------------- */
     void write_ring(const int8_t* data, size_t n);
@@ -448,14 +448,14 @@ void DspWorkerFL2K::close_audio_sockets()
 void DspWorkerFL2K::setup_audio_for_file(uint32_t sr)
 {
     if (audio_rt.empty()) return;
-    float ba = audio_mix_lvl / sqrtf((float)audio_rt.size());
+    float ba = audio_mix_lvl.load() / sqrtf((float)audio_rt.size());
+    audio_gain_cur = ba;
 
     for (size_t i = 0; i < audio_rt.size(); ++i) {
         AudioChanRT&  rt  = audio_rt[i];
         AudioChanCfg& cfg = audio_cfgs[i];
 
         rt.mod_idx  = cfg.mod_idx;
-        rt.gain     = ba;
         rt.active   = (rt.udp_fd >= 0);
         if (!rt.active) continue;
 
@@ -514,6 +514,11 @@ void DspWorkerFL2K::mix_audio_block_fast(IQf* x, size_t n_iq)
     static uint64_t call_cnt = 0;
     ++call_cnt;
 
+    /* The mix level may change at runtime: ramp the carrier gain over the block */
+    const float gain_target = audio_mix_lvl.load(std::memory_order_relaxed)
+                              / sqrtf((float)audio_rt.size());
+    const float gain_step   = (gain_target - audio_gain_cur) / (float)n_iq;
+
     for (size_t chi = 0; chi < audio_rt.size(); ++chi) {
         AudioChanRT& rt = audio_rt[chi];
         if (!rt.active) continue;
@@ -534,6 +539,7 @@ void DspWorkerFL2K::mix_audio_block_fast(IQf* x, size_t n_iq)
         }
 
         /* 2+3. ZOH advance + LUT NCO + AM mix */
+        float g = audio_gain_cur;
         for (size_t k = 0; k < n_iq; ++k) {
 
             /* ZOH: advance audio position, pop when phase crosses 1 */
@@ -549,11 +555,13 @@ void DspWorkerFL2K::mix_audio_block_fast(IQf* x, size_t n_iq)
             rt.nco_phase += rt.nco_phase_inc;
 
             /* DSB-LC AM: (1 + m * audio) * carrier */
-            float am = rt.gain * (1.f + rt.mod_idx * rt.current_aud);
+            float am = g * (1.f + rt.mod_idx * rt.current_aud);
             x[k].re += am * cf;
             x[k].im += am * sf;
+            g += gain_step;
         }
     }
+    audio_gain_cur = gain_target;
 
     /* Periodic diagnostics */
     if (call_cnt % 500 == 0) {
@@ -1120,7 +1128,7 @@ int dsp_fl2k_configure_audio(DspFL2KHandle          h,
         cfg.schroeder_phase = channels[i].schroeder_phase;
 
         /* Reset runtime state */
-        rt.active = false; rt.mod_idx = 0.9f; rt.gain = 0.f;
+        rt.active = false; rt.mod_idx = 0.9f;
         rt.current_aud = 0.f; rt.aud_phase = 0.0; rt.aud_phase_inc = 0.0;
         rt.nco_phase = 0; rt.nco_phase_inc = 0;
         rt.udp_recv_buf.clear();
@@ -1245,6 +1253,9 @@ void dsp_fl2k_stop(DspFL2KHandle h)
 
 void dsp_fl2k_set_pause(DspFL2KHandle h, int p)
 { if (h) static_cast<DspWorkerFL2K*>(h)->paused.store(p != 0); }
+
+void dsp_fl2k_set_audio_mix(DspFL2KHandle h, float mix_level)
+{ if (h && mix_level > 0.f) static_cast<DspWorkerFL2K*>(h)->audio_mix_lvl.store(mix_level); }
 
 void dsp_fl2k_set_gain(DspFL2KHandle h, float gain)
 { if (h) static_cast<DspWorkerFL2K*>(h)->gainValue.store(gain); }

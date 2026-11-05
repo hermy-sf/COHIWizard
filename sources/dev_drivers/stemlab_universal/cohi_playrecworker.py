@@ -9,10 +9,13 @@ from libdspflmod.so (dev_drivers/libs) via a pull API, eliminating the
 
 Signal chain (audio-only):
   ffmpeg → s16le PCM → UDP → libdspflmod C++ engine (ZOH + LUT NCO)
-  → dsp_flmod_pull_iq() → float32 IQ → TCP → STEMLAB
+  → dsp_flmod_pull_iq() → _OverlayMixer → float32 IQ → TCP → STEMLAB
+  out = g * audio_mix_level/sqrt(N) * carriers
 
 Signal chain (IQ+Audio):
-  WAV file IQ + NumPy AM overlay → TCP → STEMLAB  (unchanged from stemlab_universal)
+  WAV file IQ + dsp_flmod_pull_iq() AM overlay → _OverlayMixer → TCP → STEMLAB
+  Scaling as in fl2k_universal, plus a trim:
+  out = g * (iq + OVERLAY_TRIM * audio_mix_level/sqrt(N) * carriers)
 """
 
 import ctypes
@@ -39,6 +42,99 @@ from PyQt5.QtCore import QObject, QMutex, QThread, pyqtSignal
 # RF output; manual gain operation is not affected.
 AVC_MONITOR_CAL_DB = 3.5
 _AVC_MONITOR_CAL   = 10.0 ** (AVC_MONITOR_CAL_DB / 20.0)
+
+# Audio-only: the multi-carrier sum has a higher crest factor than an IQ band.
+# With AVC_MONITOR_CAL_DB alone the AVC settles 5-6 dB above the limiter ceiling,
+# so that the limiter would be permanently active on all carriers.  The additional
+# 8 dB correspond to the -8 dB of GAIN_SCALE in DspWorkerFLMod.cpp.
+AVC_AUDIO_ONLY_CAL_DB = AVC_MONITOR_CAL_DB + 8.0
+_AVC_AUDIO_ONLY_CAL   = 10.0 ** (AVC_AUDIO_ONLY_CAL_DB / 20.0)
+
+# Audio overlay level relative to the IQ file in IQ+Audio mode, on top of
+# audio_mix_level from config_wizard.yaml.  Not used in audio-only mode.
+OVERLAY_TRIM_DB = -15.0
+_OVERLAY_TRIM   = 10.0 ** (OVERLAY_TRIM_DB / 20.0)
+
+
+class _OverlayMixer:
+    """Output scaling with the level semantics of DspWorkerFL2K (fl2k_universal).
+
+    Slider gain 1.0 means full scale for a pre-gain signal of magnitude 1.0, in
+    all modes.  IQ and audio are summed before the gain, so audio_mix_level alone
+    sets the IQ/audio ratio and the slider gain acts on the sum (iq=None for
+    audio-only).  dsp_flmod_pull_iq
+    applies its own per-block guard, which would make the ratio level dependent;
+    the pull gain is therefore fixed low enough that the guard can never engage
+    (raw_gain), and is divided out again here.
+    """
+    PEAK_MARGIN          = 1.05   # same margin as block_safe in DspWorkerFL2K
+    LIM_RELEASE_DB_PER_S = 6.0
+    AGC_TARGET           = 0.65
+
+    def __init__(self, sampling_rate: float, mix_level: float, n_channels: int,
+                 use_agc: bool = False):
+        # Worst case: all carriers in phase at full modulation (1 + m <= 2)
+        # (mix_level <= 0 is replaced by 1.0 in dsp_flmod_configure_channels)
+        worst_peak     = (mix_level if mix_level > 0 else 1.0) * math.sqrt(n_channels) * 2.0
+        self.raw_gain  = 1.0 / (worst_peak * self.PEAK_MARGIN * 1.01 + 1e-3)
+        self.sr        = float(sampling_rate)
+        self.use_agc   = use_agc
+        self.ceiling   = 1e9
+        self.peak_hold = 0.1
+        self.agc_gain  = self.AGC_TARGET
+        self.prev_gain = None
+        self.ov_scale  = None
+        self.mix       = None   # pre-gain sum of the last block (AVC monitor)
+
+    def process(self, iq: np.ndarray, overlay: np.ndarray, gain: float,
+                ov_scale: float = 1.0) -> np.ndarray:
+        """iq (or None), overlay: interleaved float32 of equal length. Returns output block.
+
+        ov_scale: runtime overlay level (Mixer slider), ramped over the block when
+        it changes.  Needs no C++ support, since raw_gain is independent of it.
+        """
+        if self.ov_scale is None or ov_scale == self.ov_scale:
+            mix = overlay * (ov_scale / self.raw_gain)
+        else:
+            ramp = np.linspace(self.ov_scale, ov_scale, len(overlay) // 2,
+                               endpoint=False, dtype=np.float32)
+            mix = overlay / self.raw_gain
+            mix[0::2] *= ramp
+            mix[1::2] *= ramp
+        self.ov_scale = ov_scale
+        if iq is not None:
+            mix += iq
+        self.mix = mix
+        return self.apply_gain(mix, gain)
+
+    def apply_gain(self, mix: np.ndarray, gain: float) -> np.ndarray:
+        i = mix[0::2]
+        q = mix[1::2]
+        n_complex = len(i)
+        peak = float(np.sqrt(np.max(i * i + q * q))) + 1e-4
+
+        # Instant attack, slow release, so a peak does not cause a gain step
+        # per block (mirrors lim_ceiling in DspWorkerFL2K).
+        block_safe = 1.0 / (peak * self.PEAK_MARGIN)
+        release = 10.0 ** (self.LIM_RELEASE_DB_PER_S / 20.0 * n_complex / self.sr)
+        self.ceiling = min(block_safe, self.ceiling * release, 1e9)
+
+        if self.use_agc:
+            self.peak_hold = 0.95 * self.peak_hold + 0.05 * peak
+            self.agc_gain  = 0.95 * self.agc_gain + 0.05 * self.AGC_TARGET / self.peak_hold
+            gain = self.agc_gain
+        g = min(gain, self.ceiling)
+
+        # Linear ramp over the block instead of a step at the block boundary
+        start = g if self.prev_gain is None else min(self.prev_gain, block_safe)
+        self.prev_gain = g
+        if start == g:
+            return (g * mix).astype(np.float32)
+        ramp = np.linspace(start, g, n_complex, endpoint=False, dtype=np.float32)
+        out = np.empty_like(mix)
+        out[0::2] = ramp * i
+        out[1::2] = ramp * q
+        return out
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +380,7 @@ class playrec_worker(QObject):
     def __init__(self, stemlabcontrolinst, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.stopix         = False
+        self._audio_mix_db  = 0.0
         self.DATABLOCKSIZE  = 1024 * 4
         self.DATASHOWSIZE   = 1024
         self.mutex          = QMutex()
@@ -307,6 +404,8 @@ class playrec_worker(QObject):
     def get_data(self):                return self.__slots__[5]
     def set_gain(self, v):             self.__slots__[6]  = v
     def get_gain(self):                return self.__slots__[6]
+    def set_audio_mix_db(self, v):     self._audio_mix_db = v
+    def get_audio_mix_db(self):        return self._audio_mix_db
     def set_formattag(self, v):        self.__slots__[7]  = v
     def get_formattag(self):           return self.__slots__[7]
     def set_datablocksize(self, v):    self.__slots__[8]  = v
@@ -563,7 +662,7 @@ class playrec_worker(QObject):
                            sampling_rate: float, mix_level: float,
                            base_port: int, audio_rate: int,
                            mod_index: float, ffmpeg_bin: str,
-                           use_agc: bool, gain_corr: float):
+                           raw_gain: float):
         """Create and configure a C++ pull-mode synthesis engine for audio overlay.
 
         C++ binds UDP sockets, then ffmpeg is launched.
@@ -583,7 +682,6 @@ class playrec_worker(QObject):
             self.SigError.emit("[stemlab_universal] dsp_flmod_create() returned NULL")
             return None, None
 
-        gain        = self.get_gain()
         center_freq = float(config.get("ifreq", 0.0))
 
         r = lib.dsp_flmod_configure(
@@ -591,8 +689,8 @@ class playrec_worker(QObject):
             ctypes.c_float(sampling_rate),        # target_rate (unused in pull mode)
             ctypes.c_float(center_freq),
             ctypes.c_float(sampling_rate),        # baseband_rate = IQ output rate
-            ctypes.c_float(gain * gain_corr),     # initial amplitude
-            ctypes.c_int(1 if use_agc else 0),    # AGC on/off
+            ctypes.c_float(raw_gain),             # fixed, see _OverlayMixer
+            ctypes.c_int(0),                      # AGC acts on the sum in _OverlayMixer
         )
         if r < 0:
             self.SigError.emit("[stemlab_universal] dsp_flmod_configure() failed")
@@ -624,8 +722,7 @@ class playrec_worker(QObject):
             return None, None
 
         print(f"[stemlab_universal] C++ overlay: center={center_freq/1e3:.1f} kHz, "
-              f"SR={sampling_rate:.0f} Hz, ch={n_ch}, "
-              f"AGC={'on' if use_agc else 'off'}, gain_corr={gain_corr}")
+              f"SR={sampling_rate:.0f} Hz, ch={n_ch}")
 
         # C++ has bound UDP sockets — launch ffmpeg now
         self._kill_orphaned_ffmpeg(base_port, n_ch)
@@ -655,16 +752,17 @@ class playrec_worker(QObject):
                              sampling_rate: float, mix_level: float,
                              base_port: int, audio_rate: int,
                              mod_index: float, ffmpeg_bin: str,
-                             use_agc: bool, gain_corr: float) -> None:
+                             use_agc: bool) -> None:
         """Audio-only synthesis using libdspflmod pull API (C++ NCO engine).
 
         Replaces NumPy synthesis — handles 15+ carriers within the 1.6 ms
         block budget at 1.25 MS/s.  TCP sendall() backpressure paces the loop.
         """
+        mixer = _OverlayMixer(sampling_rate, mix_level, len(stations), use_agc)
         lib, handle = self._init_cpp_overlay(
             config, stations, sampling_rate, mix_level,
             base_port, audio_rate, mod_index, ffmpeg_bin,
-            use_agc, gain_corr,
+            mixer.raw_gain,
         )
         if lib is None:
             return
@@ -673,7 +771,6 @@ class playrec_worker(QObject):
             N      = self.DATABLOCKSIZE // 2
             iq_buf = np.zeros(2 * N, dtype=np.float32)
             iq_ptr = iq_buf.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-            send_buf       = np.empty(2 * N, dtype=np.float32)
             blocks_per_sec = max(1, int(sampling_rate / N))
             self._block_count = 0
 
@@ -682,15 +779,12 @@ class playrec_worker(QObject):
 
             while not self.stopix:
                 if not self.get_pause():
-                    gain = self.get_gain()
-                    lib.dsp_flmod_set_gain(handle, ctypes.c_float(gain * gain_corr))
-
                     n_got = lib.dsp_flmod_pull_iq(handle, iq_ptr, ctypes.c_int(N))
                     if n_got <= 0:
                         self.SigError.emit("[stemlab_universal] dsp_flmod_pull_iq() returned error")
                         break
 
-                    np.clip(iq_buf, -1.0, 1.0, out=send_buf)
+                    send_buf = mixer.process(None, iq_buf, self.get_gain())
 
                     try:
                         self.stemlabcontrol.data_sock.sendall(send_buf)
@@ -702,11 +796,8 @@ class playrec_worker(QObject):
                     self._block_count += 1
                     if self._block_count >= blocks_per_sec:
                         self.SigIncrementCurTime.emit()
-                        # Scale float ±1.0 → int16 ±32767 for spectrum display and AVC.
-                        show_data = (
-                            send_buf[:self.DATASHOWSIZE] * 32767.0
-                        ).astype(np.int16)
-                        self.set_data(show_data * _AVC_MONITOR_CAL)
+                        # Pre-gain signal as in the IQ modes: showRFdata applies the gain.
+                        self.set_data(mixer.mix[:self.DATASHOWSIZE] * 32767.0 * _AVC_AUDIO_ONLY_CAL)
                         self._block_count = 0
                 else:
                     time.sleep(0.1)
@@ -736,7 +827,6 @@ class playrec_worker(QObject):
         _ffmpeg_bin    = "ffmpeg"
         _op_mode       = ""
         _use_agc       = False
-        _gain_corr     = 1.0
         try:
             with open("config_wizard.yaml", "r") as _f:
                 _cfg = yaml.safe_load(_f) or {}
@@ -748,7 +838,6 @@ class playrec_worker(QObject):
             _ffmpeg_bin    = _resolve_ffmpeg_bin(str(_cfg.get("ffmpeg_path", "")))
             _op_mode       = str(_cfg.get("last_modulator_type", "")).strip()
             _use_agc       = bool(_cfg.get("autoAGC_DspWorker",       False))
-            _gain_corr     = float(_cfg.get("gain_correction_fl2k_C", 1.0))
             if _op_mode == "band_only":
                 _audioplaylist = ""
                 print("[stemlab_universal] operating mode = band_only: audio overlay suppressed")
@@ -809,7 +898,7 @@ class playrec_worker(QObject):
             self._run_eff_audio_only(
                 config, _stations, sampling_rate,
                 _mix_level, _base_port, _audio_rate, _mod_index, _ffmpeg_bin,
-                _use_agc, _gain_corr,
+                _use_agc,
             )
             self.set_fileclose(True)
             self.SigFinished.emit()
@@ -818,11 +907,14 @@ class playrec_worker(QObject):
         # ---- Start C++ overlay engine for IQ+Audio mode --------------------
         _cpp_lib    = None
         _cpp_handle = None
+        _mixer      = None
         if has_audio:
+            _ov_level = _mix_level * _OVERLAY_TRIM
+            _mixer    = _OverlayMixer(sampling_rate, _ov_level, len(_stations), _use_agc)
             _cpp_lib, _cpp_handle = self._init_cpp_overlay(
-                config, _stations, sampling_rate, _mix_level,
+                config, _stations, sampling_rate, _ov_level,
                 _base_port, _audio_rate, _mod_index, _ffmpeg_bin,
-                _use_agc, _gain_corr,
+                _mixer.raw_gain,
             )
             if _cpp_lib is None:
                 self.SigFinished.emit()
@@ -875,27 +967,18 @@ class playrec_worker(QObject):
                             n_complex = n_elems // 2
 
                             if has_audio and _cpp_handle:
-                                # Per-block gain update: C++ engine is gain authority
-                                _cpp_lib.dsp_flmod_set_gain(
-                                    _cpp_handle, ctypes.c_float(gain * _gain_corr)
-                                )
                                 n_got = _cpp_lib.dsp_flmod_pull_iq(
                                     _cpp_handle, _ov_ptr, ctypes.c_int(n_complex)
                                 )
                                 if n_got > 0:
-                                    iq_i = iq_float[0::2]
-                                    iq_q = iq_float[1::2]
-                                    ov_i = _ov_buf[:2 * n_complex:2]
-                                    ov_q = _ov_buf[1:2 * n_complex:2]
-                                    result_i  = np.clip(gain * iq_i + _mix_level * ov_i,
-                                                        -1.0, 1.0)
-                                    result_q  = np.clip(gain * iq_q + _mix_level * ov_q,
-                                                        -1.0, 1.0)
-                                    send_data = np.empty(n_elems, dtype=np.float32)
-                                    send_data[0::2] = result_i
-                                    send_data[1::2] = result_q
+                                    send_data = _mixer.process(
+                                        iq_float[:2 * n_complex],
+                                        _ov_buf[:2 * n_complex], gain,
+                                        10.0 ** (self.get_audio_mix_db() / 20.0)
+                                    )
                                 else:
-                                    send_data = (gain * iq_float).astype(np.float32)
+                                    _mixer.mix = iq_float[:2 * n_complex]
+                                    send_data  = _mixer.apply_gain(_mixer.mix, gain)
                                     _iq_only_blocks += 1
                             else:
                                 send_data = (gain * iq_float).astype(np.float32)
@@ -941,7 +1024,12 @@ class playrec_worker(QObject):
                                 self.SigIncrementCurTime.emit()
                                 count = 0
                                 gain  = self.get_gain()
-                                self.set_data(data * _AVC_MONITOR_CAL)
+                                if _mixer is not None and _mixer.mix is not None:
+                                    # Monitor the sum like fl2k_universal, so that
+                                    # the AVC also sees the overlay.
+                                    self.set_data(_mixer.mix * normfactor * _AVC_MONITOR_CAL)
+                                else:
+                                    self.set_data(data * _AVC_MONITOR_CAL)
 
                             _now = time.perf_counter()
                             if _now - _last_periodic_diag >= _PERIODIC_DIAG_INTERVAL:

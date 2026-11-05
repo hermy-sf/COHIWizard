@@ -2,10 +2,9 @@
 # -*- coding: utf-8 -*-logfile
 # For reducing to RFCorder: disable all modules except resample in the config_modules.yaml file
 #
-#Important: When re-translating the Core-UI from QTdesigner to py-File, run the method 'core/autocorrect_ui_file.py'.
-#otherwise there will be a line 'from file import File' which cannot be found by Python. As a consequence
-#the line self.menubar = QtWidgets.QMenuBar(File) must be replaced by self.menubar = QtWidgets.QMenuBar(MainWindow)
-#In addition the icons for the buttons cannot be found unless their paths are set correctly in the widget file.
+#Important: Re-translate the Core-UI from QTdesigner to py-File from this directory: pyuic5 -x core/ressources/<name>.ui -o core/<name>.py
+#Only from this directory the icon paths in the widget file are correct at runtime.
+#Do not run 'core/autocorrect_ui_file.py' afterwards, it would break the icon paths.
 
 
 """
@@ -634,6 +633,10 @@ class core_v(QObject):
                 no_volumefactor = True
             else:
                 self.volumefactor = float(self.m["metadata"]["volumefactor"])
+            no_audio_mixer_db = False
+            if not "audio_mixer_db" in self.m["metadata"]:
+                self.m["metadata"]["audio_mixer_db"] = 0
+                no_audio_mixer_db = True
         except:
             print("cannot get config_wizard.yaml metadata, write a new initial config file")
             self.m["metadata"] = {"last_path": self.standardpath}
@@ -665,6 +668,8 @@ class core_v(QObject):
             no_relaxfactor_OSR = False
             self.m["metadata"]["volumefactor"] = 1
             no_volumefactor = False
+            self.m["metadata"]["audio_mixer_db"] = 0
+            no_audio_mixer_db = False
             self.m["metadata"]["autoAGC_DspWorker"] = False
             self.m["metadata"]["gain_correction_fl2k_C"] = 0.2
             self.m["metadata"]["playlist_continuation_mode"] = 1
@@ -700,6 +705,11 @@ class core_v(QObject):
             stream.close()
 
         if no_volumefactor:
+            stream = open("config_wizard.yaml", "w")
+            yaml.dump(self.m["metadata"], stream)
+            stream.close()
+
+        if no_audio_mixer_db:
             stream = open("config_wizard.yaml", "w")
             yaml.dump(self.m["metadata"], stream)
             stream.close()
@@ -1276,9 +1286,8 @@ class core_v(QObject):
         print(f"startuptab set: {curix}")
         #write to yaml
         self.m["metadata"]["startup_tab"] = str(curix) 
-        stream = open("config_wizard.yaml", "w")
-        yaml.dump(self.m["metadata"], stream)
-        stream.close()
+        # not dumping self.m["metadata"]: the copy may be older than config_wizard.yaml
+        auxi.update_configyaml("startup_tab", str(curix))
         pass
 
     #@njit

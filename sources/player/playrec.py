@@ -94,6 +94,7 @@ class playrec_m(QObject):
         self.mdl["REC_AGC"] = False
         self.mdl["volume_mode"] = "mean" #default, may be changed by device driver, e.g. to "crest" for stemlabcontrol
         self.mdl["modulator_type"] = "all" #default, may be changed by config_wizard.yaml
+        self.mdl["mixer_db"] = 0 #Mixer slider: audio overlay level rel. to audio_mix_level, not persistent
         #os.path.isdir(os.getcwd)
 
 class playrec_c(QObject):
@@ -609,6 +610,9 @@ class playrec_c(QObject):
         self.playrec_tworker.set_pause(False)
         #self.playrec_tworker.set_modality(self.m["modality"])
         self.playrec_tworker.set_gain(self.m["gain"])
+        if hasattr(self.playrec_tworker, "set_audio_mix_db"):   # not all drivers have an audio overlay
+            self.playrec_tworker.set_audio_mix_db(
+                self.m["mixer_db"] if self.m["modulator_type"] == "band_and_audio" else 0)
         ################## TODO CHECK: was changed for general devicedrivers
         #self.m["sdr_configparams"]["QMAINWINDOWparent"] = self.m["QTMAINWINDOWparent"]
 
@@ -1218,9 +1222,8 @@ class playrec_v(QObject):
                 if dont_show_again:
                     try:
                         self.metadata[dontshowlabel] = True 
-                        stream = open("config_wizard.yaml", "w")
-                        yaml.dump(self.metadata, stream)
-                        stream.close()
+                        # not dumping self.metadata: the copy may be older than config_wizard.yaml
+                        auxi.update_configyaml(dontshowlabel, True)
                     except:
                         self.logger.error("playrec: 'dont show' labelling: cannot write metadata")
                         pass
@@ -1261,6 +1264,13 @@ class playrec_v(QObject):
                     lambda: self.playrec_c.jump_1_byte())          ########### INACTIVATE if 1 byte correction should be disabled
         self.gui.pushButton_adv1byte.setEnabled(False)  #TODO: rename: manual tracking
         self.gui.verticalSlider_Gain.valueChanged.connect(self.cb_setgain)
+        if hasattr(self.gui, "verticalSlider_Mixer"):   # only in skin 5
+            self.gui.verticalSlider_Mixer.valueChanged.connect(self.cb_setmixer)
+            # write to config_wizard.yaml only after the slider has come to rest
+            self.mixer_save_timer = QTimer()
+            self.mixer_save_timer.setSingleShot(True)
+            self.mixer_save_timer.setInterval(500)
+            self.mixer_save_timer.timeout.connect(self.save_mixer_db)
         self.gui.ScrollBar_playtime.sliderReleased.connect(self.jump_to_position)
         #self.gui.ScrollBar_playtime.mousePressEvent = self.gui.scrollbar_mousePressEvent
 
@@ -1371,6 +1381,8 @@ class playrec_v(QObject):
         modulator_types = ["band_only","band_and_audio","audio_only","all"]
         modulator_index = modulator_types.index(self.m["modulator_type"])
         self.gui.comboBox_modulator_type.setCurrentIndex(modulator_index)
+        self.update_mixer_enabled()
+        self.restore_mixer_db()
 
         self.gui.comboBox_stemlab.setCurrentIndex(self.m["currentSDRindex"])
 
@@ -1603,6 +1615,7 @@ class playrec_v(QObject):
       
         #if self.m["modulator_type"] = "all" and not (cf.find("__") == 0):
         auxi.update_configyaml("last_modulator_type",self.m["modulator_type"])
+        self.update_mixer_enabled()
         if self.m["modulator_type"] == "band_only":
             # a modulator playlist (csv) is meaningless for pure IQ playback:
             # unload it (state, config entry and GUI label)
@@ -2040,6 +2053,51 @@ class playrec_v(QObject):
             item = lw.item(x)
             self.m["playlist"].append(item.text())
         self.m["playlist_len"] = self.gui.listWidget_playlist.count()
+
+    def cb_setmixer(self):
+        '''
+        Mixer slider changed: passes the audio overlay level in dB to the running worker
+        (relative to audio_mix_level in config_wizard.yaml)
+        '''
+        self.m["mixer_db"] = self.gui.verticalSlider_Mixer.value()
+        self.mixer_save_timer.start()
+        if self.m["playthreadActive"] is False:
+            return False
+        if hasattr(self.playrec_c.playrec_tworker, "set_audio_mix_db"):
+            self.playrec_c.playrec_tworker.set_audio_mix_db(self.m["mixer_db"])
+
+    def save_mixer_db(self):
+        '''
+        stores the Mixer slider value in config_wizard.yaml
+        '''
+        errorstate, value = auxi.update_configyaml("audio_mixer_db", self.m["mixer_db"])
+        if errorstate:
+            self.logger.error("save_mixer_db: %s", value)
+
+    def restore_mixer_db(self):
+        '''
+        sets the Mixer slider to the last value stored in config_wizard.yaml
+        '''
+        if not hasattr(self.gui, "verticalSlider_Mixer"):   # only in skin 5
+            return
+        errorstate, value = auxi.fetch_configyaml("audio_mixer_db")
+        if errorstate:
+            return
+        try:
+            self.gui.verticalSlider_Mixer.blockSignals(True)
+            self.gui.verticalSlider_Mixer.setValue(int(round(float(value))))
+        except (TypeError, ValueError):
+            self.logger.error("restore_mixer_db: invalid audio_mixer_db: %s", value)
+        finally:
+            self.gui.verticalSlider_Mixer.blockSignals(False)
+        self.m["mixer_db"] = self.gui.verticalSlider_Mixer.value()
+
+    def update_mixer_enabled(self):
+        '''
+        The Mixer slider is only active in the mixed mode IQ band and audio modulator
+        '''
+        if hasattr(self.gui, "frame_Mixer"):   # only in skin 5
+            self.gui.frame_Mixer.setEnabled(self.m["modulator_type"] == "band_and_audio")
 
     def cb_setgain(self):
         '''

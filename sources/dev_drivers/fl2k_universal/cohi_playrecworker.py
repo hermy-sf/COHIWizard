@@ -144,6 +144,10 @@ def _setup_lib_plus(lib, libpath):
     lib.dsp_fl2k_set_pause.argtypes = [VoidP, Int]
     lib.dsp_fl2k_set_gain.restype   = None
     lib.dsp_fl2k_set_gain.argtypes  = [VoidP, Float]
+    lib._has_mix_api = hasattr(lib, "dsp_fl2k_set_audio_mix")
+    if lib._has_mix_api:
+        lib.dsp_fl2k_set_audio_mix.restype  = None
+        lib.dsp_fl2k_set_audio_mix.argtypes = [VoidP, Float]
     lib._has_dither_api = hasattr(lib, "dsp_fl2k_set_dither")
     if lib._has_dither_api:
         lib.dsp_fl2k_set_dither.restype  = None
@@ -436,6 +440,7 @@ class playrec_worker(QObject):
     def __init__(self, sdrcontrol_inst, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.stopix         = False
+        self._audio_mix_db  = 0.0
         self.DATASHOWSIZE   = 1024
         self.mutex          = QMutex()
         self.stemlabcontrol = sdrcontrol_inst
@@ -458,6 +463,8 @@ class playrec_worker(QObject):
     def get_data(self):                return self.__slots__[5]
     def set_gain(self, v):             self.__slots__[6]  = v
     def get_gain(self):                return self.__slots__[6]
+    def set_audio_mix_db(self, v):     self._audio_mix_db = v
+    def get_audio_mix_db(self):        return self._audio_mix_db
     def set_formattag(self, v):        self.__slots__[7]  = v
     def get_formattag(self):           return self.__slots__[7]
     def set_datablocksize(self, v):    self.__slots__[8]  = v
@@ -875,6 +882,17 @@ class playrec_worker(QObject):
         LIB.dsp_fl2k_set_nextfile_cb(handle, _on_nextfile, None)
         LIB.dsp_fl2k_set_finished_cb(handle, _on_finished, None)
 
+        # Runtime mix level: audio_mix_level from config_wizard.yaml times Mixer slider
+        def _send_audio_mix():
+            if LIB._has_mix_api:
+                LIB.dsp_fl2k_set_audio_mix(handle, ctypes.c_float(
+                    (mix_level if mix_level > 0 else 1.0)
+                    * 10.0 ** (self.get_audio_mix_db() / 20.0)
+                ))
+        if not LIB._has_mix_api:
+            print("[fl2k_universal] library without dsp_fl2k_set_audio_mix: Mixer slider has no effect")
+        _send_audio_mix()
+
         # Start
         rc = LIB.dsp_fl2k_start(handle)
         if rc != 0:
@@ -894,6 +912,7 @@ class playrec_worker(QObject):
             LIB.dsp_fl2k_set_gain(
                 handle, ctypes.c_float(float(self.get_gain()) * gain_corr)
             )
+            _send_audio_mix()
             QThread.msleep(50)
 
         # Cleanup

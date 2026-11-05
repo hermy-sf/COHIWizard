@@ -212,6 +212,10 @@ def _load_libdspadlm():
         lib.dsp_adlm_set_pause.argtypes = [ctypes.c_void_p, ctypes.c_int]
         lib.dsp_adlm_set_gain.restype  = None
         lib.dsp_adlm_set_gain.argtypes = [ctypes.c_void_p, ctypes.c_float]
+        lib._has_mix_api = hasattr(lib, "dsp_adlm_set_audio_mix")
+        if lib._has_mix_api:
+            lib.dsp_adlm_set_audio_mix.restype  = None
+            lib.dsp_adlm_set_audio_mix.argtypes = [ctypes.c_void_p, ctypes.c_float]
         lib.dsp_adlm_is_running.restype  = ctypes.c_int
         lib.dsp_adlm_is_running.argtypes = [ctypes.c_void_p]
         lib.dsp_adlm_seek.restype  = None
@@ -271,6 +275,7 @@ class playrec_worker(QObject):
     def __init__(self, stemlabcontrolinst, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.stopix             = False
+        self._audio_mix_db      = 0.0
         self.DATABLOCKSIZE_BASIC = 4096 * 1024 * 4
         self.DATASHOWSIZE       = 1024
         self.mutex              = QMutex()
@@ -307,6 +312,8 @@ class playrec_worker(QObject):
     def get_data(self):                return self.__slots__[5]
     def set_gain(self, v):             self.__slots__[6]  = v
     def get_gain(self):                return self.__slots__[6]
+    def set_audio_mix_db(self, v):     self._audio_mix_db = v
+    def get_audio_mix_db(self):        return self._audio_mix_db
     def set_formattag(self, v):        self.__slots__[7]  = v
     def get_formattag(self):           return self.__slots__[7]
     def set_datablocksize(self, v):    self.__slots__[8]  = v
@@ -950,6 +957,8 @@ class playrec_worker(QObject):
                     ctypes.c_float(audio_rate), ctypes.c_float(mix_level),
                 )
                 _lib_adlm.dsp_adlm_prefill_audio(handle, ctypes.c_int(500))
+                if not _lib_adlm._has_mix_api:
+                    print("[ADALM2000_universal] library without dsp_adlm_set_audio_mix: Mixer slider has no effect")
 
             # Wire callbacks
             _CB_MONITOR  = ctypes.CFUNCTYPE(None, ctypes.POINTER(ctypes.c_float),
@@ -986,6 +995,15 @@ class playrec_worker(QObject):
             _lib_adlm.dsp_adlm_set_nextfile_cb(handle, _nxt_cb, None)
             _lib_adlm.dsp_adlm_set_finished_cb(handle, _fin_cb, None)
             _lib_adlm.dsp_adlm_set_error_cb   (handle, _err_cb, None)
+
+            # Runtime mix level: audio_mix_level from config_wizard.yaml times Mixer slider
+            def _send_audio_mix():
+                if _lib_adlm._has_mix_api:
+                    _lib_adlm.dsp_adlm_set_audio_mix(handle, ctypes.c_float(
+                        (mix_level if mix_level > 0 else 1.0)
+                        * 10.0 ** (self.get_audio_mix_db() / 20.0)
+                    ))
+            _send_audio_mix()
 
             r = _lib_adlm.dsp_adlm_start(handle)
             if r != 0:
@@ -1074,6 +1092,7 @@ class playrec_worker(QObject):
                     break
                 if not use_agc:
                     _lib_adlm.dsp_adlm_set_gain(handle, ctypes.c_float(self.get_gain()))
+                _send_audio_mix()
                 now = time.time()
                 if now - _last_tick >= 1.0:
                     self.SigIncrementCurTime.emit()

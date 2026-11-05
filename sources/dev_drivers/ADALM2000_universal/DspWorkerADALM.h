@@ -82,6 +82,8 @@ int  dsp_adlm_start    (DspADLMHandle h);
 void dsp_adlm_stop     (DspADLMHandle h);
 void dsp_adlm_set_pause(DspADLMHandle h, int paused);
 void dsp_adlm_set_gain (DspADLMHandle h, float gain);
+/* Change mix_level of dsp_adlm_configure_audio at runtime (ramped over one block) */
+void dsp_adlm_set_audio_mix(DspADLMHandle h, float mix_level);
 int  dsp_adlm_is_running(DspADLMHandle h);
 void dsp_adlm_seek(DspADLMHandle h, int64_t byte_pos, int whence);
 

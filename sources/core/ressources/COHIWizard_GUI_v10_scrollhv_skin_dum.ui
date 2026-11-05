@@ -1605,12 +1605,12 @@
                 </property>
                 <property name="icon">
                  <iconset>
-                  <normaloff>../../stop_v4.PNG</normaloff>
+                  <normaloff>icons/stop_v4.PNG</normaloff>
                   <normalon>icons/stop_v4.PNG</normalon>
-                  <activeoff>../../stop_v4.PNG</activeoff>
-                  <activeon>../../stop_v4.PNG</activeon>
-                  <selectedoff>../../stop_v4.PNG</selectedoff>
-                  <selectedon>../../stop_v4.PNG</selectedon>../../stop_v4.PNG</iconset>
+                  <activeoff>icons/stop_v4.PNG</activeoff>
+                  <activeon>icons/stop_v4.PNG</activeon>
+                  <selectedoff>icons/stop_v4.PNG</selectedoff>
+                  <selectedon>icons/stop_v4.PNG</selectedon>icons/stop_v4.PNG</iconset>
                 </property>
                 <property name="iconSize">
                  <size>
@@ -3891,8 +3891,8 @@
                 </property>
                 <property name="icon">
                  <iconset>
-                  <normaloff>../../rew_v4.PNG</normaloff>
-                  <normalon>icons/rew_v4.PNG</normalon>../../rew_v4.PNG</iconset>
+                  <normaloff>icons/rew_v4.PNG</normaloff>
+                  <normalon>icons/rew_v4.PNG</normalon>icons/rew_v4.PNG</iconset>
                 </property>
                 <property name="iconSize">
                  <size>
@@ -7087,12 +7087,12 @@
                 </property>
                 <property name="icon">
                  <iconset>
-                  <normaloff>../../play_v4.PNG</normaloff>
+                  <normaloff>icons/play_v4.PNG</normaloff>
                   <normalon>icons/play_v4.PNG</normalon>
-                  <activeoff>../../play_v4.PNG</activeoff>
-                  <activeon>../../play_v4.PNG</activeon>
-                  <selectedoff>../../play_v4.PNG</selectedoff>
-                  <selectedon>../../play_v4.PNG</selectedon>../../play_v4.PNG</iconset>
+                  <activeoff>icons/play_v4.PNG</activeoff>
+                  <activeon>icons/play_v4.PNG</activeon>
+                  <selectedoff>icons/play_v4.PNG</selectedoff>
+                  <selectedon>icons/play_v4.PNG</selectedon>icons/play_v4.PNG</iconset>
                 </property>
                 <property name="iconSize">
                  <size>
@@ -7572,12 +7572,12 @@ UFL</string>
                 </property>
                 <property name="icon">
                  <iconset>
-                  <normaloff>../../Button_Playlist_Activate.png</normaloff>
-                  <normalon>../../Button_Playlist_Select.png</normalon>
-                  <activeoff>../../Button_Playlist_Activate.png</activeoff>
-                  <activeon>../../Button_Playlist_Select.png</activeon>
-                  <selectedoff>../../Button_Playlist_Activate.png</selectedoff>
-                  <selectedon>../../Button_Playlist_Select.png</selectedon>../../Button_Playlist_Activate.png</iconset>
+                  <normaloff>icons/Button_Playlist_Activate.png</normaloff>
+                  <normalon>icons/Button_Playlist_Select.png</normalon>
+                  <activeoff>icons/Button_Playlist_Activate.png</activeoff>
+                  <activeon>icons/Button_Playlist_Select.png</activeon>
+                  <selectedoff>icons/Button_Playlist_Activate.png</selectedoff>
+                  <selectedon>icons/Button_Playlist_Select.png</selectedon>icons/Button_Playlist_Activate.png</iconset>
                 </property>
                 <property name="iconSize">
                  <size>
@@ -7602,7 +7602,7 @@ UFL</string>
     </item>
    </layout>
   </widget>
-  <widget class="File" name="menubar">
+  <widget class="QMenuBar" name="menubar">
    <property name="geometry">
     <rect>
      <x>0</x>
@@ -7684,13 +7684,6 @@ UFL</string>
    </property>
   </action>
  </widget>
- <customwidgets>
-  <customwidget>
-   <class>File</class>
-   <extends>QMenuBar</extends>
-   <header>file.h</header>
-  </customwidget>
- </customwidgets>
  <resources/>
  <connections/>
 </ui>
