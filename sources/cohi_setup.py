@@ -124,7 +124,8 @@ DRIVERS = {
         "needs": ["libm2k"],
     },
 }
-DEFAULT_DRIVERS = ["fl2k_universal"]
+# preferred default selection, the first one available in the branch is used
+DEFAULT_DRIVERS = ["fl2k_universal", "fl2k_stream", "fl2k"]
 
 FL2K_VID_PID = ("1D5C", "2000")
 M2K_UDEV_RULE = (
@@ -149,6 +150,46 @@ ZADIG_HINT = (
     "  3. select the device with USB ID 1D5C 2000 (often shown as 'FL2000' or 'Interface 0')\n"
     "  4. choose driver 'WinUSB' and press 'Install Driver' / 'Replace Driver'"
 )
+
+
+def driver_spec(name):
+    """Manifest entry of a driver; drivers unknown to this script (e.g. in older
+    branches) only get their own directory, 3rd party needs guessed from the name."""
+    if name in DRIVERS:
+        return DRIVERS[name]
+    low = name.lower()
+    needs = []
+    if "fl2k" in low:
+        needs = ["osmo_fl2k_tools", "zadig"]
+    elif "adalm" in low:
+        needs = ["libm2k"]
+    return {"label": name, "group": "other", "libs": {}, "needs": needs}
+
+
+def driver_order(names):
+    """Known drivers in manifest order, then the others alphabetically."""
+    known = [d for d in DRIVERS if d in names]
+    return known + sorted(n for n in names if n not in DRIVERS)
+
+
+def branch_catalog(tree):
+    """(available optional modules, available drivers) of a branch file list."""
+    modules = [d for d, mod, _ in MODULES if f"sources/{d}/{mod}.py" in tree]
+    drivers = set()
+    for path in tree:
+        parts = path.split("/")
+        if (len(parts) == 4 and parts[:2] == ["sources", "dev_drivers"]
+                and parts[3] == "cohi_playrecworker.py"
+                and not parts[2].startswith(("__", "."))):
+            drivers.add(parts[2])
+    return modules, driver_order(drivers)
+
+
+def default_drivers(available):
+    for d in DEFAULT_DRIVERS:
+        if d in available:
+            return [d]
+    return available[:1]
 
 
 def os_key():
@@ -341,9 +382,13 @@ class Installation:
                 if os.path.isfile(os.path.join(self.sources, d, mod + ".py"))]
 
     def installed_drivers(self):
-        return [d for d in DRIVERS
-                if os.path.isfile(os.path.join(self.sources, "dev_drivers", d,
-                                               "cohi_playrecworker.py"))]
+        base = os.path.join(self.sources, "dev_drivers")
+        try:
+            names = [d for d in os.listdir(base) if not d.startswith(("__", "."))
+                     and os.path.isfile(os.path.join(base, d, "cohi_playrecworker.py"))]
+        except OSError:
+            names = []
+        return driver_order(names)
 
     def save_state(self):
         os.makedirs(self.sources, exist_ok=True)
@@ -368,8 +413,8 @@ def wanted_files(tree, modules, drivers, osk=None):
     libs = set()
     for d in drivers:
         dirs.append(f"sources/dev_drivers/{d}/")
-        libs.update(DRIVERS[d]["libs"].get(osk, []))
-        dirs += DRIVERS[d].get("extra_dirs", {}).get(osk, [])
+        libs.update(driver_spec(d)["libs"].get(osk, []))
+        dirs += driver_spec(d).get("extra_dirs", {}).get(osk, [])
     out = {}
     for path, entry in tree.items():
         if _excluded(path) or path in GENERATED_FILES:
@@ -418,7 +463,7 @@ class Plan:
 def make_plan(inst, tree, modules, drivers):
     plan = Plan()
     plan.modules = [d for d, _, _ in MODULES if d in modules or d in MANDATORY_MODULES]
-    plan.drivers = [d for d in DRIVERS if d in drivers]
+    plan.drivers = driver_order(drivers)
     have_drivers = inst.installed_drivers()
     plan.new_drivers = [d for d in plan.drivers if d not in have_drivers]
     want = wanted_files(tree, plan.modules, plan.drivers)
@@ -436,7 +481,7 @@ def make_plan(inst, tree, modules, drivers):
         if os.path.isfile(inst.p(LIBS_DIR + lib)):
             plan.remove_files.append(LIBS_DIR + lib)
     # extra driver directories (e.g. the osmo-fl2k Windows binaries)
-    needed_extra = {e for d in plan.drivers for e in DRIVERS[d].get("extra_dirs", {}).get(os_key(), [])}
+    needed_extra = {e for d in plan.drivers for e in driver_spec(d).get("extra_dirs", {}).get(os_key(), [])}
     for d in DRIVERS.values():
         for e in d.get("extra_dirs", {}).get(os_key(), []):
             if e not in needed_extra and os.path.isdir(inst.p(e)):
@@ -687,7 +732,7 @@ class Installer:
         if self.dry_run:
             self.ui.log("dry run: 3rd party software is not checked")
             return
-        needs = {n for d in plan.drivers for n in DRIVERS[d]["needs"]}
+        needs = {n for d in plan.drivers for n in driver_spec(d)["needs"]}
         if os_key() == "linux":
             self._linux_packages(needs)
         else:
@@ -695,7 +740,7 @@ class Installer:
         if "libm2k" in needs:
             self.ensure_libm2k()
         if "zadig" in needs and os_key() == "windows":
-            if any("zadig" in DRIVERS[d]["needs"] for d in plan.new_drivers):
+            if any("zadig" in driver_spec(d)["needs"] for d in plan.new_drivers):
                 if self.ui.ask("The FL2K dongle needs the WinUSB driver under Windows.\n"
                                "Download and start Zadig now?\n\n" + ZADIG_HINT):
                     launch_zadig(self.inst.sources, self.ui.log)
@@ -1108,23 +1153,37 @@ def run_headless(args):
     dry = args.dry_run or (inst.git_root is not None and not args.allow_git_tree)
     if dry and not args.dry_run:
         ui.log(f"{inst.git_root} is a git checkout: dry run (use --allow-git-tree to override)")
-    modules = (parse_list(args.modules, [m[0] for m in MODULES], "modules")
-               if args.modules is not None else inst.installed_modules() or [m[0] for m in MODULES])
-    drivers = (parse_list(args.drivers, list(DRIVERS), "drivers")
-               if args.drivers is not None else inst.installed_drivers() or DEFAULT_DRIVERS)
+    branch = args.branch or inst.state.get("branch") or DEFAULT_BRANCH
+    ui.log(f"reading file list of branch {branch} ...")
+    commit, tree = resolve_branch(branch)
+    av_modules, av_drivers = branch_catalog(tree)
+    have_drivers = inst.installed_drivers()
+    # installed drivers which the branch does not have can be kept
+    valid_drivers = driver_order(set(av_drivers) | set(have_drivers))
+    modules = (parse_list(args.modules, av_modules, "modules of branch " + branch)
+               if args.modules is not None else inst.installed_modules() or av_modules)
+    drivers = (parse_list(args.drivers, valid_drivers, "drivers of branch " + branch)
+               if args.drivers is not None else have_drivers or default_drivers(av_drivers))
     if not drivers:
         ui.log("at least one driver must be selected")
         return 1
-    branch = args.branch or inst.state.get("branch") or DEFAULT_BRANCH
-    return 0 if run_install(inst, ui, branch, modules, drivers, dry, not args.no_shortcut) else 1
+    ok = run_install(inst, ui, branch, modules, drivers, dry, not args.no_shortcut, (commit, tree))
+    return 0 if ok else 1
 
 
-def run_install(inst, ui, branch, modules, drivers, dry_run, shortcut=True):
-    ui.log(f"reading file list of branch {branch} ...")
-    commit, tree = resolve_branch(branch)
+def run_install(inst, ui, branch, modules, drivers, dry_run, shortcut=True, resolved=None):
+    if resolved is None:
+        ui.log(f"reading file list of branch {branch} ...")
+        resolved = resolve_branch(branch)
+    commit, tree = resolved
     plan = make_plan(inst, tree, modules, drivers)
     installer = Installer(inst, ui, branch, dry_run)
     installer.apply(commit, tree, plan)
+    # branches without the setup tool (e.g. older ones): keep a copy for the launchers
+    own = os.path.join(inst.sources, "cohi_setup.py")
+    if not dry_run and not os.path.isfile(own) and os.path.isdir(inst.sources):
+        shutil.copy2(os.path.abspath(__file__), own)
+        ui.log("cohi_setup.py copied to " + inst.sources)
     if not installer.pip_install_requirements():
         installer.manual_steps.append(f'"{inst.python}" -m pip install -r requirements.txt')
     installer.ensure_third_party(plan)
@@ -1241,25 +1300,13 @@ def run_gui(args):
                     row += 1
             lay.addWidget(grp)
 
-            grp = QtWidgets.QGroupBox("Device drivers (at least one)")
-            g = QtWidgets.QGridLayout(grp)
+            # filled by load_branch() from the file list of the selected branch
+            self.drv_group = QtWidgets.QGroupBox("Device drivers (at least one)")
+            self.drv_grid = QtWidgets.QGridLayout(self.drv_group)
             self.cb_drv = {}
-            for c, group in enumerate(["universal", "reference"]):
-                hdr = QtWidgets.QLabel("<i>%s</i>" % ("Universal drivers (recommended)" if group == "universal"
-                                                      else "Reference drivers"))
-                g.addWidget(hdr, 0, c)
-                r = 1
-                for d, spec in DRIVERS.items():
-                    if spec["group"] != group:
-                        continue
-                    cb = QtWidgets.QCheckBox(spec["label"])
-                    cb.setToolTip(d)
-                    cb.setChecked(d in have_drv if have_drv else d in DEFAULT_DRIVERS)
-                    cb.toggled.connect(self.check_drivers)
-                    self.cb_drv[d] = cb
-                    g.addWidget(cb, r, c)
-                    r += 1
-            lay.addWidget(grp)
+            self.mod_user = {d: cb.isChecked() for d, cb in self.cb_mod.items()}
+            self.resolved = None
+            lay.addWidget(self.drv_group)
 
             self.cb_shortcut = QtWidgets.QCheckBox("Create launcher and desktop/menu shortcut")
             self.cb_shortcut.setChecked(not args.no_shortcut)
@@ -1298,10 +1345,69 @@ def run_gui(args):
             self.bridge.sig_ask.connect(self.on_ask, Qt.BlockingQueuedConnection)
             self.bridge.sig_info.connect(self.on_info)
             self.worker = None
+            self.load_branch(self.cb_branch.currentText())
+            self.cb_branch.currentTextChanged.connect(self.load_branch)
+
+        def load_branch(self, branch):
+            """read the branch file list and offer only its modules and drivers"""
+            previous = {d: cb.isChecked() for d, cb in self.cb_drv.items()}
+            for d, cb in self.cb_mod.items():
+                if cb.isEnabled():
+                    self.mod_user[d] = cb.isChecked()
+            self.resolved = None
+            QtWidgets.QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                self.resolved = (branch,) + resolve_branch(branch)
+            except Exception as exc:
+                self.append_log(f"cannot read branch {branch}: {exc}")
+            finally:
+                QtWidgets.QApplication.restoreOverrideCursor()
+            tree = self.resolved[2] if self.resolved else {}
+            av_mod, av_drv = branch_catalog(tree)
+            if self.resolved:
+                self.append_log(f"branch {branch}: {len(av_drv)} drivers, "
+                                f"{len(av_mod)} optional modules available")
+            for d, cb in self.cb_mod.items():
+                if d in MANDATORY_MODULES:
+                    continue
+                avail = d in av_mod
+                cb.setEnabled(avail)
+                cb.setChecked(avail and self.mod_user.get(d, False))
+                cb.setToolTip("" if avail else f"not available in branch {branch}")
+            # rebuild the driver checkboxes
+            while self.drv_grid.count():
+                w = self.drv_grid.takeAt(0).widget()
+                if w is not None:
+                    w.deleteLater()
+            have_drv = self.inst.installed_drivers()
+            names = driver_order(set(av_drv) | set(have_drv))
+            defaults = have_drv or default_drivers(av_drv)
+            self.cb_drv = {}
+            titles = {"universal": "Universal drivers (recommended)",
+                      "reference": "Reference drivers", "other": "Drivers of this branch"}
+            col = 0
+            for group in ("universal", "reference", "other"):
+                members = [d for d in names if driver_spec(d)["group"] == group]
+                if not members:
+                    continue
+                self.drv_grid.addWidget(QtWidgets.QLabel(f"<i>{titles[group]}</i>"), 0, col)
+                for r, d in enumerate(members, start=1):
+                    label = driver_spec(d)["label"]
+                    if d not in av_drv:
+                        label += " (installed, not in branch)"
+                    cb = QtWidgets.QCheckBox(label)
+                    cb.setToolTip(d)
+                    cb.setChecked(previous[d] if d in previous else d in defaults)
+                    cb.toggled.connect(self.check_drivers)
+                    self.cb_drv[d] = cb
+                    self.drv_grid.addWidget(cb, r, col)
+                col += 1
+            if not names:
+                self.drv_grid.addWidget(QtWidgets.QLabel("no drivers found"), 0, 0)
             self.check_drivers()
 
         def check_drivers(self):
-            ok = any(cb.isChecked() for cb in self.cb_drv.values())
+            ok = any(cb.isChecked() for cb in self.cb_drv.values()) and self.resolved is not None
             self.bt_apply.setEnabled(ok and self.worker is None)
             self.bt_apply.setToolTip("" if ok else "select at least one driver")
 
@@ -1333,20 +1439,25 @@ def run_gui(args):
                         QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No) != QtWidgets.QMessageBox.Yes:
                     return
             branch = self.cb_branch.currentText()
+            if self.resolved is None or self.resolved[0] != branch:
+                return
+            resolved = self.resolved[1:]
             dry = self.cb_dry.isChecked()
             shortcut = self.cb_shortcut.isChecked()
             self.inst = Installation(args.target, args.python)
             self.bt_apply.setEnabled(False)
             self.bt_start.setEnabled(False)
             self.bt_close.setEnabled(False)
+            self.cb_branch.setEnabled(False)
             self.worker = Worker(lambda: run_install(self.inst, self.gui_ui, branch,
-                                                     modules, drivers, dry, shortcut))
+                                                     modules, drivers, dry, shortcut, resolved))
             self.worker.sig_done.connect(self.finished)
             self.worker.start()
 
         def finished(self, ok, err):
             self.worker = None
             self.bt_close.setEnabled(True)
+            self.cb_branch.setEnabled(True)
             self.check_drivers()
             if not ok:
                 self.append_log("ERROR: " + err)
@@ -1382,7 +1493,7 @@ def build_parser():
     ap.add_argument("--branch", help=f"GitHub branch (default {DEFAULT_BRANCH} or the installed one)")
     ap.add_argument("--modules", help="comma separated optional modules: "
                     + ",".join(m[0] for m in MODULES if m[0] not in MANDATORY_MODULES))
-    ap.add_argument("--drivers", help="comma separated drivers: " + ",".join(DRIVERS))
+    ap.add_argument("--drivers", help="comma separated drivers of the branch, e.g. " + ",".join(DRIVERS))
     ap.add_argument("--no-gui", action="store_true", help="no GUI, use --modules/--drivers")
     ap.add_argument("--yes", action="store_true", help="answer all questions with yes")
     ap.add_argument("--dry-run", action="store_true", help="only show what would be done")
