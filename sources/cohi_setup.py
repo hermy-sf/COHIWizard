@@ -991,6 +991,47 @@ def default_target():
     return os.path.expanduser("~/COHIWizard")
 
 
+def create_venv(venv_dir, ui):
+    """python -m venv; on Debian/Ubuntu install the missing venv package after confirmation."""
+    cmd = [sys.executable, "-m", "venv", venv_dir]
+    if is_arm():
+        cmd.insert(3, "--system-site-packages")
+    for attempt in range(2):
+        ui.log("creating virtual environment " + venv_dir)
+        if subprocess.run(cmd).returncode == 0 and os.path.isfile(venv_python(venv_dir)):
+            return True
+        shutil.rmtree(venv_dir, ignore_errors=True)
+        if attempt == 1 or os_key() != "linux" or not install_venv_package(ui):
+            break
+    ui.log("creating the venv failed.")
+    if os_key() == "linux":
+        ui.log(f"On Debian/Ubuntu install it with:  sudo apt install python3.{sys.version_info[1]}-venv "
+               "(or python3-venv) and run the setup again.")
+    return False
+
+
+def install_venv_package(ui):
+    """apt-get install python3.X-venv (fallback python3-venv) with sudo; True if it ran."""
+    if not shutil.which("apt-get"):
+        return False
+    pkg = f"python3.{sys.version_info[1]}-venv"
+    if not ui.ask(f"The Python package '{pkg}' (venv support) is missing.\n"
+                  f"Install it now with apt (needs administrator rights)?"):
+        return False
+    script = f"apt-get update && (apt-get install -y {pkg} || apt-get install -y python3-venv)"
+    if os.geteuid() == 0:
+        cmd = ["sh", "-c", script]
+    elif shutil.which("sudo") and sys.stdin and sys.stdin.isatty():
+        cmd = ["sudo", "sh", "-c", script]
+    elif shutil.which("pkexec") and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        cmd = ["pkexec", "sh", "-c", script]
+    else:
+        ui.log("no way to obtain administrator rights")
+        return False
+    ui.log("$ " + " ".join(cmd))
+    return subprocess.run(cmd).returncode == 0
+
+
 def bootstrap(args):
     ui = ConsoleUI(args.yes)
     if not (PY_MIN <= sys.version_info[:2] <= PY_MAX):
@@ -1014,16 +1055,7 @@ def bootstrap(args):
     venv_dir = os.path.join(target, "venv")
     py = venv_python(venv_dir)
     if not os.path.isfile(py):
-        ui.log("creating virtual environment " + venv_dir)
-        cmd = [sys.executable, "-m", "venv", venv_dir]
-        if is_arm():
-            cmd.insert(3, "--system-site-packages")
-        if subprocess.run(cmd).returncode != 0 or not os.path.isfile(py):
-            ui.log("creating the venv failed.")
-            if os_key() == "linux":
-                ui.log(f"On Debian/Ubuntu install it with:  sudo apt install python3-venv "
-                       f"(or python3.{sys.version_info[1]}-venv) and run the setup again.")
-            shutil.rmtree(venv_dir, ignore_errors=True)
+        if not create_venv(venv_dir, ui):
             return 1
         if is_arm():
             ui.log("ARM: PyQt5 is taken from the system, install it with: "
