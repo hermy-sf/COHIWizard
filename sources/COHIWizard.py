@@ -581,6 +581,10 @@ class core_v(QObject):
             self.gui.actionopen_pdf.triggered.connect(self.open_pdf)
         except:
             print("no pdf reading option available, old skin") 
+        # Setup menu: install/remove modules and drivers with cohi_setup.py
+        self.gui.menuSetup = self.gui.menubar.addMenu("Setup")
+        self.gui.actionSetup = self.gui.menuSetup.addAction("Install / remove modules and drivers ...")
+        self.gui.actionSetup.triggered.connect(self.open_setup)
         #
         self.gui.Mainwindowreference.SigResize.connect(self.resizehandler)
         ###TODO: re-organize, there should be no access to gui elements of other modules
@@ -774,6 +778,27 @@ class core_v(QObject):
     #             self.gui.lineEdit_IPAddress.setCursorPosition(cursor + 1)  # Move cursor to the next field
     #             return True  # Ignore default Tab key behavior
     #     return super().eventFilter(source, event)
+
+    def open_setup(self):
+        """close COHIWizard and start the setup tool cohi_setup.py with the running interpreter;
+        COHIWizard must not run while the setup replaces files and rewrites the configuration
+        :return: none"""
+        sources_dir = os.path.dirname(os.path.abspath(__file__))
+        setup = os.path.join(sources_dir, "cohi_setup.py")
+        if not os.path.isfile(setup):
+            auxi.standard_errorbox(f"setup tool not found: {setup}")
+            return
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Question)
+        msg.setWindowTitle("COHIWizard setup")
+        msg.setText("COHIWizard will be closed and the setup tool started.")
+        msg.setInformativeText("After the setup COHIWizard can be started again from the setup window. Continue?")
+        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        if msg.exec_() != QMessageBox.Yes:
+            return
+        subprocess.Popen([sys.executable, setup, "--stage2", "--target", os.path.dirname(sources_dir),
+                          "--python", sys.executable], cwd=sources_dir)
+        self.gui.Mainwindowreference.close()
 
     def open_pdf(self):
         """open and display the COHIWizard user manual PDF in a separate window

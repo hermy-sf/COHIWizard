@@ -706,6 +706,24 @@ class playrec_c(QObject):
 
     def errorsigmanager(self,message):
         auxi.standard_errorbox(message)
+        if platform.system() == "Windows" and ("fl2k" in message.lower() or "dongle" in message.lower()):
+            self.fl2k_driver_check()
+
+    def fl2k_driver_check(self):
+        """Windows: if an FL2K dongle is plugged in but has no WinUSB driver, offer to start Zadig
+        (once per session)"""
+        if getattr(self, "_fl2k_driver_checked", False):
+            return
+        self._fl2k_driver_checked = True
+        try:
+            import cohi_setup
+            if cohi_setup.windows_fl2k_driver_state() != "missing":
+                return
+            if self.query("The FL2K dongle is connected but has no WinUSB driver. \n \n"
+                          "Start Zadig now to install the driver ? \n \n" + cohi_setup.ZADIG_HINT):
+                cohi_setup.launch_zadig(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        except Exception as e:
+            self.logger.error(f"fl2k driver check / Zadig failed: {e}")
 
     def recordingsequence(self,expected_seconds):
         """handle recordig of a file:
@@ -853,6 +871,13 @@ class playrec_c(QObject):
             if errorstate:
                 self.errorhandler(value)
 
+    def iqfile_keep_loaded(self):
+        """True if f1 is a real IQ file that stays loaded after STOP/EOF.
+        The synthesizer dummy 'no_file.dat' is never kept.
+        """
+        _f1 = self.m.get("f1", "")
+        return bool(_f1) and _f1 != "no_file.dat" and os.path.isfile(_f1)
+
     def EOF_manager(self):
         """_target of SigFinished from playloop. If signal is received, a decision is made whether 
             to stop the player completely, 
@@ -886,7 +911,10 @@ class playrec_c(QObject):
         # and/or race the old device's still-in-progress native close.
         self.m["playthreadActive"] = False
         #prfilehandle.close() ###TODO TODO TODO: obsolete, file is closed by tworker
-        self.m["fileopened"] = False #OBSOLETE ?
+        # Do not unload a real IQ file here: this runs asynchronously after
+        # STOP, i.e. after reset_playerbuttongroup() has already kept the
+        # file loaded; an unconditional False made the next Play fail once.
+        self.m["fileopened"] = self.iqfile_keep_loaded()
         #self.SigRelay.emit("cm_all_",["fileopened",False]) ####TODO geht nicht
         self.m["wavheader"]['nextfilename'] = self.m["wavheader"]['nextfilename'].rstrip() ###TODO TODO TODO: obsolete, file is closed by tworker
         if self.m["stopstate"] == True:
@@ -2499,8 +2527,7 @@ class playrec_v(QObject):
         # Keep a real IQ file loaded after STOP/EOF so Play can restart it.
         # Only the synthesizer dummy (f1 = 'no_file.dat', fileopened forced
         # True at Play for modulator/audio_only devices) is unloaded.
-        _f1 = self.m.get("f1", "")
-        _keep = bool(_f1) and _f1 != "no_file.dat" and os.path.isfile(_f1)
+        _keep = self.playrec_c.iqfile_keep_loaded()
         self.m["fileopened"] = _keep
         self.SigRelay.emit("cm_all_",["fileopened",_keep])
         self.gui.radioButton_LO_bias.setEnabled(True)
