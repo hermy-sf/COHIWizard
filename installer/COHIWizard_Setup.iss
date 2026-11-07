@@ -53,8 +53,8 @@ Name: "de"; MessagesFile: "compiler:Languages\German.isl"
 Name: "en"; MessagesFile: "compiler:Default.isl"
 
 [CustomMessages]
-de.StatusSetup=COHIWizard-Setup läuft (Python-Pakete, danach Fenster "COHIWizard setup") ...
-en.StatusSetup=Running COHIWizard setup (Python packages, then the "COHIWizard setup" window) ...
+de.StatusSetup=Python-Pakete werden installiert (Konsolenfenster). Das kann 10 - 30 Minuten dauern, bitte Geduld. Danach öffnet sich das Fenster "COHIWizard setup".
+en.StatusSetup=Installing the Python packages (console window). This can take 10 - 30 minutes, please be patient. Then the "COHIWizard setup" window opens.
 de.SetupFailed=Das COHIWizard-Setup wurde mit Fehler %1 beendet.%n%nDie Meldungen stehen im Konsolenfenster. Sie können das Setup später über das Startmenü (COHIWizard Setup) erneut ausführen.
 en.SetupFailed=COHIWizard setup ended with error %1.%n%nSee the messages in the console window. You can run the setup again later from the start menu (COHIWizard Setup).
 de.ExecFailed=cohi_setup.py konnte nicht gestartet werden: %1

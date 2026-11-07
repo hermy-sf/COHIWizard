@@ -713,7 +713,6 @@ class Installer:
         sha = blob_sha(req)
         if self.inst.state.get("requirements_sha") == sha:
             return True
-        self.ui.log("installing Python packages (requirements.txt) ...")
         ok = pip_install(self.inst.python, req, self.ui.log)
         if ok:
             self.inst.state["requirements_sha"] = sha
@@ -1022,12 +1021,47 @@ def enable_system_site_packages(venv_dir, log):
         log(f"cannot change {cfg}: {exc}")
 
 
-def run_logged(cmd, log, cwd=None):
+def run_logged(cmd, log, cwd=None, heartbeat=None):
+    """Run cmd and log its output; with heartbeat=N seconds a 'still working'
+    line is logged whenever the command has been silent for N seconds."""
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             cwd=cwd, text=True, errors="replace")
-    for line in proc.stdout:
-        log("  " + line.rstrip())
-    return proc.wait()
+    if not heartbeat:
+        for line in proc.stdout:
+            log("  " + line.rstrip())
+        return proc.wait()
+    start = time.monotonic()
+    last = [start]
+    done = threading.Event()
+
+    def ticker():
+        while not done.wait(5):
+            now = time.monotonic()
+            if now - last[0] >= heartbeat:
+                last[0] = now
+                mins = int(now - start) // 60
+                log(f"  ... still working ({mins} min elapsed), please wait ...")
+
+    t = threading.Thread(target=ticker, daemon=True)
+    t.start()
+    try:
+        for line in proc.stdout:
+            last[0] = time.monotonic()
+            log("  " + line.rstrip())
+        return proc.wait()
+    finally:
+        done.set()
+
+
+PIP_PATIENCE = (
+    "\n"
+    "************************************************************************\n"
+    "  Installing the Python packages (PyQt5, numpy, scipy, matplotlib, ...).\n"
+    "  This is the longest step of the installation: depending on the\n"
+    "  internet connection and the virus scanner it can take 10 - 30 minutes.\n"
+    "  Especially PyQt5 may run for several minutes without any new output.\n"
+    "  Please be patient and do NOT close this window.\n"
+    "************************************************************************\n")
 
 
 def pip_install(python, requirements, log):
@@ -1039,7 +1073,8 @@ def pip_install(python, requirements, log):
         req = os.path.join(tempfile.gettempdir(), "cohi_requirements_arm.txt")
         with open(req, "w") as fh:
             fh.writelines(lines)
-    rc = run_logged([python, "-m", "pip", "install", "-r", req], log)
+    log(PIP_PATIENCE)
+    rc = run_logged([python, "-m", "pip", "install", "-r", req], log, heartbeat=60)
     if rc != 0:
         log("pip install failed")
     return rc == 0
@@ -1177,7 +1212,6 @@ def bootstrap(args):
     except Exception as exc:
         ui.log(f"cannot download requirements.txt from GitHub ({exc}); check the internet connection")
         return 1
-    ui.log("installing Python packages, this takes a few minutes ...")
     if not pip_install(py, req, ui.log):
         return 1
     inst.state["requirements_sha"] = blob_sha(req)
