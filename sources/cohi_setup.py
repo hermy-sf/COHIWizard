@@ -802,6 +802,7 @@ class Installer:
     def ensure_libm2k(self):
         if self._venv_has("libm2k"):
             self.ui.log("libm2k: present")
+            self._win_unify_libusb()     # also repairs earlier installations
         elif self.ui.ask("The ADALM2000 drivers need libm2k (Analog Devices).\nInstall libm2k now?"):
             try:
                 self._install_libm2k()
@@ -850,13 +851,15 @@ class Installer:
                     with open(wpath, "wb") as fh:
                         fh.write(z.read(whl[0]))
                     self._pip_wheel(wpath)
-                    # native dlls next to _libm2k.pyd (found via the dll load dir)
+                    # native dlls next to _libm2k.pyd (found via the dll load dir);
+                    # libusb-1.0.dll is replaced by the FL2K one, see _win_unify_libusb
                     for n in names:
                         base_name = n.rsplit("/", 1)[-1]
                         if n.count("/") == 1 and base_name.endswith(".dll") and "sharp" not in base_name \
                                 and not base_name.endswith("_lv.dll"):
                             with open(os.path.join(platlib, base_name), "wb") as fh:
                                 fh.write(z.read(n))
+                    self._win_unify_libusb(platlib)
             elif is_arm():
                 arch = "arm64" if platform.machine().lower() in ("aarch64", "arm64") else "armhf"
                 zpath = os.path.join(tmpdir, "m2k.zip")
@@ -893,6 +896,39 @@ class Installer:
             self.ui.log("libm2k installed")
         else:
             raise RuntimeError("libm2k cannot be imported after installation")
+
+    def _win_unify_libusb(self, platlib=None):
+        """Windows: only one libusb-1.0.dll can live in a process (DLLs are bound
+        by name). libm2k ships libusb 1.0.24, osmo-fl2k needs its own 1.0.28;
+        whichever is loaded first is used by both, and libosmo-fl2k crashes
+        (access violation in fl2k_open) with the old one. So the copy in the
+        venv is replaced by the FL2K one (libusb keeps its ABI within 1.0.x)."""
+        if os_key() != "windows" or self.dry_run:
+            return
+        try:
+            platlib = platlib or self._venv_info()[1]
+        except (OSError, subprocess.CalledProcessError):
+            return
+        dest = os.path.join(platlib, "libusb-1.0.dll")
+        if not os.path.isfile(dest):
+            return
+        path = LIBS_DIR + "libusb-1.0.dll"
+        local = self.inst.p(path)
+        try:
+            if os.path.isfile(local):
+                with open(local, "rb") as fh:
+                    data = fh.read()
+            else:
+                data = http_get(raw_url(self.branch, path), timeout=120)
+            with open(dest, "rb") as fh:
+                if fh.read() == data:
+                    return
+            with open(dest, "wb") as fh:
+                fh.write(data)
+            self.ui.log("libusb-1.0.dll in the venv replaced by the FL2K version")
+        except Exception as exc:
+            self.ui.log(f"cannot replace libusb-1.0.dll in the venv ({exc}); "
+                        "FL2K drivers may crash while libm2k is loaded")
 
     def _pip_wheel(self, wpath):
         rc = run_logged([self.inst.python, "-m", "pip", "install", "--no-deps", wpath], self.ui.log)
