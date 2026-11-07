@@ -42,6 +42,25 @@ import subprocess
 _console_log = None
 
 
+def hide_child_consoles():
+    """Windows, started without console (pythonw.exe): every console program
+    started via subprocess (ffmpeg, curl, ...) would open its own, empty
+    console window on top of the GUI. Add CREATE_NO_WINDOW to all subprocess
+    calls of all modules, unless a caller explicitly asks for a new console."""
+    if os.name != "nt" or getattr(subprocess.Popen, "_cohi_no_window", False):
+        return
+    _orig_init = subprocess.Popen.__init__
+
+    def _init(self, *args, **kwargs):
+        flags = kwargs.get("creationflags") or 0
+        if not flags & subprocess.CREATE_NEW_CONSOLE:
+            kwargs["creationflags"] = flags | subprocess.CREATE_NO_WINDOW
+        _orig_init(self, *args, **kwargs)
+
+    subprocess.Popen.__init__ = _init
+    subprocess.Popen._cohi_no_window = True
+
+
 def redirect_console_to_logfile():
     """Without a console (pythonw.exe: start menu entry, desktop shortcut,
     COHIWizard.bat) sys.stdout and sys.stderr are None: all messages are lost
@@ -67,6 +86,7 @@ def redirect_console_to_logfile():
         faulthandler.enable(file=_console_log)
     except (ValueError, OSError):
         pass
+    hide_child_consoles()
     print(f"COHIWizard started {datetime.now():%Y-%m-%d %H:%M:%S} without console, "
           f"messages go to {log}")
 
