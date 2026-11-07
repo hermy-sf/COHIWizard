@@ -169,3 +169,7 @@ MWLIST_Volltabelle_old.xlsx
 *.png
 *.xlsx
 *.docx
+
+# Windows installer build output
+installer/build/
+installer/Output/

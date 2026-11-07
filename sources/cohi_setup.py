@@ -36,6 +36,7 @@ import json
 import os
 import platform
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -209,6 +210,22 @@ def py_tag(version_info=None):
 # HTTP / GitHub
 # ---------------------------------------------------------------------------
 _UA = {"User-Agent": "COHIWizard-setup"}
+
+# Prefer IPv4: networks which announce IPv6 addresses but do not route IPv6
+# are not rare. Then every connection to a dual stack host (e.g.
+# raw.githubusercontent.com) first waits for an IPv6 timeout, and downloading
+# a few hundred files takes many minutes. IPv6 addresses stay in the list as
+# fallback, so IPv6-only networks still work. Only enabled when the setup
+# runs (main), not when COHIWizard imports this module.
+_orig_getaddrinfo = socket.getaddrinfo
+
+
+def _getaddrinfo_ipv4_first(*args, **kwargs):
+    return sorted(_orig_getaddrinfo(*args, **kwargs), key=lambda ai: ai[0] != socket.AF_INET)
+
+
+def prefer_ipv4():
+    socket.getaddrinfo = _getaddrinfo_ipv4_first
 
 
 def http_get(url, headers=None, timeout=60, retries=3):
@@ -1566,6 +1583,7 @@ def build_parser():
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
+    prefer_ipv4()
     if not args.stage2:
         return bootstrap(args)
     args.target = os.path.abspath(args.target or os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
