@@ -48,7 +48,7 @@ import zipfile
 from concurrent.futures import ThreadPoolExecutor
 
 REPO = "hermy-sf/COHIWizard"
-DEFAULT_BRANCH = "main"
+DEFAULT_BRANCH = "cohiwizard_v2.3"  # TODO: back to "main" after merging v2.3
 PY_MIN = (3, 10)
 PY_MAX = (3, 13)
 STATE_FILE = ".cohi_setup_state.json"

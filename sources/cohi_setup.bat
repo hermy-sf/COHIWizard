@@ -27,7 +27,7 @@ if not defined PYEXE (
 
 if not exist "%SETUP%" (
     echo Downloading cohi_setup.py ...
-    powershell -NoProfile -Command "Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/hermy-sf/COHIWizard/main/sources/cohi_setup.py -OutFile '%SETUP%'"
+    powershell -NoProfile -Command "Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/hermy-sf/COHIWizard/cohiwizard_v2.3/sources/cohi_setup.py -OutFile '%SETUP%'"
     if errorlevel 1 goto :fail
 )
 
