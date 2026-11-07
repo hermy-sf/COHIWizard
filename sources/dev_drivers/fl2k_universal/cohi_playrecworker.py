@@ -45,6 +45,9 @@ import psutil
 import yaml
 from PyQt5.QtCore import QObject, QMutex, QThread, pyqtSignal
 
+from dev_drivers.playlist_paths import (resolve_csv_source, is_playlist, is_url,
+                                        read_m3u, check_local_file, skipped_message)
+
 # AVC level calibration relative to fl2k_stream (reference driver).
 # showRFdata (playrec) computes the AVC volume from the monitor data (IQ,
 # interleaved re/im) times the slider gain and regulates towards
@@ -377,7 +380,7 @@ def parse_audio_playlist(csv_path: str) -> list:
                           f"'{freq_s}'/'{bw_s}' – skipped")
                     continue
                 stations.append({"freq_hz": freq_hz, "bw_hz": bw_hz,
-                                 "name": name_s, "url": url_s})
+                                 "name": name_s, "url": resolve_csv_source(url_s, csv_path)})
     except OSError as exc:
         print(f"[fl2k_universal] Cannot read playlist '{csv_path}': {exc}")
     return stations
@@ -484,6 +487,7 @@ class playrec_worker(QObject):
                               audio_rate: int, mod_index: float,
                               ffmpeg_bin: str) -> list:
         channels = []
+        skipped = []
         N_total = len(stations)
         for idx, sta in enumerate(stations):
             port      = base_port + idx
@@ -494,28 +498,21 @@ class playrec_worker(QObject):
 
             _url_lower    = url.lower()
             _is_http      = _url_lower.startswith(("http://", "https://", "rtsp://"))
-            _is_local_m3u = (
-                _url_lower.endswith((".m3u", ".m3u8", ".pls")) and not _is_http
-            )
+            _is_local_m3u = is_playlist(url)
+
+            _problem = check_local_file(url)
+            if _problem:
+                print(f"[fl2k_universal] '{name}': {_problem} – skipped.")
+                skipped.append((name, _problem))
+                continue
 
             if _is_local_m3u:
-                _entries = []
-                try:
-                    with open(url, "r", encoding="utf-8", errors="replace") as _mf:
-                        for _line in _mf:
-                            _line = _line.strip()
-                            if _line and not _line.startswith("#"):
-                                _entries.append(_line)
-                except OSError as _exc:
-                    print(f"[fl2k_universal] Cannot read m3u '{url}': {_exc}")
-
-                _local_files = [e for e in _entries if os.path.isfile(e)]
-                _web_urls    = [e for e in _entries
-                                if e.lower().startswith(("http://", "https://"))]
-                _entries = _local_files + _web_urls
-                if not _entries:
-                    print(f"[fl2k_universal] m3u '{url}': no valid files or URLs – skipped.")
+                _entries, _problem = read_m3u(url)
+                if _problem:
+                    print(f"[fl2k_universal] '{name}': {_problem} – skipped.")
+                    skipped.append((name, _problem))
                     continue
+                _web_urls = [e for e in _entries if is_url(e)]
 
                 import tempfile as _tf
                 _cf = _tf.NamedTemporaryFile(
@@ -600,7 +597,10 @@ class playrec_worker(QObject):
                 })
             except OSError as exc:
                 print(f"[fl2k_universal] Failed to start ffmpeg for '{name}': {exc}")
+                skipped.append((name, f"ffmpeg could not be started ({exc})"))
 
+        if skipped:
+            self.SigInfomessage.emit(skipped_message(skipped))
         return channels
 
     def _stop_audio_streams(self):

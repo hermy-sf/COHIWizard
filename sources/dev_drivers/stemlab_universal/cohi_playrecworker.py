@@ -35,6 +35,9 @@ import numpy as np
 import yaml
 from PyQt5.QtCore import QObject, QMutex, QThread, pyqtSignal
 
+from dev_drivers.playlist_paths import (resolve_csv_source, is_playlist, is_url,
+                                        read_m3u, check_local_file, skipped_message)
+
 # AVC level calibration relative to fl2k_stream (reference driver).
 # showRFdata (playrec) computes the AVC volume from the monitor data times the
 # slider gain and regulates towards AGC_targetvolume (0.9 for all drivers).
@@ -206,7 +209,7 @@ def parse_audio_playlist(csv_path: str) -> list:
                     print(f"[stemlab_universal] CSV line {lineno}: cannot parse '{freq_s}'/'{bw_s}' – skipped")
                     continue
                 stations.append({"freq_hz": freq_hz, "bw_hz": bw_hz,
-                                 "name": name_s, "url": url_s})
+                                 "name": name_s, "url": resolve_csv_source(url_s, csv_path)})
     except OSError as exc:
         print(f"[stemlab_universal] Cannot read playlist '{csv_path}': {exc}")
     return stations
@@ -435,7 +438,8 @@ class playrec_worker(QObject):
 
     def _build_ffmpeg_cmd(self, sta: dict, port: int, audio_rate: int,
                           ffmpeg_bin: str, pcm_format: str = "s16le") -> tuple:
-        """Return (ffmpeg_cmd, curl_cmd_or_None) for one station.
+        """Return (ffmpeg_cmd, curl_cmd_or_None) for one station, or
+        (None, reason) if the station cannot be played (reason for the GUI).
 
         pcm_format: "s16le" for Python _AudioBuffer path (2 bytes/sample),
                     "u8"    for C++ libdspflmod path (1 byte/sample, 0–255).
@@ -447,27 +451,21 @@ class playrec_worker(QObject):
 
         _url_lower    = url.lower()
         _is_http      = _url_lower.startswith(("http://", "https://", "rtsp://"))
-        _is_local_m3u = _url_lower.endswith((".m3u", ".m3u8", ".pls")) and not _is_http
+        _is_local_m3u = is_playlist(url)
 
         _curl_cmd = None
 
+        _problem = check_local_file(url)
+        if _problem:
+            print(f"[stemlab_universal] '{sta['name']}': {_problem} – channel skipped.")
+            return None, _problem
+
         if _is_local_m3u:
-            _entries = []
-            try:
-                with open(url, "r", encoding="utf-8", errors="replace") as _mf:
-                    for _line in _mf:
-                        _line = _line.strip()
-                        if _line and not _line.startswith("#"):
-                            _entries.append(_line)
-            except OSError as _exc:
-                print(f"[stemlab_universal] Cannot read m3u '{url}': {_exc}")
-            _local_files = [e for e in _entries if os.path.isfile(e)]
-            _web_urls    = [e for e in _entries
-                            if e.lower().startswith(("http://", "https://"))]
-            _entries = _local_files + _web_urls
-            if not _entries:
-                print(f"[stemlab_universal] m3u '{url}': no valid files or URLs – channel skipped.")
-                return None, None
+            _entries, _problem = read_m3u(url)
+            if _problem:
+                print(f"[stemlab_universal] '{sta['name']}': {_problem} – channel skipped.")
+                return None, _problem
+            _web_urls = [e for e in _entries if is_url(e)]
             _cf = tempfile.NamedTemporaryFile(
                 mode="w", suffix=".txt", prefix="stemeff_concat_",
                 delete=False, encoding="utf-8"
@@ -518,11 +516,13 @@ class playrec_worker(QObject):
         """Start ffmpeg + _AudioBuffer per station (IQ+Audio mode)."""
         self._kill_orphaned_ffmpeg(base_port, len(stations))
         channels = []
+        skipped  = []
         N_total  = len(stations)
         for idx, sta in enumerate(stations):
             port = base_port + idx
             cmd, curl_cmd = self._build_ffmpeg_cmd(sta, port, audio_rate, ffmpeg_bin)
             if cmd is None:
+                skipped.append((sta["name"], curl_cmd))
                 continue
             _logfile = pathlib.Path(tempfile.gettempdir()) / f"stemeff_ffmpeg_ch{idx}.log"
             try:
@@ -557,6 +557,9 @@ class playrec_worker(QObject):
                 })
             except OSError as exc:
                 print(f"[stemlab_universal] Failed to start ffmpeg for '{sta['name']}': {exc}")
+                skipped.append((sta["name"], f"ffmpeg could not be started ({exc})"))
+        if skipped:
+            self.SigInfomessage.emit(skipped_message(skipped))
         return channels
 
     def _start_ffmpeg_procs(self, stations: list, base_port: int,
@@ -566,12 +569,14 @@ class playrec_worker(QObject):
         Uses u8 PCM format: the C++ mix_audio_block_fast reads bytes as unsigned 8-bit
         (value 0–255, centre 128), matching how fl2k_universal feeds its C++ engine.
         """
+        skipped = []
         for idx, sta in enumerate(stations):
             port = base_port + idx
             cmd, curl_cmd = self._build_ffmpeg_cmd(
                 sta, port, audio_rate, ffmpeg_bin, pcm_format="u8"
             )
             if cmd is None:
+                skipped.append((sta["name"], curl_cmd))
                 continue
             _logfile = pathlib.Path(tempfile.gettempdir()) / f"stemeff_ffmpeg_ch{idx}.log"
             try:
@@ -597,6 +602,9 @@ class playrec_worker(QObject):
                 self._ffmpeg_procs.append(proc)
             except OSError as exc:
                 print(f"[stemlab_universal] Failed to start ffmpeg for '{sta['name']}': {exc}")
+                skipped.append((sta["name"], f"ffmpeg could not be started ({exc})"))
+        if skipped:
+            self.SigInfomessage.emit(skipped_message(skipped))
 
     def _stop_audio_streams(self):
         for proc in self._ffmpeg_procs:

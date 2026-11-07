@@ -62,7 +62,8 @@ INFO_FILE = ".info"
 # except config_modules.yaml, which is generated.
 CORE_FILES = ["requirements.txt", "LICENSE", "README.md",
               "documentation/UserManual_COHIWizard.pdf",
-              "sources/dev_drivers/__init__.py"]
+              "sources/dev_drivers/__init__.py",
+              "sources/dev_drivers/playlist_paths.py"]   # used by the universal drivers
 CORE_DIRS = ["sources/core/", "sources/player/", "sources/resampler/",
              "sources/logos/"]
 GENERATED_FILES = ["sources/config_modules.yaml"]
