@@ -1599,7 +1599,34 @@ def run_gui(args):
                 self.start_wizard()
 
         def start_wizard(self):
-            subprocess.Popen([self.inst.python, "COHIWizard.py"], cwd=self.inst.sources)
+            # Start COHIWizard detached from the setup and its console: on
+            # Windows 11 (Windows Terminal) closing the installer's console
+            # window would otherwise also end the just started COHIWizard.
+            py = self.inst.python
+            if os_key() == "windows":
+                pyw = os.path.join(os.path.dirname(py), "pythonw.exe")
+                if os.path.isfile(pyw):
+                    cmd = [pyw, "COHIWizard.py"]
+                    flags = subprocess.DETACHED_PROCESS
+                else:
+                    # python.exe of a venv is a launcher: detached, the real
+                    # interpreter would open a visible console -> hidden one
+                    cmd = [py, "COHIWizard.py"]
+                    flags = subprocess.CREATE_NO_WINDOW
+                flags |= subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_BREAKAWAY_FROM_JOB
+                try:
+                    subprocess.Popen(cmd, cwd=self.inst.sources, creationflags=flags,
+                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                     stderr=subprocess.DEVNULL, close_fds=True)
+                except OSError:
+                    # breakaway not allowed by the job object of the caller
+                    subprocess.Popen(cmd, cwd=self.inst.sources,
+                                     creationflags=flags & ~subprocess.CREATE_BREAKAWAY_FROM_JOB,
+                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                     stderr=subprocess.DEVNULL, close_fds=True)
+            else:
+                subprocess.Popen([py, "COHIWizard.py"], cwd=self.inst.sources,
+                                 start_new_session=True)
             self.close()
 
         def closeEvent(self, ev):

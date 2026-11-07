@@ -61,14 +61,30 @@ def hide_child_consoles():
     subprocess.Popen._cohi_no_window = True
 
 
+def _without_console():
+    """True if there is no console to show messages: pythonw.exe (sys.stdout
+    and sys.stderr are None) or, on Windows, a process without console window
+    (e.g. started detached by the setup with output to NUL)."""
+    if sys.stdout is None or sys.stderr is None:
+        return True
+    if os.name == "nt":
+        try:
+            import ctypes
+            return ctypes.windll.kernel32.GetConsoleWindow() == 0
+        except (AttributeError, OSError):
+            return False
+    return False
+
+
 def redirect_console_to_logfile():
     """Without a console (pythonw.exe: start menu entry, desktop shortcut,
-    COHIWizard.bat) sys.stdout and sys.stderr are None: all messages are lost
-    and code that writes to them directly fails. In that case everything is
-    written to COHIWizard_console.log next to this file (previous run:
-    COHIWizard_console_previous.log), including crashes in the C libraries."""
+    COHIWizard.bat, start from the setup) messages are lost and code that
+    writes to sys.stdout/sys.stderr directly fails (they are None). In that
+    case everything is written to COHIWizard_console.log next to this file
+    (previous run: COHIWizard_console_previous.log), including crashes in
+    the C libraries, and child processes get no console windows."""
     global _console_log
-    if sys.stdout is not None and sys.stderr is not None:
+    if not _without_console():
         return
     import faulthandler
     log = os.path.join(os.path.dirname(os.path.abspath(__file__)), "COHIWizard_console.log")
@@ -78,10 +94,8 @@ def redirect_console_to_logfile():
         _console_log = open(log, "w", encoding="utf-8", errors="replace", buffering=1)
     except OSError:
         _console_log = open(os.devnull, "w")
-    if sys.stdout is None:
-        sys.stdout = _console_log
-    if sys.stderr is None:
-        sys.stderr = _console_log
+    sys.stdout = _console_log
+    sys.stderr = _console_log
     try:
         faulthandler.enable(file=_console_log)
     except (ValueError, OSError):
