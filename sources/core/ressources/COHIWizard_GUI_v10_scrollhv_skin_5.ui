@@ -176,7 +176,7 @@
            </attribute>
            <layout class="QGridLayout" name="gridLayout_2">
             <item row="0" column="0">
-             <layout class="QGridLayout" name="gridLayout_10" rowstretch="2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0" columnstretch="1,0,0,0,0,0,0,0,0,0,0,0,0,0">
+             <layout class="QGridLayout" name="gridLayout_10" rowstretch="2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0" columnstretch="2,2,2,2,2,2,2,0,0,0,0,0,0,0">
               <item row="0" column="8" rowspan="8">
                <widget class="QFrame" name="frame_Mixer">
                 <property name="frameShape"><enum>QFrame::NoFrame</enum></property>
@@ -2805,29 +2805,63 @@
                 </property>
                </widget>
               </item>
-              <item row="19" column="1">
-               <widget class="QLabel" name="label_48">
-                <property name="sizePolicy">
-                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-                  <horstretch>1</horstretch>
-                  <verstretch>1</verstretch>
-                 </sizepolicy>
-                </property>
-                <property name="minimumSize">
-                 <size>
-                  <width>10</width>
-                  <height>0</height>
-                 </size>
-                </property>
-                <property name="font">
-                 <font>
-                  <pointsize>11</pointsize>
-                 </font>
-                </property>
-                <property name="text">
-                 <string>File:</string>
-                </property>
-               </widget>
+              <item row="19" column="0" colspan="12">
+               <layout class="QHBoxLayout" name="horizontalLayout_wavfile" stretch="0,1">
+                <item>
+                  <widget class="QLabel" name="label_48">
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Fixed" vsizetype="Expanding">
+                     <horstretch>1</horstretch>
+                     <verstretch>1</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>10</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="font">
+                    <font>
+                     <pointsize>11</pointsize>
+                    </font>
+                   </property>
+                   <property name="text">
+                    <string>File:</string>
+                   </property>
+                  </widget>
+                </item>
+                <item>
+                  <widget class="QLabel" name="label_Filename_Player">
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Ignored" vsizetype="Expanding">
+                     <horstretch>1</horstretch>
+                     <verstretch>1</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>10</width>
+                     <height>26</height>
+                    </size>
+                   </property>
+                   <property name="maximumSize">
+                    <size>
+                     <width>16777215</width>
+                     <height>26</height>
+                    </size>
+                   </property>
+                   <property name="font">
+                    <font>
+                     <pointsize>11</pointsize>
+                    </font>
+                   </property>
+                   <property name="text">
+                    <string/>
+                   </property>
+                  </widget>
+                </item>
+               </layout>
               </item>
               <item row="8" column="12">
                <widget class="QLabel" name="label_BW">
@@ -6040,36 +6074,6 @@
                 </item>
                </widget>
               </item>
-              <item row="19" column="3" colspan="9">
-               <widget class="QLabel" name="label_Filename_Player">
-                <property name="sizePolicy">
-                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-                  <horstretch>1</horstretch>
-                  <verstretch>1</verstretch>
-                 </sizepolicy>
-                </property>
-                <property name="minimumSize">
-                 <size>
-                  <width>300</width>
-                  <height>26</height>
-                 </size>
-                </property>
-                <property name="maximumSize">
-                 <size>
-                  <width>1000</width>
-                  <height>26</height>
-                 </size>
-                </property>
-                <property name="font">
-                 <font>
-                  <pointsize>11</pointsize>
-                 </font>
-                </property>
-                <property name="text">
-                 <string/>
-                </property>
-               </widget>
-              </item>
               <item row="16" column="13">
                <widget class="QFrame" name="frame_16">
                 <property name="sizePolicy">
@@ -6948,654 +6952,658 @@
                 </property>
                </widget>
               </item>
-              <item row="5" column="0" rowspan="2">
-               <widget class="QPushButton" name="pushButton_REW">
-                <property name="enabled">
-                 <bool>true</bool>
-                </property>
-                <property name="sizePolicy">
-                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-                  <horstretch>1</horstretch>
-                  <verstretch>1</verstretch>
-                 </sizepolicy>
-                </property>
-                <property name="minimumSize">
-                 <size>
-                  <width>10</width>
-                  <height>30</height>
-                 </size>
-                </property>
-                <property name="maximumSize">
-                 <size>
-                  <width>1000</width>
-                  <height>245</height>
-                 </size>
-                </property>
-                <property name="font">
-                 <font>
-                  <pointsize>11</pointsize>
-                 </font>
-                </property>
-                <property name="toolTip">
-                 <string>rewind (ALT + &lt;)</string>
-                </property>
-                <property name="autoFillBackground">
-                 <bool>true</bool>
-                </property>
-                <property name="text">
-                 <string/>
-                </property>
-                <property name="icon">
-                 <iconset>
-                  <normaloff>icons/rew_v4.PNG</normaloff>
-                  <normalon>icons/rew_v4.PNG</normalon>icons/rew_v4.PNG</iconset>
-                </property>
-                <property name="iconSize">
-                 <size>
-                  <width>40</width>
-                  <height>40</height>
-                 </size>
-                </property>
-                <property name="shortcut">
-                 <string>Alt+&lt;</string>
-                </property>
-                <property name="checkable">
-                 <bool>true</bool>
-                </property>
-                <property name="autoRepeat">
-                 <bool>true</bool>
-                </property>
-                <property name="autoDefault">
-                 <bool>false</bool>
-                </property>
-               </widget>
-              </item>
-              <item row="5" column="1" rowspan="2">
-               <widget class="QPushButton" name="pushButton_Stop">
-                <property name="enabled">
-                 <bool>true</bool>
-                </property>
-                <property name="sizePolicy">
-                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-                  <horstretch>1</horstretch>
-                  <verstretch>1</verstretch>
-                 </sizepolicy>
-                </property>
-                <property name="minimumSize">
-                 <size>
-                  <width>10</width>
-                  <height>30</height>
-                 </size>
-                </property>
-                <property name="maximumSize">
-                 <size>
-                  <width>1000</width>
-                  <height>245</height>
-                 </size>
-                </property>
-                <property name="font">
-                 <font>
-                  <pointsize>11</pointsize>
-                 </font>
-                </property>
-                <property name="toolTip">
-                 <string>Stop (ALT + X)</string>
-                </property>
-                <property name="autoFillBackground">
-                 <bool>true</bool>
-                </property>
-                <property name="text">
-                 <string/>
-                </property>
-                <property name="icon">
-                 <iconset>
-                  <normaloff>icons/stop_v4.PNG</normaloff>
-                  <normalon>icons/stop_v4.PNG</normalon>
-                  <activeoff>icons/stop_v4.PNG</activeoff>
-                  <activeon>icons/stop_v4.PNG</activeon>
-                  <selectedoff>icons/stop_v4.PNG</selectedoff>
-                  <selectedon>icons/stop_v4.PNG</selectedon>icons/stop_v4.PNG</iconset>
-                </property>
-                <property name="iconSize">
-                 <size>
-                  <width>40</width>
-                  <height>40</height>
-                 </size>
-                </property>
-                <property name="shortcut">
-                 <string>Alt+X</string>
-                </property>
-                <property name="checkable">
-                 <bool>true</bool>
-                </property>
-                <property name="autoDefault">
-                 <bool>false</bool>
-                </property>
-               </widget>
-              </item>
-              <item row="5" column="2" rowspan="2">
-               <widget class="QPushButton" name="pushButton_Play">
-                <property name="enabled">
-                 <bool>true</bool>
-                </property>
-                <property name="sizePolicy">
-                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-                  <horstretch>1</horstretch>
-                  <verstretch>1</verstretch>
-                 </sizepolicy>
-                </property>
-                <property name="minimumSize">
-                 <size>
-                  <width>10</width>
-                  <height>30</height>
-                 </size>
-                </property>
-                <property name="maximumSize">
-                 <size>
-                  <width>1000</width>
-                  <height>245</height>
-                 </size>
-                </property>
-                <property name="font">
-                 <font>
-                  <pointsize>11</pointsize>
-                 </font>
-                </property>
-                <property name="toolTip">
-                 <string>Play (ALT + P)</string>
-                </property>
-                <property name="autoFillBackground">
-                 <bool>true</bool>
-                </property>
-                <property name="text">
-                 <string/>
-                </property>
-                <property name="icon">
-                 <iconset>
-                  <normaloff>icons/play_v4.PNG</normaloff>
-                  <normalon>icons/play_v4.PNG</normalon>
-                  <activeoff>icons/play_v4.PNG</activeoff>
-                  <activeon>icons/play_v4.PNG</activeon>
-                  <selectedoff>icons/play_v4.PNG</selectedoff>
-                  <selectedon>icons/play_v4.PNG</selectedon>icons/play_v4.PNG</iconset>
-                </property>
-                <property name="iconSize">
-                 <size>
-                  <width>200</width>
-                  <height>40</height>
-                 </size>
-                </property>
-                <property name="shortcut">
-                 <string>Alt+P</string>
-                </property>
-                <property name="checkable">
-                 <bool>true</bool>
-                </property>
-                <property name="autoDefault">
-                 <bool>false</bool>
-                </property>
-               </widget>
-              </item>
-              <item row="5" column="3" rowspan="2">
-               <widget class="QPushButton" name="pushButton_Loop">
-                <property name="enabled">
-                 <bool>true</bool>
-                </property>
-                <property name="sizePolicy">
-                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-                  <horstretch>1</horstretch>
-                  <verstretch>1</verstretch>
-                 </sizepolicy>
-                </property>
-                <property name="minimumSize">
-                 <size>
-                  <width>10</width>
-                  <height>30</height>
-                 </size>
-                </property>
-                <property name="maximumSize">
-                 <size>
-                  <width>1000</width>
-                  <height>245</height>
-                 </size>
-                </property>
-                <property name="font">
-                 <font>
-                  <pointsize>11</pointsize>
-                 </font>
-                </property>
-                <property name="toolTip">
-                 <string>auto repeat</string>
-                </property>
-                <property name="autoFillBackground">
-                 <bool>true</bool>
-                </property>
-                <property name="text">
-                 <string/>
-                </property>
-                <property name="icon">
-                 <iconset>
-                  <normaloff>icons/loop_v4.png</normaloff>
-                  <normalon>icons/loopactive_v4.png</normalon>icons/loop_v4.png</iconset>
-                </property>
-                <property name="iconSize">
-                 <size>
-                  <width>40</width>
-                  <height>40</height>
-                 </size>
-                </property>
-                <property name="checkable">
-                 <bool>true</bool>
-                </property>
-                <property name="autoDefault">
-                 <bool>false</bool>
-                </property>
-                <property name="flat">
-                 <bool>false</bool>
-                </property>
-               </widget>
-              </item>
-              <item row="5" column="4" rowspan="2">
-               <widget class="QPushButton" name="pushButton_FF">
-                <property name="enabled">
-                 <bool>true</bool>
-                </property>
-                <property name="sizePolicy">
-                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-                  <horstretch>1</horstretch>
-                  <verstretch>1</verstretch>
-                 </sizepolicy>
-                </property>
-                <property name="minimumSize">
-                 <size>
-                  <width>10</width>
-                  <height>30</height>
-                 </size>
-                </property>
-                <property name="maximumSize">
-                 <size>
-                  <width>1000</width>
-                  <height>245</height>
-                 </size>
-                </property>
-                <property name="font">
-                 <font>
-                  <pointsize>11</pointsize>
-                 </font>
-                </property>
-                <property name="toolTip">
-                 <string>fast forward (ALT + shift + &gt;)</string>
-                </property>
-                <property name="autoFillBackground">
-                 <bool>false</bool>
-                </property>
-                <property name="text">
-                 <string/>
-                </property>
-                <property name="icon">
-                 <iconset>
-                  <normaloff>icons/ff_v4.PNG</normaloff>
-                  <normalon>icons/ff_v4.PNG</normalon>
-                  <activeoff>icons/ff_v4.PNG</activeoff>
-                  <activeon>icons/ff_v4.PNG</activeon>
-                  <selectedoff>icons/ff_v4.PNG</selectedoff>
-                  <selectedon>icons/ff_v4.PNG</selectedon>icons/ff_v4.PNG</iconset>
-                </property>
-                <property name="iconSize">
-                 <size>
-                  <width>40</width>
-                  <height>40</height>
-                 </size>
-                </property>
-                <property name="shortcut">
-                 <string>Alt+Shift+&lt;</string>
-                </property>
-                <property name="checkable">
-                 <bool>true</bool>
-                </property>
-                <property name="autoRepeat">
-                 <bool>true</bool>
-                </property>
-                <property name="autoDefault">
-                 <bool>false</bool>
-                </property>
-               </widget>
-              </item>
-              <item row="5" column="5" rowspan="2">
-               <widget class="QPushButton" name="pushButton_REC">
-                <property name="enabled">
-                 <bool>true</bool>
-                </property>
-                <property name="sizePolicy">
-                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-                  <horstretch>1</horstretch>
-                  <verstretch>1</verstretch>
-                 </sizepolicy>
-                </property>
-                <property name="minimumSize">
-                 <size>
-                  <width>10</width>
-                  <height>30</height>
-                 </size>
-                </property>
-                <property name="maximumSize">
-                 <size>
-                  <width>1000</width>
-                  <height>245</height>
-                 </size>
-                </property>
-                <property name="sizeIncrement">
-                 <size>
-                  <width>0</width>
-                  <height>0</height>
-                 </size>
-                </property>
-                <property name="baseSize">
-                 <size>
-                  <width>200</width>
-                  <height>50</height>
-                 </size>
-                </property>
-                <property name="palette">
-                 <palette>
-                  <active>
-                   <colorrole role="Button">
-                    <brush brushstyle="SolidPattern">
-                     <color alpha="255">
-                      <red>170</red>
-                      <green>255</green>
-                      <blue>127</blue>
-                     </color>
-                    </brush>
-                   </colorrole>
-                   <colorrole role="Light">
-                    <brush brushstyle="SolidPattern">
-                     <color alpha="255">
-                      <red>170</red>
-                      <green>255</green>
-                      <blue>127</blue>
-                     </color>
-                    </brush>
-                   </colorrole>
-                   <colorrole role="Midlight">
-                    <brush brushstyle="SolidPattern">
-                     <color alpha="255">
-                      <red>170</red>
-                      <green>255</green>
-                      <blue>127</blue>
-                     </color>
-                    </brush>
-                   </colorrole>
-                   <colorrole role="Dark">
-                    <brush brushstyle="SolidPattern">
-                     <color alpha="255">
-                      <red>170</red>
-                      <green>255</green>
-                      <blue>127</blue>
-                     </color>
-                    </brush>
-                   </colorrole>
-                   <colorrole role="Base">
-                    <brush brushstyle="SolidPattern">
-                     <color alpha="255">
-                      <red>170</red>
-                      <green>255</green>
-                      <blue>127</blue>
-                     </color>
-                    </brush>
-                   </colorrole>
-                   <colorrole role="Window">
-                    <brush brushstyle="SolidPattern">
-                     <color alpha="255">
-                      <red>170</red>
-                      <green>255</green>
-                      <blue>127</blue>
-                     </color>
-                    </brush>
-                   </colorrole>
-                   <colorrole role="AlternateBase">
-                    <brush brushstyle="SolidPattern">
-                     <color alpha="255">
-                      <red>170</red>
-                      <green>255</green>
-                      <blue>127</blue>
-                     </color>
-                    </brush>
-                   </colorrole>
-                  </active>
-                  <inactive>
-                   <colorrole role="Button">
-                    <brush brushstyle="SolidPattern">
-                     <color alpha="255">
-                      <red>170</red>
-                      <green>255</green>
-                      <blue>127</blue>
-                     </color>
-                    </brush>
-                   </colorrole>
-                   <colorrole role="Light">
-                    <brush brushstyle="SolidPattern">
-                     <color alpha="255">
-                      <red>255</red>
-                      <green>255</green>
-                      <blue>255</blue>
-                     </color>
-                    </brush>
-                   </colorrole>
-                   <colorrole role="Midlight">
-                    <brush brushstyle="SolidPattern">
-                     <color alpha="255">
-                      <red>170</red>
-                      <green>255</green>
-                      <blue>127</blue>
-                     </color>
-                    </brush>
-                   </colorrole>
-                   <colorrole role="Dark">
-                    <brush brushstyle="SolidPattern">
-                     <color alpha="255">
-                      <red>170</red>
-                      <green>255</green>
-                      <blue>127</blue>
-                     </color>
-                    </brush>
-                   </colorrole>
-                   <colorrole role="Base">
-                    <brush brushstyle="SolidPattern">
-                     <color alpha="255">
-                      <red>170</red>
-                      <green>255</green>
-                      <blue>127</blue>
-                     </color>
-                    </brush>
-                   </colorrole>
-                   <colorrole role="Window">
-                    <brush brushstyle="SolidPattern">
-                     <color alpha="255">
-                      <red>170</red>
-                      <green>255</green>
-                      <blue>127</blue>
-                     </color>
-                    </brush>
-                   </colorrole>
-                   <colorrole role="AlternateBase">
-                    <brush brushstyle="SolidPattern">
-                     <color alpha="255">
-                      <red>170</red>
-                      <green>255</green>
-                      <blue>127</blue>
-                     </color>
-                    </brush>
-                   </colorrole>
-                  </inactive>
-                  <disabled>
-                   <colorrole role="Button">
-                    <brush brushstyle="SolidPattern">
-                     <color alpha="255">
-                      <red>170</red>
-                      <green>255</green>
-                      <blue>127</blue>
-                     </color>
-                    </brush>
-                   </colorrole>
-                   <colorrole role="Light">
-                    <brush brushstyle="SolidPattern">
-                     <color alpha="255">
-                      <red>255</red>
-                      <green>255</green>
-                      <blue>255</blue>
-                     </color>
-                    </brush>
-                   </colorrole>
-                   <colorrole role="Midlight">
-                    <brush brushstyle="SolidPattern">
-                     <color alpha="255">
-                      <red>247</red>
-                      <green>247</green>
-                      <blue>247</blue>
-                     </color>
-                    </brush>
-                   </colorrole>
-                   <colorrole role="Dark">
-                    <brush brushstyle="SolidPattern">
-                     <color alpha="255">
-                      <red>170</red>
-                      <green>255</green>
-                      <blue>127</blue>
-                     </color>
-                    </brush>
-                   </colorrole>
-                   <colorrole role="Base">
-                    <brush brushstyle="SolidPattern">
-                     <color alpha="255">
-                      <red>170</red>
-                      <green>255</green>
-                      <blue>127</blue>
-                     </color>
-                    </brush>
-                   </colorrole>
-                   <colorrole role="Window">
-                    <brush brushstyle="SolidPattern">
-                     <color alpha="255">
-                      <red>170</red>
-                      <green>255</green>
-                      <blue>127</blue>
-                     </color>
-                    </brush>
-                   </colorrole>
-                   <colorrole role="AlternateBase">
-                    <brush brushstyle="SolidPattern">
-                     <color alpha="255">
-                      <red>170</red>
-                      <green>255</green>
-                      <blue>127</blue>
-                     </color>
-                    </brush>
-                   </colorrole>
-                  </disabled>
-                 </palette>
-                </property>
-                <property name="font">
-                 <font>
-                  <pointsize>11</pointsize>
-                 </font>
-                </property>
-                <property name="toolTip">
-                 <string>Record (ALT + R)</string>
-                </property>
-                <property name="autoFillBackground">
-                 <bool>true</bool>
-                </property>
-                <property name="text">
-                 <string/>
-                </property>
-                <property name="icon">
-                 <iconset>
-                  <normaloff>icons/rec_v4.PNG</normaloff>icons/rec_v4.PNG</iconset>
-                </property>
-                <property name="iconSize">
-                 <size>
-                  <width>40</width>
-                  <height>40</height>
-                 </size>
-                </property>
-                <property name="shortcut">
-                 <string>Alt+R</string>
-                </property>
-                <property name="autoRepeat">
-                 <bool>false</bool>
-                </property>
-                <property name="autoDefault">
-                 <bool>false</bool>
-                </property>
-               </widget>
-              </item>
-              <item row="5" column="6" rowspan="2">
-               <widget class="QPushButton" name="pushButton_adv1byte">
-                <property name="enabled">
-                 <bool>true</bool>
-                </property>
-                <property name="sizePolicy">
-                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-                  <horstretch>1</horstretch>
-                  <verstretch>1</verstretch>
-                 </sizepolicy>
-                </property>
-                <property name="minimumSize">
-                 <size>
-                  <width>10</width>
-                  <height>30</height>
-                 </size>
-                </property>
-                <property name="maximumSize">
-                 <size>
-                  <width>1000</width>
-                  <height>245</height>
-                 </size>
-                </property>
-                <property name="baseSize">
-                 <size>
-                  <width>200</width>
-                  <height>30</height>
-                 </size>
-                </property>
-                <property name="font">
-                 <font>
-                  <pointsize>11</pointsize>
-                 </font>
-                </property>
-                <property name="toolTip">
-                 <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Manual tracking = advance 1 bit for correcting sudden jumps in the file read position,&lt;/p&gt;&lt;p&gt;i.e. when position deviates from integer multiple of 4 (8). It may be necessary to repeat a few times for finding the right tracking.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
-                </property>
-                <property name="autoFillBackground">
-                 <bool>true</bool>
-                </property>
-                <property name="text">
-                 <string/>
-                </property>
-                <property name="icon">
-                 <iconset>
-                  <normaloff>icons/Trackingicon.png</normaloff>icons/Trackingicon.png</iconset>
-                </property>
-                <property name="iconSize">
-                 <size>
-                  <width>40</width>
-                  <height>40</height>
-                 </size>
-                </property>
-                <property name="shortcut">
-                 <string>Alt+T</string>
-                </property>
-                <property name="checkable">
-                 <bool>true</bool>
-                </property>
-                <property name="autoRepeat">
-                 <bool>true</bool>
-                </property>
-                <property name="autoDefault">
-                 <bool>false</bool>
-                </property>
-               </widget>
+              <item row="5" column="0" rowspan="2" colspan="7">
+               <layout class="QHBoxLayout" name="horizontalLayout_transport" stretch="1,1,1,1,1,1,1">
+                <item>
+                  <widget class="QPushButton" name="pushButton_REW">
+                   <property name="enabled">
+                    <bool>true</bool>
+                   </property>
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                     <horstretch>1</horstretch>
+                     <verstretch>1</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>40</width>
+                     <height>30</height>
+                    </size>
+                   </property>
+                   <property name="maximumSize">
+                    <size>
+                     <width>1000</width>
+                     <height>245</height>
+                    </size>
+                   </property>
+                   <property name="font">
+                    <font>
+                     <pointsize>11</pointsize>
+                    </font>
+                   </property>
+                   <property name="toolTip">
+                    <string>rewind (ALT + &lt;)</string>
+                   </property>
+                   <property name="autoFillBackground">
+                    <bool>true</bool>
+                   </property>
+                   <property name="text">
+                    <string/>
+                   </property>
+                   <property name="icon">
+                    <iconset>
+                     <normaloff>icons/rew_v4.PNG</normaloff>
+                     <normalon>icons/rew_v4.PNG</normalon>icons/rew_v4.PNG</iconset>
+                   </property>
+                   <property name="iconSize">
+                    <size>
+                     <width>40</width>
+                     <height>40</height>
+                    </size>
+                   </property>
+                   <property name="shortcut">
+                    <string>Alt+&lt;</string>
+                   </property>
+                   <property name="checkable">
+                    <bool>true</bool>
+                   </property>
+                   <property name="autoRepeat">
+                    <bool>true</bool>
+                   </property>
+                   <property name="autoDefault">
+                    <bool>false</bool>
+                   </property>
+                  </widget>
+                </item>
+                <item>
+                  <widget class="QPushButton" name="pushButton_Stop">
+                   <property name="enabled">
+                    <bool>true</bool>
+                   </property>
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                     <horstretch>1</horstretch>
+                     <verstretch>1</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>40</width>
+                     <height>30</height>
+                    </size>
+                   </property>
+                   <property name="maximumSize">
+                    <size>
+                     <width>1000</width>
+                     <height>245</height>
+                    </size>
+                   </property>
+                   <property name="font">
+                    <font>
+                     <pointsize>11</pointsize>
+                    </font>
+                   </property>
+                   <property name="toolTip">
+                    <string>Stop (ALT + X)</string>
+                   </property>
+                   <property name="autoFillBackground">
+                    <bool>true</bool>
+                   </property>
+                   <property name="text">
+                    <string/>
+                   </property>
+                   <property name="icon">
+                    <iconset>
+                     <normaloff>icons/stop_v4.PNG</normaloff>
+                     <normalon>icons/stop_v4.PNG</normalon>
+                     <activeoff>icons/stop_v4.PNG</activeoff>
+                     <activeon>icons/stop_v4.PNG</activeon>
+                     <selectedoff>icons/stop_v4.PNG</selectedoff>
+                     <selectedon>icons/stop_v4.PNG</selectedon>icons/stop_v4.PNG</iconset>
+                   </property>
+                   <property name="iconSize">
+                    <size>
+                     <width>40</width>
+                     <height>40</height>
+                    </size>
+                   </property>
+                   <property name="shortcut">
+                    <string>Alt+X</string>
+                   </property>
+                   <property name="checkable">
+                    <bool>true</bool>
+                   </property>
+                   <property name="autoDefault">
+                    <bool>false</bool>
+                   </property>
+                  </widget>
+                </item>
+                <item>
+                  <widget class="QPushButton" name="pushButton_Play">
+                   <property name="enabled">
+                    <bool>true</bool>
+                   </property>
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                     <horstretch>1</horstretch>
+                     <verstretch>1</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>40</width>
+                     <height>30</height>
+                    </size>
+                   </property>
+                   <property name="maximumSize">
+                    <size>
+                     <width>1000</width>
+                     <height>245</height>
+                    </size>
+                   </property>
+                   <property name="font">
+                    <font>
+                     <pointsize>11</pointsize>
+                    </font>
+                   </property>
+                   <property name="toolTip">
+                    <string>Play (ALT + P)</string>
+                   </property>
+                   <property name="autoFillBackground">
+                    <bool>true</bool>
+                   </property>
+                   <property name="text">
+                    <string/>
+                   </property>
+                   <property name="icon">
+                    <iconset>
+                     <normaloff>icons/play_v4.PNG</normaloff>
+                     <normalon>icons/play_v4.PNG</normalon>
+                     <activeoff>icons/play_v4.PNG</activeoff>
+                     <activeon>icons/play_v4.PNG</activeon>
+                     <selectedoff>icons/play_v4.PNG</selectedoff>
+                     <selectedon>icons/play_v4.PNG</selectedon>icons/play_v4.PNG</iconset>
+                   </property>
+                   <property name="iconSize">
+                    <size>
+                     <width>200</width>
+                     <height>40</height>
+                    </size>
+                   </property>
+                   <property name="shortcut">
+                    <string>Alt+P</string>
+                   </property>
+                   <property name="checkable">
+                    <bool>true</bool>
+                   </property>
+                   <property name="autoDefault">
+                    <bool>false</bool>
+                   </property>
+                  </widget>
+                </item>
+                <item>
+                  <widget class="QPushButton" name="pushButton_Loop">
+                   <property name="enabled">
+                    <bool>true</bool>
+                   </property>
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                     <horstretch>1</horstretch>
+                     <verstretch>1</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>40</width>
+                     <height>30</height>
+                    </size>
+                   </property>
+                   <property name="maximumSize">
+                    <size>
+                     <width>1000</width>
+                     <height>245</height>
+                    </size>
+                   </property>
+                   <property name="font">
+                    <font>
+                     <pointsize>11</pointsize>
+                    </font>
+                   </property>
+                   <property name="toolTip">
+                    <string>auto repeat</string>
+                   </property>
+                   <property name="autoFillBackground">
+                    <bool>true</bool>
+                   </property>
+                   <property name="text">
+                    <string/>
+                   </property>
+                   <property name="icon">
+                    <iconset>
+                     <normaloff>icons/loop_v4.png</normaloff>
+                     <normalon>icons/loopactive_v4.png</normalon>icons/loop_v4.png</iconset>
+                   </property>
+                   <property name="iconSize">
+                    <size>
+                     <width>40</width>
+                     <height>40</height>
+                    </size>
+                   </property>
+                   <property name="checkable">
+                    <bool>true</bool>
+                   </property>
+                   <property name="autoDefault">
+                    <bool>false</bool>
+                   </property>
+                   <property name="flat">
+                    <bool>false</bool>
+                   </property>
+                  </widget>
+                </item>
+                <item>
+                  <widget class="QPushButton" name="pushButton_FF">
+                   <property name="enabled">
+                    <bool>true</bool>
+                   </property>
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                     <horstretch>1</horstretch>
+                     <verstretch>1</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>40</width>
+                     <height>30</height>
+                    </size>
+                   </property>
+                   <property name="maximumSize">
+                    <size>
+                     <width>1000</width>
+                     <height>245</height>
+                    </size>
+                   </property>
+                   <property name="font">
+                    <font>
+                     <pointsize>11</pointsize>
+                    </font>
+                   </property>
+                   <property name="toolTip">
+                    <string>fast forward (ALT + shift + &gt;)</string>
+                   </property>
+                   <property name="autoFillBackground">
+                    <bool>false</bool>
+                   </property>
+                   <property name="text">
+                    <string/>
+                   </property>
+                   <property name="icon">
+                    <iconset>
+                     <normaloff>icons/ff_v4.PNG</normaloff>
+                     <normalon>icons/ff_v4.PNG</normalon>
+                     <activeoff>icons/ff_v4.PNG</activeoff>
+                     <activeon>icons/ff_v4.PNG</activeon>
+                     <selectedoff>icons/ff_v4.PNG</selectedoff>
+                     <selectedon>icons/ff_v4.PNG</selectedon>icons/ff_v4.PNG</iconset>
+                   </property>
+                   <property name="iconSize">
+                    <size>
+                     <width>40</width>
+                     <height>40</height>
+                    </size>
+                   </property>
+                   <property name="shortcut">
+                    <string>Alt+Shift+&lt;</string>
+                   </property>
+                   <property name="checkable">
+                    <bool>true</bool>
+                   </property>
+                   <property name="autoRepeat">
+                    <bool>true</bool>
+                   </property>
+                   <property name="autoDefault">
+                    <bool>false</bool>
+                   </property>
+                  </widget>
+                </item>
+                <item>
+                  <widget class="QPushButton" name="pushButton_REC">
+                   <property name="enabled">
+                    <bool>true</bool>
+                   </property>
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                     <horstretch>1</horstretch>
+                     <verstretch>1</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>40</width>
+                     <height>30</height>
+                    </size>
+                   </property>
+                   <property name="maximumSize">
+                    <size>
+                     <width>1000</width>
+                     <height>245</height>
+                    </size>
+                   </property>
+                   <property name="sizeIncrement">
+                    <size>
+                     <width>0</width>
+                     <height>0</height>
+                    </size>
+                   </property>
+                   <property name="baseSize">
+                    <size>
+                     <width>200</width>
+                     <height>50</height>
+                    </size>
+                   </property>
+                   <property name="palette">
+                    <palette>
+                     <active>
+                      <colorrole role="Button">
+                       <brush brushstyle="SolidPattern">
+                        <color alpha="255">
+                         <red>170</red>
+                         <green>255</green>
+                         <blue>127</blue>
+                        </color>
+                       </brush>
+                      </colorrole>
+                      <colorrole role="Light">
+                       <brush brushstyle="SolidPattern">
+                        <color alpha="255">
+                         <red>170</red>
+                         <green>255</green>
+                         <blue>127</blue>
+                        </color>
+                       </brush>
+                      </colorrole>
+                      <colorrole role="Midlight">
+                       <brush brushstyle="SolidPattern">
+                        <color alpha="255">
+                         <red>170</red>
+                         <green>255</green>
+                         <blue>127</blue>
+                        </color>
+                       </brush>
+                      </colorrole>
+                      <colorrole role="Dark">
+                       <brush brushstyle="SolidPattern">
+                        <color alpha="255">
+                         <red>170</red>
+                         <green>255</green>
+                         <blue>127</blue>
+                        </color>
+                       </brush>
+                      </colorrole>
+                      <colorrole role="Base">
+                       <brush brushstyle="SolidPattern">
+                        <color alpha="255">
+                         <red>170</red>
+                         <green>255</green>
+                         <blue>127</blue>
+                        </color>
+                       </brush>
+                      </colorrole>
+                      <colorrole role="Window">
+                       <brush brushstyle="SolidPattern">
+                        <color alpha="255">
+                         <red>170</red>
+                         <green>255</green>
+                         <blue>127</blue>
+                        </color>
+                       </brush>
+                      </colorrole>
+                      <colorrole role="AlternateBase">
+                       <brush brushstyle="SolidPattern">
+                        <color alpha="255">
+                         <red>170</red>
+                         <green>255</green>
+                         <blue>127</blue>
+                        </color>
+                       </brush>
+                      </colorrole>
+                     </active>
+                     <inactive>
+                      <colorrole role="Button">
+                       <brush brushstyle="SolidPattern">
+                        <color alpha="255">
+                         <red>170</red>
+                         <green>255</green>
+                         <blue>127</blue>
+                        </color>
+                       </brush>
+                      </colorrole>
+                      <colorrole role="Light">
+                       <brush brushstyle="SolidPattern">
+                        <color alpha="255">
+                         <red>255</red>
+                         <green>255</green>
+                         <blue>255</blue>
+                        </color>
+                       </brush>
+                      </colorrole>
+                      <colorrole role="Midlight">
+                       <brush brushstyle="SolidPattern">
+                        <color alpha="255">
+                         <red>170</red>
+                         <green>255</green>
+                         <blue>127</blue>
+                        </color>
+                       </brush>
+                      </colorrole>
+                      <colorrole role="Dark">
+                       <brush brushstyle="SolidPattern">
+                        <color alpha="255">
+                         <red>170</red>
+                         <green>255</green>
+                         <blue>127</blue>
+                        </color>
+                       </brush>
+                      </colorrole>
+                      <colorrole role="Base">
+                       <brush brushstyle="SolidPattern">
+                        <color alpha="255">
+                         <red>170</red>
+                         <green>255</green>
+                         <blue>127</blue>
+                        </color>
+                       </brush>
+                      </colorrole>
+                      <colorrole role="Window">
+                       <brush brushstyle="SolidPattern">
+                        <color alpha="255">
+                         <red>170</red>
+                         <green>255</green>
+                         <blue>127</blue>
+                        </color>
+                       </brush>
+                      </colorrole>
+                      <colorrole role="AlternateBase">
+                       <brush brushstyle="SolidPattern">
+                        <color alpha="255">
+                         <red>170</red>
+                         <green>255</green>
+                         <blue>127</blue>
+                        </color>
+                       </brush>
+                      </colorrole>
+                     </inactive>
+                     <disabled>
+                      <colorrole role="Button">
+                       <brush brushstyle="SolidPattern">
+                        <color alpha="255">
+                         <red>170</red>
+                         <green>255</green>
+                         <blue>127</blue>
+                        </color>
+                       </brush>
+                      </colorrole>
+                      <colorrole role="Light">
+                       <brush brushstyle="SolidPattern">
+                        <color alpha="255">
+                         <red>255</red>
+                         <green>255</green>
+                         <blue>255</blue>
+                        </color>
+                       </brush>
+                      </colorrole>
+                      <colorrole role="Midlight">
+                       <brush brushstyle="SolidPattern">
+                        <color alpha="255">
+                         <red>247</red>
+                         <green>247</green>
+                         <blue>247</blue>
+                        </color>
+                       </brush>
+                      </colorrole>
+                      <colorrole role="Dark">
+                       <brush brushstyle="SolidPattern">
+                        <color alpha="255">
+                         <red>170</red>
+                         <green>255</green>
+                         <blue>127</blue>
+                        </color>
+                       </brush>
+                      </colorrole>
+                      <colorrole role="Base">
+                       <brush brushstyle="SolidPattern">
+                        <color alpha="255">
+                         <red>170</red>
+                         <green>255</green>
+                         <blue>127</blue>
+                        </color>
+                       </brush>
+                      </colorrole>
+                      <colorrole role="Window">
+                       <brush brushstyle="SolidPattern">
+                        <color alpha="255">
+                         <red>170</red>
+                         <green>255</green>
+                         <blue>127</blue>
+                        </color>
+                       </brush>
+                      </colorrole>
+                      <colorrole role="AlternateBase">
+                       <brush brushstyle="SolidPattern">
+                        <color alpha="255">
+                         <red>170</red>
+                         <green>255</green>
+                         <blue>127</blue>
+                        </color>
+                       </brush>
+                      </colorrole>
+                     </disabled>
+                    </palette>
+                   </property>
+                   <property name="font">
+                    <font>
+                     <pointsize>11</pointsize>
+                    </font>
+                   </property>
+                   <property name="toolTip">
+                    <string>Record (ALT + R)</string>
+                   </property>
+                   <property name="autoFillBackground">
+                    <bool>true</bool>
+                   </property>
+                   <property name="text">
+                    <string/>
+                   </property>
+                   <property name="icon">
+                    <iconset>
+                     <normaloff>icons/rec_v4.PNG</normaloff>icons/rec_v4.PNG</iconset>
+                   </property>
+                   <property name="iconSize">
+                    <size>
+                     <width>40</width>
+                     <height>40</height>
+                    </size>
+                   </property>
+                   <property name="shortcut">
+                    <string>Alt+R</string>
+                   </property>
+                   <property name="autoRepeat">
+                    <bool>false</bool>
+                   </property>
+                   <property name="autoDefault">
+                    <bool>false</bool>
+                   </property>
+                  </widget>
+                </item>
+                <item>
+                  <widget class="QPushButton" name="pushButton_adv1byte">
+                   <property name="enabled">
+                    <bool>true</bool>
+                   </property>
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                     <horstretch>1</horstretch>
+                     <verstretch>1</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>40</width>
+                     <height>30</height>
+                    </size>
+                   </property>
+                   <property name="maximumSize">
+                    <size>
+                     <width>1000</width>
+                     <height>245</height>
+                    </size>
+                   </property>
+                   <property name="baseSize">
+                    <size>
+                     <width>200</width>
+                     <height>30</height>
+                    </size>
+                   </property>
+                   <property name="font">
+                    <font>
+                     <pointsize>11</pointsize>
+                    </font>
+                   </property>
+                   <property name="toolTip">
+                    <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Manual tracking = advance 1 bit for correcting sudden jumps in the file read position,&lt;/p&gt;&lt;p&gt;i.e. when position deviates from integer multiple of 4 (8). It may be necessary to repeat a few times for finding the right tracking.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                   </property>
+                   <property name="autoFillBackground">
+                    <bool>true</bool>
+                   </property>
+                   <property name="text">
+                    <string/>
+                   </property>
+                   <property name="icon">
+                    <iconset>
+                     <normaloff>icons/Trackingicon.png</normaloff>icons/Trackingicon.png</iconset>
+                   </property>
+                   <property name="iconSize">
+                    <size>
+                     <width>40</width>
+                     <height>40</height>
+                    </size>
+                   </property>
+                   <property name="shortcut">
+                    <string>Alt+T</string>
+                   </property>
+                   <property name="checkable">
+                    <bool>true</bool>
+                   </property>
+                   <property name="autoRepeat">
+                    <bool>true</bool>
+                   </property>
+                   <property name="autoDefault">
+                    <bool>false</bool>
+                   </property>
+                  </widget>
+                </item>
+               </layout>
               </item>
               <item row="5" column="12">
                <widget class="QLabel" name="label_11">
@@ -7700,31 +7708,35 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="20" column="1">
-               <widget class="QLabel" name="label_13">
-                <property name="sizePolicy">
-                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-                  <horstretch>0</horstretch>
-                  <verstretch>0</verstretch>
-                 </sizepolicy>
-                </property>
-                <property name="text">
-                 <string>csv:</string>
-                </property>
-               </widget>
-              </item>
-              <item row="20" column="3" colspan="5">
-               <widget class="QLabel" name="label_csv_filename">
-                <property name="sizePolicy">
-                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-                  <horstretch>0</horstretch>
-                  <verstretch>0</verstretch>
-                 </sizepolicy>
-                </property>
-                <property name="text">
-                 <string/>
-                </property>
-               </widget>
+              <item row="20" column="0" colspan="8">
+               <layout class="QHBoxLayout" name="horizontalLayout_csvfile" stretch="0,1">
+                <item>
+                  <widget class="QLabel" name="label_13">
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Fixed" vsizetype="Expanding">
+                     <horstretch>0</horstretch>
+                     <verstretch>0</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="text">
+                    <string>csv:</string>
+                   </property>
+                  </widget>
+                </item>
+                <item>
+                  <widget class="QLabel" name="label_csv_filename">
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Ignored" vsizetype="Expanding">
+                     <horstretch>0</horstretch>
+                     <verstretch>0</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="text">
+                    <string/>
+                   </property>
+                  </widget>
+                </item>
+               </layout>
               </item>
              </layout>
             </item>
