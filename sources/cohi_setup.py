@@ -783,7 +783,7 @@ class Installer:
         self.ui.log("downloading ffmpeg ...")
         http_download(FFMPEG_WIN_URL, tmp, self.ui.progress)
         with zipfile.ZipFile(tmp) as z:
-            z.extractall(self.inst.sources)
+            z.extractall(self.inst.sources, [n for n in z.namelist() if ffmpeg_member_needed(n)])
         os.remove(tmp)
         self.ui.log("ffmpeg installed in " + os.path.join(self.inst.sources, FFMPEG_WIN_DIR))
 
@@ -978,6 +978,17 @@ class Installer:
                              f"Exec=\"{sh}\"\nPath={self.inst.sources}\nIcon={icon}\n"
                              "Terminal=false\nCategories=AudioVideo;HamRadio;\n")
                 self.ui.log("menu entry: " + os.path.join(appdir, "cohiwizard.desktop"))
+
+
+def ffmpeg_member_needed(name):
+    """Members of the ffmpeg zip that are installed: bin/ (ffmpeg.exe, ffprobe.exe
+    and the shared DLLs) and the license; not ffplay.exe (23 MB), doc/, include/, lib/."""
+    parts = name.split("/")
+    if len(parts) < 2 or not parts[-1]:
+        return False
+    if len(parts) == 2:
+        return parts[1].upper().startswith("LICENSE")
+    return parts[1] == "bin" and parts[-1].lower() != "ffplay.exe"
 
 
 def enable_system_site_packages(venv_dir, log):
