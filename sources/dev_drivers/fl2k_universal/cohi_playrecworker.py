@@ -642,7 +642,14 @@ class playrec_worker(QObject):
 
     def _play_loop_filelist_impl(self):
         import faulthandler, sys
-        faulthandler.enable(file=sys.stderr)
+        # under pythonw.exe (no console) sys.stderr is None unless COHIWizard.py
+        # redirected it; faulthandler.enable(file=None) would raise and end
+        # the worker silently
+        if sys.stderr is not None:
+            try:
+                faulthandler.enable(file=sys.stderr)
+            except (AttributeError, ValueError, OSError):
+                pass
 
         filenames = self.get_filename()
         config    = self.get_configparameters()

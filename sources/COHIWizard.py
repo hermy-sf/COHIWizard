@@ -39,6 +39,38 @@ from icons import Logos
 from zeroconf import Zeroconf, ServiceBrowser
 import subprocess
 
+_console_log = None
+
+
+def redirect_console_to_logfile():
+    """Without a console (pythonw.exe: start menu entry, desktop shortcut,
+    COHIWizard.bat) sys.stdout and sys.stderr are None: all messages are lost
+    and code that writes to them directly fails. In that case everything is
+    written to COHIWizard_console.log next to this file (previous run:
+    COHIWizard_console_previous.log), including crashes in the C libraries."""
+    global _console_log
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    import faulthandler
+    log = os.path.join(os.path.dirname(os.path.abspath(__file__)), "COHIWizard_console.log")
+    try:
+        if os.path.exists(log):
+            os.replace(log, log.replace(".log", "_previous.log"))
+        _console_log = open(log, "w", encoding="utf-8", errors="replace", buffering=1)
+    except OSError:
+        _console_log = open(os.devnull, "w")
+    if sys.stdout is None:
+        sys.stdout = _console_log
+    if sys.stderr is None:
+        sys.stderr = _console_log
+    try:
+        faulthandler.enable(file=_console_log)
+    except (ValueError, OSError):
+        pass
+    print(f"COHIWizard started {datetime.now():%Y-%m-%d %H:%M:%S} without console, "
+          f"messages go to {log}")
+
+
 class starter(QMainWindow):
     """instantiates the MainWindow, instantiates a auxiliary gui object for the
     core GUI and calls its setupUI method; The latter contains all derived structures such as centralwidget, Scrollarea, TabWidget etc.
@@ -1715,6 +1747,7 @@ if __name__ == '__main__':
     """
 
 
+    redirect_console_to_logfile()
     print("starting main, initializing GUI, please wait ... ")
     if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
         QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)

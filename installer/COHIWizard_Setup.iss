@@ -63,6 +63,8 @@ de.DownloadFailed=Die aktuelle Version von cohi_setup.py konnte nicht herunterge
 en.DownloadFailed=The current cohi_setup.py could not be downloaded, the bundled version is used.%n%n%1
 de.RemoveData=Sollen auch die Programmdateien im Installationsordner gelöscht werden?%n%n%1\sources%n%nDazu gehören die Konfiguration (config_wizard.yaml) und alle Daten, die dort gespeichert wurden (z. B. Aufnahmen in sources\out).%n%nBei "Nein" bleibt dieser Ordner erhalten.
 en.RemoveData=Also delete the program files in the installation folder?%n%n%1\sources%n%nThis includes the configuration (config_wizard.yaml) and all data stored there (e.g. recordings in sources\out).%n%nWith "No" this folder is kept.
+de.IconConsole=COHIWizard (mit Konsole für Fehlermeldungen)
+en.IconConsole=COHIWizard (with console for error messages)
 de.IconSetup=COHIWizard Setup (Module und Treiber verwalten)
 en.IconSetup=COHIWizard Setup (manage modules and drivers)
 
@@ -74,6 +76,8 @@ Source: "..\sources\cohi_setup.py"; Flags: dontcopy
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\venv\Scripts\pythonw.exe"; Parameters: "COHIWizard.py"; WorkingDir: "{app}\sources"; IconFilename: "{app}\COHIWizard.ico"
+; console window stays open (cmd /k) so that error messages can be read
+Name: "{group}\{cm:IconConsole}"; Filename: "{cmd}"; Parameters: "/k """"{app}\venv\Scripts\python.exe"" COHIWizard.py"""; WorkingDir: "{app}\sources"; IconFilename: "{app}\COHIWizard.ico"
 Name: "{group}\{cm:IconSetup}"; Filename: "{app}\venv\Scripts\pythonw.exe"; Parameters: """{app}\sources\cohi_setup.py"" --stage2 --target ""{app}"""; WorkingDir: "{app}\sources"; IconFilename: "{app}\COHIWizard.ico"
 Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
 
@@ -87,6 +91,7 @@ Type: files; Name: "{app}\LICENSE"
 Type: files; Name: "{app}\README.md"
 Type: files; Name: "{app}\COHIWizard.bat"
 Type: files; Name: "{app}\COHIWizard_setup.bat"
+Type: files; Name: "{app}\COHIWizard_console.bat"
 Type: files; Name: "{userdesktop}\COHIWizard.lnk"
 Type: dirifempty; Name: "{app}"
 

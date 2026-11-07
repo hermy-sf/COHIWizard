@@ -173,3 +173,5 @@ MWLIST_Volltabelle_old.xlsx
 # Windows installer build output
 installer/build/
 installer/Output/
+
+sources/COHIWizard_console*.log

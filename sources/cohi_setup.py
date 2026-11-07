@@ -962,6 +962,12 @@ class Installer:
             bat = os.path.join(t, "COHIWizard.bat")
             with open(bat, "w") as fh:
                 fh.write(f'@echo off\r\ncd /d "{self.inst.sources}"\r\nstart "" "{pyw}" COHIWizard.py\r\n')
+            # same with a console window that stays open, to read error messages
+            con_bat = os.path.join(t, "COHIWizard_console.bat")
+            with open(con_bat, "w") as fh:
+                fh.write(f'@echo off\r\ncd /d "{self.inst.sources}"\r\n"{py}" COHIWizard.py\r\n'
+                         'echo.\r\necho COHIWizard has ended. Press a key to close this window.\r\n'
+                         'pause >nul\r\n')
             setup_bat = os.path.join(t, "COHIWizard_setup.bat")
             with open(setup_bat, "w") as fh:
                 fh.write(f'@echo off\r\ncd /d "{self.inst.sources}"\r\n"{py}" cohi_setup.py --stage2 '
