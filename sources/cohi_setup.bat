@@ -1,7 +1,7 @@
 @echo off
 rem COHIWizard setup for Windows
 rem Finds Python 3.10 - 3.13 (installs Python 3.10.11 for the current user if
-rem none is found), fetches cohi_setup.py if it is not next to this file and
+rem none is found), fetches the current cohi_setup.py from GitHub and
 rem starts it. Arguments are passed on to cohi_setup.py.
 setlocal
 set "HERE=%~dp0"
@@ -25,11 +25,22 @@ if not defined PYEXE (
     set PYEXE="%LOCALAPPDATA%\Programs\Python\Python310\python.exe"
 )
 
-if not exist "%SETUP%" (
-    echo Downloading cohi_setup.py ...
-    powershell -NoProfile -Command "Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/hermy-sf/COHIWizard/cohiwizard_v2.3/sources/cohi_setup.py -OutFile '%SETUP%'"
-    if errorlevel 1 goto :fail
-)
+rem Always fetch the current cohi_setup.py so that a stale copy next to this
+rem file is never used. Exception: inside a git checkout (developer tree) the
+rem local file is kept. Without internet an existing copy is used.
+if exist "%HERE%..\.git" if exist "%SETUP%" goto :run
+echo Downloading cohi_setup.py ...
+powershell -NoProfile -Command "Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/hermy-sf/COHIWizard/cohiwizard_v2.3/sources/cohi_setup.py -OutFile '%SETUP%.new'"
+if errorlevel 1 goto :nodownload
+move /y "%SETUP%.new" "%SETUP%" >nul
+goto :run
+
+:nodownload
+if exist "%SETUP%.new" del "%SETUP%.new"
+if not exist "%SETUP%" goto :fail
+echo Download failed, using the existing cohi_setup.py
+
+:run
 
 %PYEXE% "%SETUP%" %*
 if errorlevel 1 goto :fail

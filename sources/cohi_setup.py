@@ -1121,6 +1121,9 @@ def bootstrap(args):
     cmd = [py, os.path.abspath(__file__), "--stage2", "--target", target, "--branch", branch,
            "--python", py] + passthrough_args(args)
     ui.log("starting stage 2 ...")
+    if not args.no_gui:
+        ui.log("The 'COHIWizard setup' window opens now (it may appear behind this window).\n"
+               "Please continue there: choose modules and drivers and click 'Install / apply changes'.")
     return subprocess.call(cmd)
 
 
@@ -1482,7 +1485,17 @@ def run_gui(args):
 
     app = QtWidgets.QApplication(sys.argv[:1])
     dlg = SetupDialog()
+    # bring the window to the front: started from a console it otherwise often
+    # opens behind it (Windows refuses plain focus stealing, so briefly stay on top)
+    dlg.setWindowFlags(dlg.windowFlags() | Qt.WindowStaysOnTopHint)
     dlg.show()
+    dlg.raise_()
+    dlg.activateWindow()
+
+    def release_on_top():
+        dlg.setWindowFlags(dlg.windowFlags() & ~Qt.WindowStaysOnTopHint)
+        dlg.show()
+    QtCore.QTimer.singleShot(1500, release_on_top)
     return app.exec_()
 
 
