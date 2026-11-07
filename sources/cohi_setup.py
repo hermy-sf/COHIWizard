@@ -787,21 +787,42 @@ class Installer:
         self.run_root(cmds, "Missing system packages: " + ", ".join(pkgs))
 
     def _windows_ffmpeg(self):
-        local = os.path.join(self.inst.sources, FFMPEG_WIN_DIR, "bin", "ffmpeg.exe")
-        if shutil.which("ffmpeg") or os.path.isfile(local):
-            self.ui.log("ffmpeg: present")
+        # COHIWizard uses its own copy in sources\FFMPEG_WIN_DIR (ffmpeg_path in
+        # config_wizard.yaml). An ffmpeg found in PATH is NOT used instead: it may
+        # be old or a reduced build without the options and filters the drivers
+        # need, so its presence must not prevent the local installation.
+        local_dir = os.path.join(self.inst.sources, FFMPEG_WIN_DIR)
+        local = os.path.join(local_dir, "bin", "ffmpeg.exe")
+        if os.path.isfile(local):
+            self.ui.log("ffmpeg: present in " + local_dir)
             return
+        other = shutil.which("ffmpeg")
+        if other:
+            self.ui.log(f"ffmpeg in PATH ({other}) is not used, COHIWizard installs its own copy")
         if not self.ui.ask("ffmpeg is required by resampler, synthesizer and the drivers.\n"
                            "Download ffmpeg now (about 90 MB)?"):
-            self.manual_steps.append("install ffmpeg (https://www.ffmpeg.org/download.html)")
+            self.manual_steps.append(f"install ffmpeg into {local_dir} "
+                                     f"(run the setup again or get {FFMPEG_WIN_URL})")
             return
         tmp = os.path.join(tempfile.gettempdir(), "cohi_ffmpeg.zip")
         self.ui.log("downloading ffmpeg ...")
-        http_download(FFMPEG_WIN_URL, tmp, self.ui.progress)
-        with zipfile.ZipFile(tmp) as z:
-            z.extractall(self.inst.sources, [n for n in z.namelist() if ffmpeg_member_needed(n)])
-        os.remove(tmp)
-        self.ui.log("ffmpeg installed in " + os.path.join(self.inst.sources, FFMPEG_WIN_DIR))
+        try:
+            http_download(FFMPEG_WIN_URL, tmp, self.ui.progress)
+            with zipfile.ZipFile(tmp) as z:
+                z.extractall(self.inst.sources, [n for n in z.namelist() if ffmpeg_member_needed(n)])
+        except Exception as exc:
+            # not fatal: everything else is installed, the setup can be rerun later
+            self.ui.log(f"ffmpeg could not be installed: {exc}")
+            self.manual_steps.append(f"install ffmpeg into {local_dir}: run the setup again "
+                                     f"(start menu 'COHIWizard Setup') or unpack {FFMPEG_WIN_URL}")
+            return
+        finally:
+            if os.path.exists(tmp):
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+        self.ui.log("ffmpeg installed in " + local_dir)
 
     def _venv_has(self, module):
         return subprocess.run([self.inst.python, "-c", "import " + module],
