@@ -75,7 +75,6 @@ class Ui_MainWindow(object):
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
-        MainWindow.setToolTip(_translate("MainWindow", "generate annotation basis by comparing MWLIST, display candidates at next frequency"))
         self.pushButton.setText(_translate("MainWindow", "PushButton"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.playrec), _translate("MainWindow", "Player"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_2), _translate("MainWindow", "Tab 2"))

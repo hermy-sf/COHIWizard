@@ -32,7 +32,7 @@ list_mvct_modules = list(config['modules'].values())
 #add dict of widget modules to config
 aux_dict = {}
 ####################  !!!!!!!!!!!!!!!!!!!  adapt if number of skins is changed ! ##########################
-skinindexrange = np.arange(6) #set to number of available skins + 1
+skinindexrange = np.array([2, 3, 5]) #indices of the available skins
 ###########################################################################################################
 for ix in range(len(list_mvct_directories)):
     #aux_dict[list_mvct_directories[ix]] = list_mvct_directories[ix] + "_widget"
@@ -53,8 +53,6 @@ command = 'pyinstaller --icon=COHIWizard_ico4.ico --clean --noupx COHIWizard.py 
 
 #command = 'pyinstaller --icon=COHIWizard_ico4.ico --onefile sources/COHIWizard.py --paths=sources'
 # include hidden imports according to config_modules.yaml
-command += (f' --hidden-import=core.COHIWizard_GUI_v10_scrollhv_skin_0')
-command += (f' --hidden-import=core.COHIWizard_GUI_v10_scrollhv_skin_1')
 command += (f' --hidden-import=core.COHIWizard_GUI_v10_scrollhv_skin_2')
 command += (f' --hidden-import=core.COHIWizard_GUI_v10_scrollhv_skin_3')
 command += (f' --hidden-import=core.COHIWizard_GUI_v10_scrollhv_skin_5')

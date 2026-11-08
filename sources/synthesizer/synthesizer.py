@@ -2139,7 +2139,8 @@ class synthesizer_v(QObject):
         self.gui.pushButton_importProject.clicked.connect(self.import_m3u)    
         self. gui.synthesizer_radioBut_no2GBsplitting.toggled.connect(self.setno2GBsplitting)
         self. gui.synthesizer_radioBut_SuppressPlaylistinfo.toggled.connect(self.setsuppressplaylistinfo)
-        self.gui.synthesizer_radioBut_ShowPlaytimes.toggled.connect(self.show_playtime_overview)
+        if hasattr(self.gui, "synthesizer_radioBut_ShowPlaytimes"):    # not in skins 2, 3
+            self.gui.synthesizer_radioBut_ShowPlaytimes.toggled.connect(self.show_playtime_overview)
         self.gui.verticalSlider_Gain.valueChanged.connect(self.setgain)
         self.previous_value = self.gui.spinBox_numcarriers.value()
         self.RecBW_update()

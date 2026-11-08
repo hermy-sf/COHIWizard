@@ -2654,7 +2654,6 @@ class Ui_MainWindow(object):
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
-        MainWindow.setToolTip(_translate("MainWindow", "generate annotation basis by comparing MWLIST, display candidates at next frequency"))
         self.ScrollBar_playtime.setToolTip(_translate("MainWindow", "move slider to browse through the record and plot spectra "))
         self.pushButton_FF.setToolTip(_translate("MainWindow", "fast forward (ALT + shift + >)"))
         self.pushButton_FF.setShortcut(_translate("MainWindow", "Alt+Shift+<"))

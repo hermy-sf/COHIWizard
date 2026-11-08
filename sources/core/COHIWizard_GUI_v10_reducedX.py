@@ -87,7 +87,6 @@ class Ui_MainWindow(object):
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
-        MainWindow.setToolTip(_translate("MainWindow", "generate annotation basis by comparing MWLIST, display candidates at next frequency"))
         self.menuFile.setTitle(_translate("MainWindow", "File"))
         self.actionFile_open.setText(_translate("MainWindow", "File open"))
         self.actionFile_open.setShortcut(_translate("MainWindow", "Alt+F"))

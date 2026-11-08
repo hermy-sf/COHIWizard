@@ -1,4 +1,4 @@
-#Version 2.3.4
+#Version 2.3.5
 # -*- coding: utf-8 -*-logfile
 # For reducing to RFCorder: disable all modules except resample in the config_modules.yaml file
 #
@@ -36,6 +36,9 @@ import logging
 import platform
 import math
 from icons import Logos
+from core.configdialog import ConfigDialog
+
+AVAILABLE_SKINS = (2, 3, 5)     # 2, 3: displays <= 7 inch, 5: PC
 from zeroconf import Zeroconf, ServiceBrowser
 import subprocess
 
@@ -149,13 +152,17 @@ class starter(QMainWindow):
             player_imported = importlib.import_module(player_full_module)
             self.maxsize = player_imported.skinhandler.maxsize()
         except ImportError:
-            # default to skin 1
-            imported_module = importlib.import_module("core.COHIWizard_GUI_v10_scrollhv_skin_1")
+            # default to skin 5
+            imported_module = importlib.import_module("core.COHIWizard_GUI_v10_scrollhv_skin_5")
             self.gui = imported_module.Ui_MainWindow()
-            player_imported = importlib.import_module("player.playerskinhandler_1")
+            player_imported = importlib.import_module("player.playerskinhandler_5")
             self.maxsize = player_imported.skinhandler.maxsize()
 
         self.gui.setupUi(self)
+        # rarely used settings in a dialog of their own; skins without these widgets get
+        # the dialog widgets under the same names (see core/configdialog.py)
+        self.config_dialog = ConfigDialog(self)
+        self.config_dialog.attach_to(self.gui)
         self.iconButtons = []
         self.widgets_with_font = []
         self.find_widgets_with_font()
@@ -281,7 +288,7 @@ class starter(QMainWindow):
         """Suche rekursiv nach allen QPushButtons mit Icon"""
         self.iconButtons.clear()
         for button in self.findChildren(QPushButton):
-            if not button.icon().isNull():
+            if not button.icon().isNull() and button.window() is self:
                 self.iconButtons.append(button)
 
 
@@ -295,6 +302,7 @@ class starter(QMainWindow):
         self.widgets_with_font = [
             w for w in self.findChildren(QWidget)
             if isinstance(w, font_classes) and hasattr(w, "font")
+            and w.window() is self      # not the widgets of the configuration dialog
         ]
 
 
@@ -1313,7 +1321,8 @@ class core_v(QObject):
             auxi.update_configyaml("audioplaylist", value)
             if isinstance(self.m.get("metadata"), dict):
                 self.m["metadata"]["audioplaylist"] = value   # keep cached copy consistent
-            self.gui.label_csv_filename.setText(str(Path(value).stem) + str(Path(value).suffix))
+            if hasattr(self.gui, "label_csv_filename"):
+                self.gui.label_csv_filename.setText(str(Path(value).stem) + str(Path(value).suffix))
         if errorstate:
             auxi.standard_errorbox(value)
             self.logger.info(f'cb_open_audiofile: {value}')
@@ -1797,8 +1806,7 @@ if __name__ == '__main__':
         wiz_config = load_config_from_yaml("config_wizard.yaml")
         # Get display diagonal size in inches
         if not "skinindex" in wiz_config:
-            skinindex = 5
-            wiz_config["skinindex"]
+            wiz_config["skinindex"] = 5
         if not "autoskin" in wiz_config:
             wiz_config["autoskin"] = True
         if diagonal_inches <= 7 and wiz_config["autoskin"] == True:
@@ -1810,7 +1818,11 @@ if __name__ == '__main__':
             skinindex = 2
         else:
             skinindex = 5
-        print("could not load wizard configuration, set skinindex to default value 1")
+        print(f"could not load wizard configuration, set skinindex to default value {skinindex}")
+    if skinindex not in AVAILABLE_SKINS:
+        # skins 0 and 1 were removed in v2.3, older configurations may still name them
+        print(f"skin {skinindex} is not available, using skin 5")
+        skinindex = 5
     
     #print(f"__main__: gui = {gui} gui.gui = {gui.gui}")
     from auxiliaries import WAVheader_tools
@@ -2026,7 +2038,7 @@ if __name__ == '__main__':
         xcore_v.logger.debug("startup Tab not defined in configuration file config_wizard.yaml")
         xcore_v.gui.tabWidget.setCurrentIndex(0)
     xcore_v.timethread.start()
-    print("COHIWIzard Version 2.3.4 , 14-10-2026, (C) Hermann Scharfetter")
+    print("COHIWIzard Version 2.3.5 , 08-11-2026, (C) Hermann Scharfetter")
 
 
 

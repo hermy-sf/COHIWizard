@@ -20,6 +20,8 @@ class skinhandler():
         # which is present in skin 1, and which is used in skin 1, so that the functionality is preserved across skins.
         print("Redirecting global UI items to skin items")
         gui.pushButton_Fileopen.clicked.connect(gui.actionFile_open.trigger)
+        # same for the audio station list (csv) of the audio modulator
+        gui.pushButton_csvopen.clicked.connect(gui.actionPlaylist_open.trigger)
         gui.menubar.setVisible(False)
         #redirect spinbox for LO offset for touchscreen only use
         gui.spinBox_LOoffset.valueChanged.connect(lambda: gui.lineEdit_LO_bias.setText(str(gui.spinBox_LOoffset.value())))

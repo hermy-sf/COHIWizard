@@ -28,8 +28,10 @@ class skinhandler():
     def reorganize_canvas(gui,plot_widget):
         # This function would contain logic to redirect UI items to the appropriate skin directories
         # For example, it could check for the existence of certain files in the skin directory and redirect accordingly
-        print("Reorganizing canvas for skin to 13,12,1,2")
-        gui.gridLayout_10.addWidget(plot_widget,13,12,1,2)
+        # rows 1-4 (below the CONFIGURATION button, above the modulator type) became free
+        # when the configuration widgets moved to the configuration dialog
+        print("Reorganizing canvas for skin to 1,12,4,2")
+        gui.gridLayout_10.addWidget(plot_widget,1,12,4,2)
         pass
 
     def maxsize():

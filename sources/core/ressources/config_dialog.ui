@@ -1,0 +1,146 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+  <class>ConfigDialog</class>
+  <widget class="QDialog" name="ConfigDialog">
+    <property name="minimumSize">
+      <size>
+        <width>520</width>
+        <height>0</height>
+      </size>
+    </property>
+    <property name="windowTitle">
+      <string>COHIWizard configuration</string>
+    </property>
+    <layout class="QVBoxLayout" name="verticalLayout_cfg">
+      <item>
+        <widget class="QGroupBox" name="groupBox_cfg_stemlab">
+          <property name="title">
+            <string>STEMLAB</string>
+          </property>
+          <layout class="QGridLayout" name="gridLayout_groupBox_cfg_stemlab">
+            <item row="0" column="0"><widget class="QPushButton" name="pushButton_IP">
+                <property name="focusPolicy">
+                 <enum>Qt::StrongFocus</enum>
+                </property>
+                <property name="toolTip">
+                 <string>auto-search / definition of STEMLAB IP address</string>
+                </property>
+                <property name="text">
+                 <string>Set STEMLAB IP Address</string>
+                </property>
+                </widget>
+              </item>
+            <item row="0" column="1"><widget class="QLineEdit" name="lineEdit_IPAddress">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <property name="toolTip">
+                 <string>enter IP address here after activating Button</string>
+                </property>
+                <property name="text">
+                 <string>000.000.000.000</string>
+                </property>
+               </widget>
+              </item>
+          </layout>
+        </widget>
+      </item>
+      <item>
+        <widget class="QGroupBox" name="groupBox_cfg_general">
+          <property name="title">
+            <string>General</string>
+          </property>
+          <layout class="QGridLayout" name="gridLayout_groupBox_cfg_general">
+            <item row="0" column="0"><widget class="QLabel" name="playrec_label_startuptab">
+                <property name="toolTip">
+                 <string>Select Tab with which the COHIWizard should start up next time</string>
+                </property>
+                <property name="text">
+                 <string>Startup Tab:</string>
+                </property>
+                </widget>
+              </item>
+            <item row="0" column="1"><widget class="QComboBox" name="playrec_comboBox_startuptab">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <property name="toolTip">
+                 <string>chose preferred tab which should be shown on next startup</string>
+                </property>
+                <property name="editable">
+                 <bool>false</bool>
+                </property>
+                <property name="currentIndex">
+                 <number>-1</number>
+                </property>
+                </widget>
+              </item>
+            <item row="1" column="0"><widget class="QPushButton" name="playrec_pushButton_recordingpath">
+                <property name="toolTip">
+                 <string>Set path for recorded files</string>
+                </property>
+                <property name="text">
+                 <string>Edit Recording path</string>
+                </property>
+                </widget>
+              </item>
+            <item row="1" column="1"><widget class="QLineEdit" name="playrec_lineEdit_recordingpath">
+                <property name="toolTip">
+                 <string>Enter path for recorded files here</string>
+                </property>
+               </widget>
+              </item>
+            <item row="2" column="0" colspan="2"><widget class="QRadioButton" name="playrec_radioButtonpushButton_write_logfile">
+                <property name="toolTip">
+                 <string>Write debug and info messages during runtime to logfile (for advanced error analysis)</string>
+                </property>
+                <property name="text">
+                 <string>Write Logfile</string>
+                </property>
+                <property name="autoExclusive">
+                 <bool>false</bool>
+                </property>
+               </widget>
+              </item>
+          </layout>
+        </widget>
+      </item>
+      <item>
+        <widget class="QGroupBox" name="groupBox_cfg_test">
+          <property name="title">
+            <string>Display / test</string>
+          </property>
+          <layout class="QGridLayout" name="gridLayout_groupBox_cfg_test">
+            <item row="0" column="0"><widget class="QCheckBox" name="core_checkBox_show_spectrum">
+                <property name="text">
+                 <string>Show spectrum</string>
+                </property>
+                <property name="checked">
+                 <bool>true</bool>
+                </property>
+               </widget>
+              </item>
+            <item row="0" column="1"><widget class="QCheckBox" name="checkBox_TESTMODE">
+                <property name="toolTip">
+                 <string>if checked the tool can be tested without SDR; no RF signals will be sent</string>
+                </property>
+                <property name="text">
+                 <string>Test NO SDR</string>
+                </property>
+               </widget>
+              </item>
+          </layout>
+        </widget>
+      </item>
+      <item>
+        <widget class="QDialogButtonBox" name="buttonBox_cfg">
+          <property name="standardButtons">
+            <set>QDialogButtonBox::Close</set>
+          </property>
+        </widget>
+      </item>
+    </layout>
+  </widget>
+  <resources/>
+  <connections/>
+</ui>

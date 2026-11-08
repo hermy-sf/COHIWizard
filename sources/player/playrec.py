@@ -1375,6 +1375,10 @@ class playrec_v(QObject):
                 self.m["modulator_type"] = "all"
         else:
             self.m["modulator_type"] = "all"
+        if not hasattr(self.gui, "comboBox_modulator_type"):
+            # skin without modulator selection: plain IQ playback only, no hidden
+            # audio mode taken over from config_wizard.yaml (not written back)
+            self.m["modulator_type"] = "band_only"
         self.modulator_type_handler()
 
 
@@ -1408,7 +1412,8 @@ class playrec_v(QObject):
         #self.modulator_type_handler()
         modulator_types = ["band_only","band_and_audio","audio_only","all"]
         modulator_index = modulator_types.index(self.m["modulator_type"])
-        self.gui.comboBox_modulator_type.setCurrentIndex(modulator_index)
+        if hasattr(self.gui, "comboBox_modulator_type"):
+            self.gui.comboBox_modulator_type.setCurrentIndex(modulator_index)
         self.update_mixer_enabled()
         self.restore_mixer_db()
 
@@ -1416,10 +1421,8 @@ class playrec_v(QObject):
 
         self.gui.comboBox_stemlab.currentIndexChanged.connect(self.sdrdevice_changehandler)
         self.sdrdevice_changehandler()
-        try:
+        if hasattr(self.gui, "comboBox_modulator_type"):
             self.gui.comboBox_modulator_type.currentIndexChanged.connect(self.modulatortype_changehandler)
-        except:
-            pass
         
         self.gui.checkBox_TESTMODE.clicked.connect(self.toggleTEST)
         preset_time = QTime(00, 30, 00) 
@@ -1654,7 +1657,8 @@ class playrec_v(QObject):
             auxi.update_configyaml("audioplaylist", "")
             if isinstance(self.m.get("metadata"), dict):
                 self.m["metadata"]["audioplaylist"] = ""   # keep cached copy consistent
-            self.gui.label_csv_filename.setText("")
+            if hasattr(self.gui, "label_csv_filename"):
+                self.gui.label_csv_filename.setText("")
         # rebuild the device list for the new type; keeps the current device
         # if compatible, then re-identify it (module lists were re-imported)
         self.modulator_type_handler()
@@ -2556,7 +2560,8 @@ class playrec_v(QObject):
         # the modulator playlist stays loaded after STOP (Play resumes with it),
         # so keep showing its name; empty only if no playlist is loaded
         _pl = self.m.get("modulator_playlist", "")
-        self.gui.label_csv_filename.setText(Path(_pl).name if _pl else "")
+        if hasattr(self.gui, "label_csv_filename"):
+            self.gui.label_csv_filename.setText(Path(_pl).name if _pl else "")
 
     def indicate_bufoverflow(self):
         """_indicate if during recording a buffer underflow occurred

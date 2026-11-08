@@ -2645,7 +2645,6 @@ class Ui_MainWindow(object):
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
-        MainWindow.setToolTip(_translate("MainWindow", "generate annotation basis by comparing MWLIST, display candidates at next frequency"))
         self.ScrollBar_playtime.setToolTip(_translate("MainWindow", "move slider to browse through the record and plot spectra "))
         self.label_BW_2.setText(_translate("MainWindow", "BAND PARAMETERS"))
         self.label_BW_4.setToolTip(_translate("MainWindow", "<html><head/><body><p>Width of the band to be recorded, Sampling rate</p></body></html>"))
