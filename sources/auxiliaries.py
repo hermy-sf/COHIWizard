@@ -16,6 +16,7 @@ import urllib.request
 import zipfile
 import tarfile
 import yaml
+import wavchunks
 #import shutil #### Nicht nötig ??
 import sys
 import re
@@ -743,6 +744,19 @@ class WAVheader_tools():
                 return wavheader
             else:
                 return False
+        # exact chunk positions: fmt may be longer than 16 bytes, size fields may be wrong
+        # (e.g. auxi with 164 bytes but sdr_nChunkSize = 172), see wavchunks.py
+        try:
+            chunkinfo = wavchunks.scan(filename)
+        except wavchunks.WavChunkError as exc:
+            print(f"get_sdruno_header: {exc}")
+            self.fileHandle.close()
+            return False
+        for sdrtag in ("auxi", "rcvr"):
+            if sdrtag in chunkinfo["chunks"]:
+                self.fileHandle.seek(chunkinfo["chunks"][sdrtag][0])
+                wavheader['sdrtype_chckID'] = (self.fileHandle.read(4)).decode('utf-8')
+                break
         #####TODO: if sdrtype == 'auxi' do the next, else if 'rcvr' do PERSEUS, else error
         wavheader['sdr_nChunkSize'] = int.from_bytes(self.fileHandle.read(4), byteorder='little')
         if  wavheader['sdrtype_chckID'].find('auxi') > -1:
@@ -822,11 +836,17 @@ class WAVheader_tools():
                 ##print('unrecognized SDR')
                 return False
             #self.check_wavheader_timeconsistency(filename, wavheader)
+        # data chunk as located by wavchunks.scan (not the bytes following the fixed-size fields)
+        wavheader['data_ckID'] = 'data'
+        wavheader['data_nChunkSize'] = chunkinfo['data_nChunkSize']
+        wavheader['data_offset'] = chunkinfo['data_offset']
+        if chunkinfo['repaired']:
+            print(f"get_sdruno_header {os.path.basename(filename)}: " + "; ".join(chunkinfo['repaired']))
         #checking informatio for timestamps
         diff = (wavheader['stoptime_dt']-wavheader['starttime_dt']).seconds + (wavheader['stoptime'][7] - wavheader['starttime'][7])/1000
         diff *= wavheader['nSamplesPerSec']
         wavheader['diff'] = int(np.ceil(diff) * wavheader['nBlockAlign'])
-        wavheader['true_datachunksize'] = os.stat(filename).st_size - 216
+        wavheader['true_datachunksize'] = os.stat(filename).st_size - wavheader['data_offset']
 
         self.fileHandle.close()
         return(wavheader)
@@ -873,7 +893,24 @@ class WAVheader_tools():
             wavheader['filesize'] = int(2147483647)
             wavheader['data_nChunkSize'] = int(wavheader['filesize'] - 208)
             #print(wavheader['fmt_nChunkSize'])
-        wavheader['sdr_nChunkSize'] = 164
+        
+        # This writer always writes a 16-byte fmt chunk and the 164 bytes of auxi fields.
+        # When overwriting the header of an existing file, the samples must stay where they
+        # are: the auxi chunk is padded up to the existing start of the data (see wavchunks.py).
+        auxi_content = 164
+        if ovwrt_flag == True:
+            try:
+                old_offset = wavchunks.data_offset(wavfilename)
+            except (wavchunks.WavChunkError, OSError):
+                old_offset = wavchunks.STANDARD_DATA_OFFSET    # header still reserved/empty
+            auxi_content = old_offset - 52    # RIFF 12 + fmt 24 + auxi 8 + data 8 = 52
+            if auxi_content < 164:
+                auxiliaries.standard_errorbox(f"Cannot overwrite the header of {os.path.basename(wavfilename)}: "
+                                              f"its data start at byte {old_offset}, an auxi header needs at least 216 bytes. "
+                                              "The file was not changed.")
+                return False
+        wavheader['fmt_nChunkSize'] = 16
+        wavheader['sdr_nChunkSize'] = auxi_content
         if ovwrt_flag == True:
             fid = open(wavfilename, 'r+b')
             fid.seek(0)
@@ -913,6 +950,10 @@ class WAVheader_tools():
         if len(wavheader['nextfilename']) < 96:
             for i in range(len(wavheader['nextfilename']), 96):
                 fid.write(pack('<c', b' '))
+
+        # zero padding of the auxi chunk up to the existing data start (overwrite mode)
+        if auxi_content > 164:
+            fid.write(b'\x00' * (auxi_content - 164))
 
         # Write data_ckID and data_nChunkSize
         wavheader['data_ckID'] = 'data'

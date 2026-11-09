@@ -1,4 +1,5 @@
 import numpy as np
+import wavchunks
 import sys
 import time
 from PyQt5.QtWidgets import *
@@ -23,6 +24,17 @@ from matplotlib.patches import Rectangle
 from auxiliaries import auxiliaries as auxi
 from auxiliaries import WAVheader_tools
 
+
+
+def _ffmpeg_skip_option(filename):
+    """ffmpeg option that skips the wav header exactly up to the first sample byte;
+    empty for headerless (raw/temporary) files. Replaces the former fixed
+    '-skip_initial_bytes 212' for 24 bit files, which only fitted headers with an
+    18-byte fmt chunk (data at 218)."""
+    try:
+        return f" -skip_initial_bytes {wavchunks.data_offset(filename)}"
+    except (wavchunks.WavChunkError, OSError):
+        return ""
 
 class resample_m(QObject):
     __slots__ = ["None"]
@@ -721,6 +733,11 @@ class res_workers(QObject):
         startoffset = self.get_starttrim()
         #print(f"LOshifter worker startoffset (bytes): {startoffset}")
         readoffset = self.get_readoffset()
+        try:    # exact data start of this source file (files of a list may differ)
+            readoffset = wavchunks.data_offset(sourcefilename)
+        except (wavchunks.WavChunkError, OSError):
+            pass    # headerless temporary file: keep the offset set by the caller
+        self.set_readoffset(readoffset)     # also used by readsegmentfn below
         source_fileHandle.seek(readoffset+startoffset, 1) #TODO TODO TODO:: check if is not overwritten by readsegment always; maybe no effect ! offset larger than filesize
         expected_filesize = self.get_expfs()
         readsegmentfn = self.get_readsegment()
@@ -1263,6 +1280,7 @@ class resample_c(QObject):
         schedule_objdict["signal"]["resample"].disconnect(schedule_objdict["connect"]["resample"])
 
         source_fn = self.m["source_fn"]  #TODO: define im GUI_Hauptprogramm bzw. im scheduler
+        skipopt = _ffmpeg_skip_option(source_fn)   # exact start of the IQ data, see wavchunks.py
         target_fn = self.m["target_fn"]  #TODO: define im GUI_Hauptprogramm bzw. im scheduler
         tSR = self.m["tSR"]  #TODO: define im GUI_Hauptprogramm bzw. im scheduler
         self.m["progress_source"] = "sox"  #TODO: solve double function in better datacommunication structure
@@ -1366,10 +1384,10 @@ class resample_c(QObject):
             soxstring = ffmpeg_cmd + ' -y -f f32le -ar ' + str(self.m["sSR"]) + ' -ac 2 -i  ' + source_fn + ' -f ' + ffmpeg_target_type + ' ' + target_fn
         else: # true resampling
             if self.m["sBPS"] == 24: #only valid for wav files
-                soxstring = ffmpeg_cmd + ' -y -skip_initial_bytes 212 -f '+ ffmpeg_type +' -ar ' + str(self.m["sSR"]) + ' -ac 2 -i '  + source_fn  + ' -af ' + '"aresample=resampler=soxr, volume=' + str(self.m["resampling_gain"]) + 'dB"' + ' -f ' + ffmpeg_target_type + ' -ar ' + str(int(tSR))  + ' ' + target_fn
+                soxstring = ffmpeg_cmd + ' -y' + skipopt + ' -f '+ ffmpeg_type +' -ar ' + str(self.m["sSR"]) + ' -ac 2 -i '  + source_fn  + ' -af ' + '"aresample=resampler=soxr, volume=' + str(self.m["resampling_gain"]) + 'dB"' + ' -f ' + ffmpeg_target_type + ' -ar ' + str(int(tSR))  + ' ' + target_fn
                 #soxstring = ffmpeg_cmd + ' -y -skip_initial_bytes 212 -f '+ ffmpeg_type +' -ar ' + str(self.m["sSR"]) + ' -ac 2 -i '  + source_fn  + ' -af ' + '"volume=' + str(self.m["resampling_gain"]) + 'dB"' + ' -f ' + ffmpeg_target_type + ' -ar ' + str(int(tSR))  + ' ' + target_fn
             else:
-                soxstring = ffmpeg_cmd + ' -y -f '+ ffmpeg_type +' -ar ' + str(self.m["sSR"]) + ' -ac 2 -i '  + source_fn  + ' -af ' + '"aresample=resampler=soxr, volume=' + str(self.m["resampling_gain"]) + 'dB"' + ' -f ' + ffmpeg_target_type + ' -ar ' + str(int(tSR)) + ' ' + target_fn
+                soxstring = ffmpeg_cmd + ' -y' + skipopt + ' -f '+ ffmpeg_type +' -ar ' + str(self.m["sSR"]) + ' -ac 2 -i '  + source_fn  + ' -af ' + '"aresample=resampler=soxr, volume=' + str(self.m["resampling_gain"]) + 'dB"' + ' -f ' + ffmpeg_target_type + ' -ar ' + str(int(tSR)) + ' ' + target_fn
                 #soxstring = ffmpeg_cmd + ' -y -f '+ ffmpeg_type +' -ar ' + str(self.m["sSR"]) + ' -ac 2 -i '  + source_fn  + ' -af ' + '"volume=' + str(self.m["resampling_gain"]) + 'dB"' + ' -f ' + ffmpeg_target_type + ' -ar ' + str(int(tSR)) + ' ' + target_fn
         #print(f"exist input file {os.path.exists(source_fn)}, target file: {os.path.exists(target_fn)}")
         self.logger.debug(f"method resample: <<<<resampler: soxstring: {soxstring}")
@@ -1436,6 +1454,7 @@ class resample_c(QObject):
         schedule_objdict["signal"]["resample"].disconnect(schedule_objdict["connect"]["resample"])
 
         source_fn = self.m["source_fn"]  #TODO: define im GUI_Hauptprogramm bzw. im scheduler
+        skipopt = _ffmpeg_skip_option(source_fn)   # exact start of the IQ data, see wavchunks.py
         target_fn = self.m["target_fn"]  #TODO: define im GUI_Hauptprogramm bzw. im scheduler
         tSR = self.m["tSR"]  #TODO: define im GUI_Hauptprogramm bzw. im scheduler
         self.m["progress_source"] = "sox"  #TODO: solve double function in better datacommunication structure
@@ -1481,9 +1500,9 @@ class resample_c(QObject):
             sox_filetype = 'wav'
         #print(f">>>>>>>>oooooooooo   --> ffmpeg format type: {ffmpeg_type}")
         if self.m["sBPS"] == 24:
-            soxstring = ffmpeg_cmd + ' -y -skip_initial_bytes 212 -f '+ ffmpeg_type +' -ar ' + str(self.m["sSR"]) + ' -ac 2 -i "'  + source_fn  + '" -af ' + '"aresample=resampler=soxr"' + ' -f s16le -ar ' + str(int(tSR))  + ' "' + target_fn + '"'
+            soxstring = ffmpeg_cmd + ' -y' + skipopt + ' -f '+ ffmpeg_type +' -ar ' + str(self.m["sSR"]) + ' -ac 2 -i "'  + source_fn  + '" -af ' + '"aresample=resampler=soxr"' + ' -f s16le -ar ' + str(int(tSR))  + ' "' + target_fn + '"'
         else:
-            soxstring = ffmpeg_cmd + ' -y -f '+ ffmpeg_type +' -ar ' + str(self.m["sSR"]) + ' -ac 2 -i "'  + source_fn  + '" -af ' + '"aresample=resampler=soxr"' + ' -f s16le -ar ' + str(int(tSR))  + ' "' + target_fn + '"'
+            soxstring = ffmpeg_cmd + ' -y' + skipopt + ' -f '+ ffmpeg_type +' -ar ' + str(self.m["sSR"]) + ' -ac 2 -i "'  + source_fn  + '" -af ' + '"aresample=resampler=soxr"' + ' -f s16le -ar ' + str(int(tSR))  + ' "' + target_fn + '"'
         ################ end TODO ##################
         #Überprüfen on Leerzeichen in den Filenamen, diese können nicht bearbeitet werden
 

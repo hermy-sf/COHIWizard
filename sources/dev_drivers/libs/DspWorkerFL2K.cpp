@@ -156,6 +156,58 @@ struct FmtStruct    {
 struct AuxiContent  { uint8_t padding[68]; char filename[96]; };
 #pragma pack(pop)
 
+
+/* ================================================================== */
+/* Exact chunk walking – same rules as sources/wavchunks.py            */
+/* The samples must start exactly at the first byte of the data chunk: */
+/* a shifted start swaps I/Q (16 bit) or mixes samples (24 bit).       */
+/* ================================================================== */
+static bool wav_valid_tag(const char* t)
+{
+    for (int i = 0; i < 4; ++i)
+        if ((unsigned char)t[i] < 0x20 || (unsigned char)t[i] > 0x7E) return false;
+    return true;
+}
+
+static bool wav_tag_at(std::ifstream& f, std::streamoff pos, std::streamoff fileSize)
+{
+    if (pos < 0 || pos + 8 > fileSize) return false;
+    char t[4];
+    const std::streamoff keep = f.tellg();
+    f.seekg(pos);
+    f.read(t, 4);
+    const bool ok = static_cast<bool>(f) && wav_valid_tag(t);
+    f.clear();
+    f.seekg(keep);
+    return ok;
+}
+
+/* Position of the chunk following the chunk at 'start'. A size field which does
+ * not lead to a valid chunk is replaced by the known content length of the chunk
+ * (e.g. 'auxi' written with sdr_nChunkSize 172 but containing 164 bytes).
+ * Returns -1 if the layout cannot be resolved. */
+static std::streamoff wav_next_chunk(std::ifstream& f, std::streamoff start,
+                                     const ChunkHeader& ch, std::streamoff fileSize)
+{
+    const std::streamoff nxt = start + 8 + (std::streamoff)ch.size + (ch.size & 1);
+    if (wav_tag_at(f, nxt, fileSize)) return nxt;
+    static const struct { char tag[5]; int sizes[3]; } KNOWN[] = {
+        {"fmt ", {16, 18, 40}}, {"auxi", {164, 0, 0}}, {"rcvr", {34, 0, 0}} };
+    for (const auto& k : KNOWN) {
+        if (std::memcmp(ch.id, k.tag, 4) != 0) continue;
+        for (int s : k.sizes) {
+            if (s <= 0) break;
+            const std::streamoff cand = start + 8 + s;
+            if (wav_tag_at(f, cand, fileSize)) {
+                printf("[wav] chunk '%.4s' at %lld: size field %u, actual content %d bytes\n",
+                       ch.id, (long long)start, ch.size, s);
+                return cand;
+            }
+        }
+    }
+    return -1;
+}
+
 /* ================================================================== */
 /* Constants                                                           */
 /* ================================================================== */
@@ -659,6 +711,14 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
 
     RiffHeader riff;
     f.read(reinterpret_cast<char*>(&riff), sizeof(riff));
+    if (!f || std::memcmp(riff.chunkId, "RIFF", 4) != 0 || std::memcmp(riff.format, "WAVE", 4) != 0) {
+        if (err_cb) err_cb(("No RIFF/WAVE file: " + path).c_str(), err_ud);
+        return "";
+    }
+    f.seekg(0, std::ios::end);
+    const std::streamoff fileSize = f.tellg();
+    f.seekg((std::streamoff)sizeof(riff), std::ios::beg);
+    bool dataFound = false;
 
     uint32_t sampleRate    = 0;
     uint16_t audioFormat   = 1;
@@ -673,6 +733,8 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
     while (f.read(reinterpret_cast<char*>(&chunk), sizeof(chunk))
            && running.load(std::memory_order_acquire))
     {
+        const std::streamoff chunkStart = (std::streamoff)f.tellg() - (std::streamoff)sizeof(chunk);
+        if (!wav_valid_tag(chunk.id)) break;
         std::string tag(chunk.id, 4);
 
         if (tag == "fmt ") {
@@ -682,8 +744,6 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
             audioFormat   = fmt.audioFormat;
             bitsPerSample = fmt.bitsPerSample;
             numChannels   = fmt.numChannels;
-            long skip = (long)chunk.size - (long)sizeof(fmt);
-            if (skip > 0) f.seekg(skip, std::ios::cur);
         }
         else if (tag == "auxi") {
             AuxiContent aux;
@@ -692,10 +752,9 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
             static const std::string JUNK(" \t\n\r\0\x01", 6);
             size_t last = raw.find_last_not_of(JUNK);
             if (last != std::string::npos) nextFile = raw.substr(0, last + 1);
-            long skip = (long)chunk.size - (long)sizeof(aux);
-            if (skip > 0) f.seekg(skip, std::ios::cur);
         }
         else if (tag == "data") {
+            dataFound = true;      /* the stream is now exactly at the first sample byte */
 
             if (sampleRate == 0 || numChannels < 2) {
                 if (err_cb) err_cb("Invalid WAV header", err_ud);
@@ -771,7 +830,8 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
             std::vector<int8_t>  out8(DSP_BLOCK * (n_interp + 1));
             std::vector<float>   mon(MON_SIZE);
 
-            uint32_t dataBytesTotal = chunk.size;
+            uint32_t dataBytesTotal = (uint32_t)std::min<std::streamoff>(
+                chunk.size, std::max<std::streamoff>(0, fileSize - (std::streamoff)f.tellg()));
             uint32_t dataBytesRead  = 0;
             size_t   blocksPerSec   = (size_t)((double)sampleRate / DSP_BLOCK) + 1;
             size_t   blockCnt       = 0;
@@ -1002,11 +1062,14 @@ std::string DspWorkerFL2K::process_file(const std::string& path)
             teardown_audio_for_file();
             break;
         }
-        else {
-            f.seekg(chunk.size, std::ios::cur);
-            if (chunk.size & 1) f.seekg(1, std::ios::cur);
-        }
+        /* all other chunks: continue with the next one */
+        const std::streamoff nxt = wav_next_chunk(f, chunkStart, chunk, fileSize);
+        if (nxt < 0) break;
+        f.clear();
+        f.seekg(nxt);
     }
+    if (!dataFound && running.load(std::memory_order_acquire) && err_cb)
+        err_cb(("Inconsistent WAV header, data chunk not found: " + path).c_str(), err_ud);
 
     return nextFile;
 }

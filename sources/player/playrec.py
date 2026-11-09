@@ -32,6 +32,19 @@ import platform
 
 
 
+
+def data_file_position(m, position_raw):
+    """absolute file position for a byte position position_raw within the IQ data:
+    start of the data chunk (m["readoffset"], see wavchunks.py) plus whole sample frames,
+    limited to the data actually present; a position not aligned to nBlockAlign would
+    swap I and Q (16 bit) or mix bytes of different samples (24 bit)"""
+    wavheader = m["wavheader"]
+    align = max(1, int(wavheader['nBlockAlign']))
+    offset = m.get("readoffset", wavheader.get('data_offset', 216))
+    datasize = min(wavheader['data_nChunkSize'], wavheader.get('true_datachunksize', wavheader['data_nChunkSize']))
+    rel = max(0, min(int(position_raw), datasize))
+    return offset + rel - rel % align
+
 class playrec_m(QObject):
     __slots__ = ["None"]
     SigModelXXX = pyqtSignal()
@@ -980,10 +993,7 @@ class playrec_c(QObject):
                         self.SigRelay.emit("cexex_playrec",["reset_GUI",0]) #TODO remove after tests
                         self.SigRelay.emit("cexex_playrec",["reset_playerbuttongroup",0])
                         return()
-                    if self.m["wavheader"]['sdrtype_chckID'].find('rcvr') > -1:
-                        self.m["readoffset"] = 86
-                    else:
-                        self.m["readoffset"] = 216
+                    self.m["readoffset"] = self.m["wavheader"].get('data_offset', 216)
                     self.m["playlist_ix"] += 1                #TODO: self.m Eintragung von icorr etc erfolgt an mehreren STellen, fileopen, extract dat header und hier. Könnte an einer Stelle passieren, immer, sobald ein wav-header extrahiert wird
                     self.m["ifreq"] = self.m["wavheader"]['centerfreq'] + self.m["LO_offset"]
                     self.m["irate"] = self.m["wavheader"]['nSamplesPerSec']
@@ -1109,10 +1119,8 @@ class playrec_c(QObject):
         timestr = str(self.m["wavheader"]['starttime_dt'] + ndatetime.timedelta(seconds=self.m["curtime"]))
         self.SigRelay.emit("cexex_playrec",["setplaytimedisplay",timestr])
         position_raw = self.m["curtime"]*self.m["timescaler"]  #timescaler = bytes per second
-        # TODO: check, geändert 09-12-2023: byte position mit allen Blockaligns auch andere als 4(16 bits); 
-        # TODO: adapt for other than header 216
-        position = min(max(216, position_raw-position_raw % self.m["wavheader"]['nBlockAlign']),
-                            self.m["wavheader"]['data_nChunkSize']+216) # guarantee reading from integer multiples of 4 bytes, TODO: change '4', '216' to any wav format ! 
+        # absolute file position: start of the data chunk + whole sample frames
+        position = data_file_position(self.m, position_raw)
         if self.m["fileopened"] is True:
             self.logger.debug("jumptoposition reached")
             self.logger.debug("system_state['fileopened']: %s",self.m["fileopened"])
@@ -2884,11 +2892,8 @@ class playrec_v(QObject):
             else:
                 return False
             position_raw = self.m["curtime"]*self.m["timescaler"]
-            # TODO: check, geändert 09-12-2023: byte position mit allen Blockaligns auch andere als 4(16 bits); 
-            # TODO: adapt for other than header 216
-            position = min(max(216, position_raw-position_raw % self.m["wavheader"]['nBlockAlign']),
-                           self.m["wavheader"]['data_nChunkSize'])
-            # guarantee integer multiple of nBlockalign, > 0, <= filesize
+            # absolute file position: start of the data chunk + whole sample frames
+            position = data_file_position(self.m, position_raw)
             if increment != -1 and increment != 1 or self.m["timechanged"] == True:
                 if self.m["fileopened"] and self.m["playthreadActive"] is True:
                     try:

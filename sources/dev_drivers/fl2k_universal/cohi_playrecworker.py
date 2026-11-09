@@ -34,6 +34,7 @@ config_wizard.yaml keys used:
 
 import csv
 import ctypes
+import wavchunks    # exact position of the IQ data in wav files
 import os
 import subprocess
 import threading
@@ -1139,7 +1140,7 @@ class playrec_worker(QObject):
             self.SigNextfile.emit(filename)
             try:
                 with open(filename, "rb") as fh:
-                    fh.seek(216, 1)
+                    wavchunks.seek_to_data(fh, filename)   # exact, see wavchunks.py
                     data  = np.empty(DATABLOCKSIZE, dtype=np.int16)
                     size  = fh.readinto(data)
                     count = 0
@@ -1158,7 +1159,7 @@ class playrec_worker(QObject):
                             time.sleep(0.1)
                             if self.stopix:
                                 break
-            except OSError as exc:
+            except (OSError, wavchunks.WavChunkError) as exc:
                 self.SigError.emit(f"Test mode file error: {exc}")
         self.set_fileclose(True)
         self.SigFinished.emit()

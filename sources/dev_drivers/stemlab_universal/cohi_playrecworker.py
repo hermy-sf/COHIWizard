@@ -19,6 +19,7 @@ Signal chain (IQ+Audio):
 """
 
 import ctypes
+import wavchunks    # exact position of the IQ data in wav files
 import csv
 import math
 import os
@@ -872,7 +873,7 @@ class playrec_worker(QObject):
                     self.SigNextfile.emit(filename)
                     try:
                         with open(filename, "rb") as fh:
-                            fh.seek(216, 1)
+                            wavchunks.seek_to_data(fh, filename)
                             data  = np.empty(self.DATABLOCKSIZE, dtype=np.int16)
                             size  = fh.readinto(data)
                             count = 0
@@ -884,7 +885,7 @@ class playrec_worker(QObject):
                                     self.set_data(data[:self.DATASHOWSIZE].astype(np.float32) * _AVC_MONITOR_CAL)
                                     self.SigIncrementCurTime.emit()
                                     count = 0
-                    except OSError as exc:
+                    except (OSError, wavchunks.WavChunkError) as exc:
                         self.SigError.emit(f"TEST mode file error: {exc}")
             else:
                 time.sleep(5)
@@ -946,7 +947,7 @@ class playrec_worker(QObject):
                     self.set_fileHandle(fileHandle)
                     fmt = self.get_formattag()
                     self.set_datablocksize(self.DATABLOCKSIZE)
-                    fileHandle.seek(216, 1)
+                    _data_start = wavchunks.seek_to_data(fileHandle, filename)   # exact, see wavchunks.py
 
                     if fmt[2] == 16:
                         data = np.empty(self.DATABLOCKSIZE, dtype=np.int16)
@@ -959,7 +960,7 @@ class playrec_worker(QObject):
                     timescaler     = self.get_timescaler()
                     junkspersecond = timescaler / (self.DATABLOCKSIZE * data.itemsize)
                     count          = 0
-                    _block_file_pos = 216
+                    _block_file_pos = _data_start
 
                     _diag_done           = False
                     _block_budget_ms     = 1000.0 * (self.DATABLOCKSIZE // 2) / sampling_rate
@@ -1062,7 +1063,7 @@ class playrec_worker(QObject):
                     self.set_fileclose(True)
                     fileHandle.close()
 
-                except OSError as exc:
+                except (OSError, wavchunks.WavChunkError) as exc:
                     self.SigError.emit(f"[stemlab_universal] File error: {exc}")
 
         else:

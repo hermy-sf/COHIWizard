@@ -298,10 +298,8 @@ class view_spectra_v(QObject):
             #print("plot spectrum reached, start readsegment")
             pscale = self.m["wavheader"]['nBlockAlign']
             position = int(np.floor(pscale*np.round(self.m["wavheader"]['data_nChunkSize']*self.m["horzscal"]/pscale/1000)))
-            if self.m["wavheader"]['sdrtype_chckID'].find('rcvr') > -1:
-                self.readoffset = 86
-            else:
-                self.readoffset = 216
+            # first sample byte, located exactly by wavchunks.scan (dat files: generated header, 216)
+            self.readoffset = self.m["wavheader"].get('data_offset', 216)
             ret = auxi.readsegment_new(self,self.m["f1"],position,self.readoffset,self.DATABLOCKSIZE,self.m["wavheader"]["nBitsPerSample"],
                                       32,self.m["wavheader"]["wFormatTag"])
             data = ret["data"]

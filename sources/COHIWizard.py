@@ -1560,10 +1560,9 @@ class core_v(QObject):
         #print(f"4th segment etime: {et-st} s: signalling 2")
 
         ### set readoffset and relay to modules: TODO: check if should be translated to modules (dangerous, may affect many instances)
-        if self.wavheader['sdrtype_chckID'].find('rcvr') > -1:
-            self.m["readoffset"] = 86
-        else:
-            self.m["readoffset"] = 216
+        # first sample byte, located exactly by wavchunks.scan (216 for a standard SDRuno header);
+        # dat files have a generated header without data_offset
+        self.m["readoffset"] = self.wavheader.get('data_offset', 216)
 
         self.SigRelay.emit("cm_all_",["readoffset",self.m["readoffset"]])
 
