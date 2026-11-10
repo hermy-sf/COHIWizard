@@ -31,6 +31,7 @@ deleted unless --allow-git-tree is given; the tool then runs as dry run.
 """
 import argparse
 import hashlib
+import http.client
 import io
 import json
 import os
@@ -229,11 +230,12 @@ def prefer_ipv4():
     socket.getaddrinfo = _getaddrinfo_ipv4_first
 
 
-def http_get(url, headers=None, timeout=60, retries=3):
+def http_get(url, headers=None, timeout=60, retries=5):
     hdr = dict(_UA)
     hdr.update(headers or {})
     last = None
     for attempt in range(retries):
+        wait = 2.0 * (attempt + 1)
         try:
             req = urllib.request.Request(url, headers=hdr)
             with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -242,9 +244,16 @@ def http_get(url, headers=None, timeout=60, retries=3):
             if exc.code in (403, 404, 416):
                 raise
             last = exc
-        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+            try:
+                wait = max(wait, min(float(exc.headers.get("Retry-After", 0)), 60.0))
+            except (TypeError, ValueError):
+                pass
+        except (OSError, http.client.HTTPException) as exc:
+            # besides URLError/timeouts also ssl.SSLError, connection resets and
+            # truncated responses (IncompleteRead), seen on Windows and WLAN
             last = exc
-        time.sleep(1.5 * (attempt + 1))
+        if attempt < retries - 1:
+            time.sleep(wait)
     raise last
 
 
@@ -523,6 +532,35 @@ def want_lib_names(want):
 # ---------------------------------------------------------------------------
 # User interaction (console version; the GUI provides the same methods)
 # ---------------------------------------------------------------------------
+SETUP_LOG = None     # <target>/cohi_setup.log, set in main() for stage 2
+
+
+def file_log(msg):
+    """append to the setup log file, so that failed runs can be analysed afterwards"""
+    if not SETUP_LOG:
+        return
+    try:
+        with open(SETUP_LOG, "a", encoding="utf-8") as fh:
+            fh.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {msg}\n")
+    except OSError:
+        pass
+
+
+def wait_for_exit(pid, ui, timeout=30):
+    """wait until the COHIWizard that started the setup has ended: on Windows
+    its open files and loaded DLLs cannot be replaced before"""
+    try:
+        import psutil
+        proc = psutil.Process(pid)
+    except Exception:
+        return
+    ui.log(f"waiting for COHIWizard (pid {pid}) to close ...")
+    try:
+        proc.wait(timeout)
+    except Exception:
+        ui.log("COHIWizard is still running; files in use may fail to update")
+
+
 class ConsoleUI:
     def __init__(self, assume_yes=False):
         self.assume_yes = assume_yes
@@ -530,6 +568,7 @@ class ConsoleUI:
 
     def log(self, msg):
         print(msg, flush=True)
+        file_log(msg)
 
     def progress(self, done, total):
         if total:
@@ -567,11 +606,20 @@ class Installer:
         tmp = dest + ".cohi_tmp"
         with open(tmp, "wb") as fh:
             fh.write(data)
-        try:
-            os.replace(tmp, dest)
-        except PermissionError:
-            os.remove(tmp)
-            raise RuntimeError(f"{path} is in use; close COHIWizard and run the setup again")
+        # Windows: a virus scanner checking the new file, or a COHIWizard just
+        # closing, keeps files locked for a moment -> retry for a few seconds
+        for attempt in range(10):
+            try:
+                os.replace(tmp, dest)
+                break
+            except PermissionError:
+                if attempt == 9:
+                    try:
+                        os.remove(tmp)
+                    except OSError:
+                        pass
+                    raise RuntimeError(f"{path} is in use; close COHIWizard and run the setup again")
+                time.sleep(0.5 * (attempt + 1))
         if mode == "100755" and os_key() == "linux":
             os.chmod(dest, 0o755)
 
@@ -630,15 +678,41 @@ class Installer:
             lock = threading.Lock()
 
             def job(path):
-                self._fetch(commit, path, tree[path][2])
+                try:
+                    self._fetch(commit, path, tree[path][2])
+                except Exception as exc:
+                    return path, exc
                 with lock:
                     done[0] += 1
                     ui.progress(done[0], len(plan.download))
-                return path
+                return path, None
 
+            # one failed file must not stop the others: collect the failures and
+            # retry them one by one after a pause (server/network/virus scanner)
+            failed = {}
             with ThreadPoolExecutor(max_workers=8) as pool:
-                for path in pool.map(job, plan.download):
-                    files_state[path] = tree[path][0]
+                for path, exc in pool.map(job, plan.download):
+                    if exc is None:
+                        files_state[path] = tree[path][0]
+                    else:
+                        failed[path] = exc
+            if failed:
+                ui.log(f"{len(failed)} files failed, retrying them one by one ...")
+                time.sleep(3)
+                for path in list(failed):
+                    path, exc = job(path)
+                    if exc is None:
+                        files_state[path] = tree[path][0]
+                        del failed[path]
+                    else:
+                        failed[path] = exc
+            if failed:
+                for path, exc in sorted(failed.items()):
+                    ui.log(f"  FAILED {path}: {type(exc).__name__}: {exc}")
+                self.inst.save_state()
+                raise RuntimeError(f"{len(failed)} of {len(plan.download)} files could not be "
+                                   f"downloaded (see log), e.g. {next(iter(sorted(failed)))}.\n"
+                                   "Please run the setup again; only the missing files are loaded.")
         for path in wanted_files(tree, plan.modules, plan.drivers):
             files_state.setdefault(path, tree[path][0])
         # a freshly installed module no longer needs its placeholder
@@ -1017,11 +1091,48 @@ class Installer:
                 appdir = os.path.expanduser("~/.local/share/applications")
                 os.makedirs(appdir, exist_ok=True)
                 icon = os.path.join(self.inst.sources, "logos", "SplasScreen_s.png")
+                entry = ("[Desktop Entry]\nType=Application\nName=COHIWizard\n"
+                         f"Exec=\"{sh}\"\nPath={self.inst.sources}\nIcon={icon}\n"
+                         "Terminal=false\nCategories=AudioVideo;HamRadio;\n")
                 with open(os.path.join(appdir, "cohiwizard.desktop"), "w") as fh:
-                    fh.write("[Desktop Entry]\nType=Application\nName=COHIWizard\n"
-                             f"Exec=\"{sh}\"\nPath={self.inst.sources}\nIcon={icon}\n"
-                             "Terminal=false\nCategories=AudioVideo;HamRadio;\n")
+                    fh.write(entry)
                 self.ui.log("menu entry: " + os.path.join(appdir, "cohiwizard.desktop"))
+                self._desktop_icon_linux(entry)
+
+    def _desktop_icon_linux(self, entry):
+        """Copy of the menu entry on the desktop. The desktop folder is localised
+        (Desktop, Schreibtisch, ...), so ask xdg-user-dir. Desktops start a
+        .desktop file only if it is executable and marked as trusted: GNOME/Nautilus
+        via metadata::trusted, Xfce >= 4.18 (MX Linux) via metadata::xfce-exe-checksum."""
+        desk = ""
+        try:
+            desk = subprocess.run(["xdg-user-dir", "DESKTOP"], capture_output=True,
+                                  text=True, timeout=5).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            pass
+        home = os.path.expanduser("~")
+        if not desk or os.path.normpath(desk) == os.path.normpath(home):
+            desk = os.path.join(home, "Desktop")
+        if not os.path.isdir(desk):
+            self.ui.log(f"no desktop folder {desk}, desktop icon skipped")
+            return
+        path = os.path.join(desk, "cohiwizard.desktop")
+        try:
+            with open(path, "w") as fh:
+                fh.write(entry)
+            os.chmod(path, 0o755)
+        except OSError as e:
+            self.ui.log(f"desktop icon not created: {e}")
+            return
+        with open(path, "rb") as fh:
+            checksum = hashlib.sha256(fh.read()).hexdigest()
+        for key, value in (("metadata::trusted", "true"),
+                           ("metadata::xfce-exe-checksum", checksum)):
+            try:
+                subprocess.run(["gio", "set", path, key, value], capture_output=True, timeout=5)
+            except (OSError, subprocess.SubprocessError):
+                pass
+        self.ui.log("desktop icon: " + path)
 
 
 def ffmpeg_member_needed(name):
@@ -1346,6 +1457,7 @@ def run_gui(args):
 
         def log(self, msg):
             self.bridge.sig_log.emit(str(msg))
+            file_log(msg)
 
         def progress(self, done, total):
             self.bridge.sig_progress.emit(int(done), int(total))
@@ -1590,6 +1702,7 @@ def run_gui(args):
             self.check_drivers()
             if not ok:
                 self.append_log("ERROR: " + err)
+                file_log("ERROR: " + err)
                 QtWidgets.QMessageBox.critical(self, "COHIWizard setup", "Setup failed:\n\n" + err)
                 return
             ready = Installation(args.target, args.python).exists() and not self.cb_dry.isChecked()
@@ -1667,6 +1780,7 @@ def build_parser():
     ap.add_argument("--no-shortcut", action="store_true", help="no desktop/menu shortcut")
     ap.add_argument("--stage2", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--python", help=argparse.SUPPRESS)
+    ap.add_argument("--wait-pid", type=int, help=argparse.SUPPRESS)
     return ap
 
 
@@ -1677,6 +1791,12 @@ def main(argv=None):
         return bootstrap(args)
     args.target = os.path.abspath(args.target or os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     args.python = args.python or sys.executable
+    global SETUP_LOG
+    if os.path.isdir(args.target):
+        SETUP_LOG = os.path.join(args.target, "cohi_setup.log")
+        file_log(f"=== setup stage 2, {platform.platform()}, Python {platform.python_version()}")
+    if args.wait_pid:
+        wait_for_exit(args.wait_pid, ConsoleUI())
     if args.no_gui:
         return run_headless(args)
     return run_gui(args)

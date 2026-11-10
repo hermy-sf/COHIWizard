@@ -515,126 +515,184 @@ class auxiliaries():
         cref["canvas"].draw()
         return cref
 
-#     # --- Auxiliary methods for auto-detection of  the Red Pitaya IP address ---
+# --- Auto-detection of the Red Pitaya (STEMlab) IP address ---
+# Two independent methods, run in parallel by find_red_pitayas():
+# 1. mDNS/zeroconf: Red Pitayas announce themselves as rp-xxxxxx.local
+#    (works with Link-Local, but often fails in a router LAN: firewall on
+#    UDP 5353, many other mDNS services, routers filtering multicast)
+# 2. LAN scan: every host of the own IPv4 subnets gets one UDP packet, which
+#    makes the OS resolve its MAC address; the ARP table is then searched for
+#    the Red Pitaya MAC prefix. Needs no root/admin and no open port.
 
+RP_MAC_PREFIXES = ("00:26:32",)   # Instrumentation Technologies d.d. (Red Pitaya)
+RP_SCAN_MAX_HOSTS = 1024          # larger subnets (e.g. Link-Local /16) are not scanned
 
-#     def trigger_linklocal_arp(self):
-#         """Sending a UDP-Broadcast-Packet, in order to cause ARP-Requests."""
-#         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-#         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-#         try:
-#             sock.sendto(b"ping", ("169.254.255.255", 9))  # Port 9 = discard
-#         finally:
-#             sock.close()
-#         time.sleep(0.2)  # kurze Pause, damit ARP aktualisiert wird
-
-
-
-#     def valid_mac(self,mac):
-#         """Check if MAC is valid and not all zeros."""
-#         mac = mac.lower()
-#         if mac in ("00:00:00:00:00:00", "00-00-00-00-00-00"):
-#             return False
-#         return bool(re.match(r"([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$", mac))
-
-#     def is_linklocal(self, ip):
-#         """Check if IP is in 169.254.x.y (Link-Local)."""
-#         try:
-#             return ipaddress.ip_address(ip).is_link_local
-#         except ValueError:
-#             return False
-
-#     # --- Linux ohne sudo ---
-#     def read_arp_linux(self, filter_oui=None):
-#         results = []
-#         try:
-#             with open("/proc/net/arp") as f:
-#                 next(f)  # skip header
-#                 for line in f:
-#                     parts = line.split()
-#                     ip = parts[0]
-#                     mac = parts[3].lower()
-
-#                     if not self.is_linklocal(ip):
-#                         continue
-#                     if not self.valid_mac(mac):
-#                         continue
-#                     if filter_oui:
-#                         if not any(mac.startswith(prefix.lower()) for prefix in filter_oui):
-#                             continue
-#                     results.append((ip, mac))
-#         except FileNotFoundError:
-#             pass
-#         return results
-
-#     # --- Windows ---
-#     def read_arp_windows(self, filter_oui=None):
-#         results = []
-#         try:
-#             out = subprocess.check_output(["arp", "-a"], text=True, errors="ignore")
-#             # IP und MAC extrahieren (MAC kann '-' oder ':' enthalten)
-#             pattern = r"(\d+\.\d+\.\d+\.\d+)\s+.*?((?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2})"
-#             matches = re.findall(pattern, out, re.IGNORECASE)
-#             for ip, mac in matches:
-#                 mac = mac.lower().replace("-", ":")
-#                 if not self.is_linklocal(ip):
-#                     continue
-#                 if not self.valid_mac(mac):
-#                     continue
-#                 if filter_oui:
-#                     if not any(mac.startswith(prefix.lower()) for prefix in filter_oui):
-#                         continue
-#                 results.append((ip, mac))
-#         except subprocess.SubprocessError:
-#             pass
-#         return results
-
-#     # --- Cross-platform Wrapper ---
-#     def discover_linklocal_devices(self, filter_oui=None):
-#         """
-#         Discover Link-Local devices (169.254.x.y) without root/admin.
-#         Optionally filter by MAC OUI prefixes.
-#         :param : filter, list of expected MAc addresses
-#         :pytpe : list 
-#         :returns : list of identified Red Pitaya IP addresses and MAC address.
-#         :rtype : list
-#         """
-#         system = platform.system()
-#         if system == "Linux":
-#             return self.read_arp_linux(filter_oui)
-#         elif system == "Windows":
-#             return self.read_arp_windows(filter_oui)
-#         else:
-#             # macOS: ähnlich wie Linux, arp -a funktioniert ohne sudo
-#             return self.read_arp_windows(filter_oui)
-
-# # --- Beispielaufruf ---
-# if __name__ == "__main__":
-#     # Beispiel Red Pitaya OUIs
-#     redpitaya_ouis = ["00:26:32", "3c:2c:30", "b8:27:eb"]
-
-#     devices = discover_linklocal_devices(filter_oui=redpitaya_ouis)
-
-#     if devices:
-#         print("Gefundene Red Pitayas:")
-#         for ip, mac in devices:
-#             print(f"{ip}  →  {mac}")
-#     else:
-#         print("Keine Red Pitayas gefunden.")
 
 class RPListener:
+    """zeroconf listener, only collects the service names; they are resolved
+    after browsing, so that slow services of other devices cannot delay
+    the Red Pitaya entries"""
     def __init__(self):
-        self.devices = []
+        self.services = []
 
     def remove_service(self, zeroconf, type, name):
         pass
 
-    def add_service(self, zeroconf, type, name):
-        info = zeroconf.get_service_info(type, name)
-        if info and name.startswith("rp-") and name.endswith(".local."):
-            ip = ".".join(str(b) for b in info.addresses[0])
-            self.devices.append((name.strip("."), ip))
+    def update_service(self, zeroconf, type, name):
+        pass
 
+    def add_service(self, zeroconf, type, name):
+        self.services.append((type, name))
+
+
+def _valid_mac(mac):
+    """Check if MAC is valid and not all zeros"""
+    if mac in ("00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff"):
+        return False
+    return bool(re.match(r"([0-9a-f]{2}:){5}[0-9a-f]{2}$", mac))
+
+
+def _read_arp_table():
+    """returns list of (ip, mac) from the OS ARP table, mac lower case with ':'"""
+    results = []
+    if platform.system() == "Linux":
+        try:
+            with open("/proc/net/arp") as f:
+                next(f)  # skip header
+                for line in f:
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        results.append((parts[0], parts[3].lower()))
+        except (OSError, StopIteration):
+            pass
+    else:
+        # Windows and macOS: 'arp -a' works without admin rights
+        try:
+            flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            out = subprocess.check_output(["arp", "-a"], text=True, errors="ignore",
+                                          timeout=5, creationflags=flags)
+        except (OSError, subprocess.SubprocessError):
+            return results
+        pattern = r"(\d+\.\d+\.\d+\.\d+)\D+?((?:[0-9a-f]{1,2}[:-]){5}[0-9a-f]{1,2})\b"
+        for ip, mac in re.findall(pattern, out, re.IGNORECASE):
+            # macOS prints e.g. 0:26:32:f0:1:2 -> pad each byte to 2 digits
+            mac = ":".join(b.zfill(2) for b in re.split("[:-]", mac.lower()))
+            results.append((ip, mac))
+    return [(ip, mac) for ip, mac in results if _valid_mac(mac)]
+
+
+def _local_ipv4_networks():
+    """IPv4 networks of all active interfaces except loopback and Link-Local
+    with at most RP_SCAN_MAX_HOSTS hosts. Returns list of (own_ip, network)"""
+    import ipaddress
+    try:
+        import psutil
+    except ImportError:
+        return []
+    import socket
+    nets = []
+    try:
+        stats = psutil.net_if_stats()
+        addrs = psutil.net_if_addrs()
+    except Exception:
+        return []
+    for ifname, alist in addrs.items():
+        if ifname in stats and not stats[ifname].isup:
+            continue
+        for a in alist:
+            if a.family != socket.AF_INET or not a.netmask:
+                continue
+            try:
+                iface = ipaddress.ip_interface(f"{a.address}/{a.netmask}")
+            except ValueError:
+                continue
+            if iface.ip.is_loopback or iface.ip.is_link_local:
+                continue
+            if iface.network.num_addresses > RP_SCAN_MAX_HOSTS + 2:
+                continue
+            nets.append((str(iface.ip), iface.network))
+    return nets
+
+
+def _probe_subnets(nets):
+    """send one UDP packet to every host so that the OS fills its ARP table"""
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setblocking(False)
+    try:
+        for own_ip, net in nets:
+            for host in net.hosts():
+                ip = str(host)
+                if ip == own_ip:
+                    continue
+                try:
+                    sock.sendto(b"\0", (ip, 9))  # port 9 = discard
+                except OSError:
+                    # send buffer full or host unreachable: short pause, go on
+                    time.sleep(0.002)
+    finally:
+        sock.close()
+
+
+def _rp_name_from_mac(mac):
+    """Red Pitaya host names are rp-<last 3 bytes of the MAC>"""
+    return "rp-" + mac.replace(":", "")[-6:]
+
+
+def _mdns_search(zc, listener):
+    """resolve the collected mDNS services, keep the rp-xxxxxx devices"""
+    from zeroconf import ServiceInfo, IPVersion
+    found = []
+    for stype, name in listener.services:
+        if not name.lower().startswith("rp-"):
+            continue
+        info = ServiceInfo(stype, name)
+        if not info.request(zc, 1500):
+            continue
+        for ip in info.parsed_addresses(IPVersion.V4Only):
+            hostname = (info.server or name).split(".")[0]
+            found.append((hostname, ip))
+    return found
+
+
+def find_red_pitayas(timeout=3.0):
+    """
+    Search connected Red Pitaya STEMlabs by mDNS and by LAN scan (see above).
+    :param timeout: search duration in seconds
+    :type timeout: float
+    :returns: list of (hostname, ip) tuples without duplicates, mDNS results first
+    :rtype: list
+    """
+    found = []
+    zc = None
+    try:
+        zc = Zeroconf()
+        listener = RPListener()
+        ServiceBrowser(zc, ["_http._tcp.local.", "_ssh._tcp.local."], listener)
+    except Exception as e:
+        print(f"find_red_pitayas: mDNS not available: {e}")
+        zc = None
+    t0 = time.time()
+    nets = _local_ipv4_networks()
+    print(f"find_red_pitayas: scanning {[str(n) for _, n in nets]}")
+    _probe_subnets(nets)
+    # leave time for mDNS answers and ARP replies
+    time.sleep(max(0.0, timeout - (time.time() - t0)))
+    if zc is not None:
+        try:
+            found += _mdns_search(zc, listener)
+        except Exception as e:
+            print(f"find_red_pitayas: mDNS resolve failed: {e}")
+        finally:
+            zc.close()
+    for ip, mac in _read_arp_table():
+        if mac.startswith(RP_MAC_PREFIXES):
+            found.append((_rp_name_from_mac(mac), ip))
+    result = []
+    for name, ip in found:
+        if ip not in [r[1] for r in result]:
+            result.append((name, ip))
+    return result
 
 
 #methods for wavheader manipulations 

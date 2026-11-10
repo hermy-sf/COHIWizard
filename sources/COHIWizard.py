@@ -600,15 +600,10 @@ class DeviceSearchWorker(QThread):
     finished = pyqtSignal(object)
 
     def run(self):
-        # Simulierter langer Prozess
-        #time.sleep(5)
-        zeroconf = Zeroconf()
-        listener = RPListener()
-        browser = ServiceBrowser(zeroconf, "_http._tcp.local.", listener)
-        time.sleep(2)  # kurze Wartezeit für Antworten
-        zeroconf.close()
-        print("Found Red Pitayas:", listener.devices)
-        self.finished.emit(listener.devices)
+        # mDNS (Link-Local) and LAN scan via ARP table, see auxiliaries.find_red_pitayas
+        devices = find_red_pitayas()
+        print("Found Red Pitayas:", devices)
+        self.finished.emit(devices)
 
 
 
@@ -870,8 +865,9 @@ class core_v(QObject):
         msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
         if msg.exec_() != QMessageBox.Yes:
             return
+        # --wait-pid: the setup waits until this process has ended (Windows locks open files/DLLs)
         subprocess.Popen([sys.executable, setup, "--stage2", "--target", os.path.dirname(sources_dir),
-                          "--python", sys.executable], cwd=sources_dir)
+                          "--python", sys.executable, "--wait-pid", str(os.getpid())], cwd=sources_dir)
         self.gui.Mainwindowreference.close()
 
     def open_pdf(self):
@@ -970,9 +966,10 @@ class core_v(QObject):
         print("on_search_finished: +++++++ Found Red Pitayas:", devicelist)
         if len(devicelist) > 0:
             self.gui.lineEdit_IPAddress.setText(devicelist[0][1])
-            auxi.standard_infobox("Address found. If correct, please press 'set IP', else enter correct address manually !")
+            found = "\n".join(f"{name}:  {ip}" for name, ip in devicelist)
+            auxi.standard_infobox(f"Red Pitaya found:\n{found}\n\nThe first address has been entered. If correct, please press 'set IP', else enter correct address manually !")
         else:
-            auxi.standard_errorbox("No Red Pitaya found. \nPlease retry once again, because at the first time the auto-search may fail. \n \n If still unsuccessful, check if device is connected or determine and enter the address manually!")
+            auxi.standard_errorbox("No Red Pitaya found, neither via Link-Local/mDNS nor in the local network. \nPlease retry once again, because at the first time the auto-search may fail. \n \n If still unsuccessful, check if device is connected and switched on, or determine and enter the address manually (e.g. from the router's device list)!")
         self.editHostAddress_action()
 
             # self.gui.lineEdit_IPAddress.setReadOnly(True)
@@ -1827,7 +1824,7 @@ if __name__ == '__main__':
     from auxiliaries import WAVheader_tools
     from auxiliaries import auxiliaries as auxi
     from auxiliaries import timer_worker as tw
-    from auxiliaries import RPListener
+    from auxiliaries import find_red_pitayas
     
     #instantiate core module
     time.sleep(0.01)
