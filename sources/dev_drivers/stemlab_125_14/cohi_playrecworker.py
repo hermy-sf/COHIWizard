@@ -9,7 +9,7 @@ import time
 #from socket import socket, AF_INET, SOCK_STREAM
 from struct import unpack
 import numpy as np
-import wavchunks    # exact position of the IQ data in wav files
+from core import wavchunks    # exact position of the IQ data in wav files
 # import os
 # import pytz
 # from pathlib import Path
@@ -162,7 +162,7 @@ class playrec_worker(QObject):
             format = self.get_formattag()
             self.set_datablocksize(self.DATABLOCKSIZE)
             #print(f"Filehandle :{fileHandle}")
-            try:    # first sample byte, exact for every header layout (see wavchunks.py)
+            try:    # first sample byte, exact for every header layout (see core/wavchunks.py)
                 wavchunks.seek_to_data(fileHandle, filename)
             except wavchunks.WavChunkError as exc:
                 self.SigError.emit(str(exc))

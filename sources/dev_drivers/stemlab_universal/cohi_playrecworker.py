@@ -19,7 +19,7 @@ Signal chain (IQ+Audio):
 """
 
 import ctypes
-import wavchunks    # exact position of the IQ data in wav files
+from core import wavchunks    # exact position of the IQ data in wav files
 import csv
 import math
 import os

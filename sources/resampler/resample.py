@@ -1,5 +1,5 @@
 import numpy as np
-import wavchunks
+from core import wavchunks
 import sys
 import time
 from PyQt5.QtWidgets import *
@@ -1280,7 +1280,7 @@ class resample_c(QObject):
         schedule_objdict["signal"]["resample"].disconnect(schedule_objdict["connect"]["resample"])
 
         source_fn = self.m["source_fn"]  #TODO: define im GUI_Hauptprogramm bzw. im scheduler
-        skipopt = _ffmpeg_skip_option(source_fn)   # exact start of the IQ data, see wavchunks.py
+        skipopt = _ffmpeg_skip_option(source_fn)   # exact start of the IQ data, see core/wavchunks.py
         target_fn = self.m["target_fn"]  #TODO: define im GUI_Hauptprogramm bzw. im scheduler
         tSR = self.m["tSR"]  #TODO: define im GUI_Hauptprogramm bzw. im scheduler
         self.m["progress_source"] = "sox"  #TODO: solve double function in better datacommunication structure
@@ -1454,7 +1454,7 @@ class resample_c(QObject):
         schedule_objdict["signal"]["resample"].disconnect(schedule_objdict["connect"]["resample"])
 
         source_fn = self.m["source_fn"]  #TODO: define im GUI_Hauptprogramm bzw. im scheduler
-        skipopt = _ffmpeg_skip_option(source_fn)   # exact start of the IQ data, see wavchunks.py
+        skipopt = _ffmpeg_skip_option(source_fn)   # exact start of the IQ data, see core/wavchunks.py
         target_fn = self.m["target_fn"]  #TODO: define im GUI_Hauptprogramm bzw. im scheduler
         tSR = self.m["tSR"]  #TODO: define im GUI_Hauptprogramm bzw. im scheduler
         self.m["progress_source"] = "sox"  #TODO: solve double function in better datacommunication structure

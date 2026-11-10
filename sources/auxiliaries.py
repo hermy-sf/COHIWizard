@@ -16,7 +16,7 @@ import urllib.request
 import zipfile
 import tarfile
 import yaml
-import wavchunks
+from core import wavchunks
 #import shutil #### Nicht nötig ??
 import sys
 import re
@@ -803,7 +803,7 @@ class WAVheader_tools():
             else:
                 return False
         # exact chunk positions: fmt may be longer than 16 bytes, size fields may be wrong
-        # (e.g. auxi with 164 bytes but sdr_nChunkSize = 172), see wavchunks.py
+        # (e.g. auxi with 164 bytes but sdr_nChunkSize = 172), see core/wavchunks.py
         try:
             chunkinfo = wavchunks.scan(filename)
         except wavchunks.WavChunkError as exc:
@@ -954,7 +954,7 @@ class WAVheader_tools():
         
         # This writer always writes a 16-byte fmt chunk and the 164 bytes of auxi fields.
         # When overwriting the header of an existing file, the samples must stay where they
-        # are: the auxi chunk is padded up to the existing start of the data (see wavchunks.py).
+        # are: the auxi chunk is padded up to the existing start of the data (see core/wavchunks.py).
         auxi_content = 164
         if ovwrt_flag == True:
             try:

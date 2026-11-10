@@ -34,7 +34,7 @@ config_wizard.yaml keys used:
 
 import csv
 import ctypes
-import wavchunks    # exact position of the IQ data in wav files
+from core import wavchunks    # exact position of the IQ data in wav files
 import os
 import subprocess
 import threading

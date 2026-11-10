@@ -72,7 +72,7 @@ def playlength_seconds(m):
 
 def data_file_position(m, position_raw):
     """absolute file position for a byte position position_raw within the IQ data:
-    start of the data chunk (m["readoffset"], see wavchunks.py) plus whole sample frames,
+    start of the data chunk (m["readoffset"], see core/wavchunks.py) plus whole sample frames,
     limited to the data actually present; a position not aligned to nBlockAlign would
     swap I and Q (16 bit) or mix bytes of different samples (24 bit)"""
     wavheader = m["wavheader"]

@@ -125,7 +125,7 @@ struct AuxiContent  { uint8_t padding[68]; char filename[96]; };
 
 
 /* ================================================================== */
-/* Exact chunk walking – same rules as sources/wavchunks.py            */
+/* Exact chunk walking – same rules as sources/core/wavchunks.py       */
 /* The samples must start exactly at the first byte of the data chunk: */
 /* a shifted start swaps I/Q (16 bit) or mixes samples (24 bit).       */
 /* ================================================================== */
@@ -176,7 +176,7 @@ static std::streamoff wav_next_chunk(std::ifstream& f, std::streamoff start,
 }
 
 /* Raw IQ files of the old COHIRADIA RFCorder (.dat/.raw): no RIFF header, the
- * first 216 bytes are reserved for one (same rule as sources/wavchunks.py,
+ * first 216 bytes are reserved for one (same rule as sources/core/wavchunks.py,
  * STANDARD_DATA_OFFSET). Their format is set by dsp_adlm_set_raw_format. */
 static constexpr std::streamoff RAW_DATA_OFFSET = 216;
 
