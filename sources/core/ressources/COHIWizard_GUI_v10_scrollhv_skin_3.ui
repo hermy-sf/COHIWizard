@@ -1657,7 +1657,7 @@ UFL</string>
                   <enum>QFrame::StyledPanel</enum>
                  </property>
                  <property name="text">
-                  <string>TIMER              </string>
+                  <string>REC timer</string>
                  </property>
                  <property name="alignment">
                   <set>Qt::AlignCenter</set>

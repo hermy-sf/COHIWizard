@@ -2854,7 +2854,7 @@ class Ui_MainWindow(object):
         self.playrec_RECSTART_dateTimeEdit.setDisplayFormat(_translate("MainWindow", "dd.MM.yyyy HH:mm:ss"))
         self.playrec_label_RECSTART.setToolTip(_translate("MainWindow", "Define starting time/date of autostarted recording"))
         self.playrec_label_RECSTART.setText(_translate("MainWindow", "REC Start"))
-        self.label_35.setText(_translate("MainWindow", "TIMER              "))
+        self.label_35.setText(_translate("MainWindow", "REC timer"))
         self.label_BW_4.setToolTip(_translate("MainWindow", "<html><head/><body><p>Width of the band to be recorded, Sampling rate</p></body></html>"))
         self.label_BW_4.setText(_translate("MainWindow", "CONFIGURATION"))
         self.pushButton_REC.setToolTip(_translate("MainWindow", "Record (ALT + R)"))

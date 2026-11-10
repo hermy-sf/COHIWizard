@@ -1383,7 +1383,16 @@ class playrec_v(QObject):
         #self.gui.pushButton_Play.setIcon(QIcon("./core/ressources/icons/play_v4.PNG"))
         self.gui.pushButton_Play.clicked.connect(self.cb_Butt_toggleplay)
         self.gui.pushButton_Stop.clicked.connect(self.playrec_c.cb_Butt_STOP)
-        self.gui.pushButton_REC.clicked.connect(self.cb_Butt_REC)        
+        self.gui.pushButton_REC.clicked.connect(self.cb_Butt_REC)
+        self.hide_bufoverflow()
+        # logo (skin 5): scaled with its aspect ratio to the size of its grid cell instead of
+        # being stretched; skins with scaledContents keep their behaviour
+        self._logo_pixmap = None
+        logo = getattr(self.gui, "label_LOGO", None)
+        if logo is not None and not logo.hasScaledContents() and logo.pixmap() is not None \
+                and not logo.pixmap().isNull():
+            self._logo_pixmap = QPixmap(logo.pixmap())
+            logo.installEventFilter(self)        
         self.gui.pushButton_act_playlist.clicked.connect(self.cb_Butt_toggle_playlist)
         self.gui.lineEdit_IPAddress.returnPressed.connect(self.set_IP)
         #self.gui.lineEdit_IPAddress.setInputMask('000.000.000.000')
@@ -1895,15 +1904,11 @@ class playrec_v(QObject):
         if self.m["recstate"] == False:
             self.gui.Label_Recindicator.setEnabled(False)
             self.gui.Label_Recindicator.setStyleSheet(('background-color: rgb(255,255,255)'))
-            self.gui.label_32.setStyleSheet("background-color : lightgrey")
-            self.gui.label_32.setEnabled(False)
             return
         self.gui.Label_Recindicator.setEnabled(True)
         if self.blinkstate:
             self.blinkstate = False
             self.gui.Label_Recindicator.setStyleSheet(('background-color: rgb(255,50,50)'))
-            self.gui.label_32.setStyleSheet("background-color : lightgrey")
-            self.gui.label_32.setEnabled(False)
         else:
             self.blinkstate = True
             self.gui.Label_Recindicator.setStyleSheet(('background-color: rgb(0,255,255)'))
@@ -2015,6 +2020,7 @@ class playrec_v(QObject):
                 self.reset_GUI()
             if  _value[0].find("setplaytimedisplay") == 0:
                 self.gui.lineEditCurTime.setText(_value[1])
+                self.show_elapsed()
             if  _value[0].find("resetLObias") == 0:
                 self.reset_LO_bias()
             if  _value[0].find("updatecurtime") == 0:
@@ -2490,6 +2496,7 @@ class playrec_v(QObject):
             auxi.standard_errorbox("IP address has not been saved yet, please press 'save IP address' and hence confirm the validity of the address ! ")
             return False
         self.SigActivateOtherTabs.emit("Player","inactivate",["View spectra"])
+        self.hide_bufoverflow()
         self.recording_path_checker()
         #   self.gui.pushButton_REC.setIcon(QIcon("pause_v4.PNG"))
         # if len(self.m["recording_path"]) == 0:
@@ -2600,10 +2607,10 @@ class playrec_v(QObject):
         font.setPointSize(14)
         self.gui.playrec_label_REC_duration.setFont(font)
         self.gui.checkBox_UTC.setEnabled(True)
-        self.gui.label_32.setStyleSheet("background-color : lightgrey")
-        self.gui.label_32.setEnabled(False)
         self.m["playlist_active"] = False
         self.gui.lineEditCurTime.setText("")
+        if hasattr(self.gui, "label_elapsed"):
+            self.gui.label_elapsed.setText("")
         # the modulator playlist stays loaded after STOP (Play resumes with it),
         # so keep showing its name; empty only if no playlist is loaded
         _pl = self.m.get("modulator_playlist", "")
@@ -2616,8 +2623,45 @@ class playrec_v(QObject):
         :rtype: none
         """        
         print("playrec RECORDING: bufferoverflow")
-        self.gui.label_32.setStyleSheet("background-color : red")
+        self.gui.label_32.setText("BUF\nUFL")
+        self.gui.label_32.setStyleSheet("background-color : red; color : white")
+        self.gui.label_32.setToolTip("buffer underflow during recording: data may be missing")
         self.gui.label_32.setEnabled(True)
+
+    def show_elapsed(self):
+        """display of the time elapsed since the start of the current file (label_elapsed,
+        only skin 5): playback 'Elapsed h:mm:ss / h:mm:ss' (total play time of the file),
+        recording 'Elapsed h:mm:ss'; empty without playback/recording or with the modulator"""
+        if not hasattr(self.gui, "label_elapsed"):
+            return
+        fmt = lambda sec: str(ndatetime.timedelta(seconds=int(max(0, sec))))
+        if self.m["modulator"] or not self.m["fileopened"]:
+            text = ""
+        elif self.m["modality"] == "play":
+            text = f"Elapsed  {fmt(self.m['curtime'])} / {fmt(self.m.get('playlength', 0))}"
+        else:
+            text = f"Elapsed  {fmt(self.m['curtime'])}"
+        self.gui.label_elapsed.setText(text)
+
+    def eventFilter(self, obj, event):
+        """rescales the logo on every size change of its label, keeping the aspect ratio"""
+        if event.type() == QEvent.Resize and getattr(self, "_logo_pixmap", None) is not None \
+                and obj is self.gui.label_LOGO:
+            obj.setPixmap(self._logo_pixmap.scaled(event.size(), Qt.KeepAspectRatio,
+                                                   Qt.SmoothTransformation))
+        return super().eventFilter(obj, event)
+
+    def hide_bufoverflow(self):
+        """the buffer underflow indicator (label_32) is only shown after an underflow
+        occurred; it stays visible until the next recording is started.
+        'Hidden' = empty and transparent: the label keeps its place in the layout,
+        so the neighbouring widgets do not move when it appears
+        :return: none
+        :rtype: none
+        """
+        self.gui.label_32.setText("")
+        self.gui.label_32.setStyleSheet("background-color : transparent")
+        self.gui.label_32.setToolTip("")
 
     def canvasbuild(self,gui):
         """
@@ -2908,6 +2952,7 @@ class playrec_v(QObject):
             timestr = str(ndatetime.timedelta(seconds=0))
             self.m["curtime"] = 0
             self.gui.lineEditCurTime.setText(timestr)
+            self.show_elapsed()
         delta =  datetime.now() - self.lastupdatecurtime
         #print(f"updateurtime microsec: {delta}")
         if delta.microseconds < 10000:
@@ -2956,6 +3001,7 @@ class playrec_v(QObject):
         if not self.gui.playrec_radioButton_RECAUTOSTART.isChecked():
             self.gui.lineEditCurTime.setText(timestr)
             #TODO TODO TODO: display true time since start of recording in hours!
+        self.show_elapsed()
         # not while the user holds the handle: the timer tick would pull it back to the
         # current play position; the new position is taken over on sliderReleased
         if not self.gui.ScrollBar_playtime.isSliderDown():

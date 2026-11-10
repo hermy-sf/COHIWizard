@@ -357,6 +357,36 @@
                 </property>
                </widget>
               </item>
+              <item row="4" column="0" colspan="6">
+               <widget class="QLabel" name="label_elapsed">
+                <property name="sizePolicy">
+                 <sizepolicy hsizetype="Ignored" vsizetype="Expanding">
+                  <horstretch>0</horstretch>
+                  <verstretch>1</verstretch>
+                 </sizepolicy>
+                </property>
+                <property name="minimumSize">
+                 <size>
+                  <width>0</width>
+                  <height>10</height>
+                 </size>
+                </property>
+                <property name="font">
+                 <font>
+                  <pointsize>11</pointsize>
+                 </font>
+                </property>
+                <property name="toolTip">
+                 <string>time elapsed since the start of the current file / play time of the file</string>
+                </property>
+                <property name="text">
+                 <string/>
+                </property>
+                <property name="alignment">
+                 <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignBottom</set>
+                </property>
+               </widget>
+              </item>
               <item row="4" column="6">
                <widget class="QLabel" name="label_43">
                 <property name="sizePolicy">
@@ -380,7 +410,7 @@
                  <string>Track</string>
                 </property>
                 <property name="alignment">
-                 <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+                 <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignBottom</set>
                 </property>
                </widget>
               </item>
@@ -2181,7 +2211,7 @@
                  <enum>QFrame::StyledPanel</enum>
                 </property>
                 <property name="text">
-                 <string>TIMER              </string>
+                 <string>REC timer</string>
                 </property>
                 <property name="alignment">
                  <set>Qt::AlignCenter</set>
@@ -2434,10 +2464,10 @@
                 </property>
                </widget>
               </item>
-              <item row="1" column="0" rowspan="4" colspan="6">
+              <item row="0" column="0" rowspan="4" colspan="7">
                <widget class="QLabel" name="label_LOGO">
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                 <sizepolicy hsizetype="Ignored" vsizetype="Ignored">
                   <horstretch>1</horstretch>
                   <verstretch>1</verstretch>
                  </sizepolicy>
@@ -2467,7 +2497,10 @@
                  <pixmap>icons/Logofield_rec2.png</pixmap>
                 </property>
                 <property name="scaledContents">
-                 <bool>true</bool>
+                 <bool>false</bool>
+                </property>
+                <property name="alignment">
+                 <set>Qt::AlignCenter</set>
                 </property>
                </widget>
               </item>
@@ -5663,21 +5696,27 @@
                 </item>
                </widget>
               </item>
-              <item row="1" column="6">
+              <item row="0" column="6" alignment="Qt::AlignRight|Qt::AlignTop">
                <widget class="QLabel" name="label_32">
                 <property name="enabled">
                  <bool>false</bool>
                 </property>
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-                  <horstretch>1</horstretch>
-                  <verstretch>1</verstretch>
+                 <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                  <horstretch>0</horstretch>
+                  <verstretch>0</verstretch>
                  </sizepolicy>
                 </property>
                 <property name="minimumSize">
                  <size>
-                  <width>10</width>
-                  <height>10</height>
+                  <width>48</width>
+                  <height>36</height>
+                 </size>
+                </property>
+                <property name="maximumSize">
+                 <size>
+                  <width>48</width>
+                  <height>36</height>
                  </size>
                 </property>
                 <property name="palette">
@@ -5721,6 +5760,9 @@
                  <font>
                   <pointsize>9</pointsize>
                  </font>
+                </property>
+                <property name="alignment">
+                 <set>Qt::AlignCenter</set>
                 </property>
                 <property name="text">
                  <string>BUF
