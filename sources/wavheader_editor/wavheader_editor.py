@@ -162,6 +162,10 @@ class wavheader_editor_v(QObject):
         #self.gui.actionOverwrite_header.triggered.connect(self.overwrite_header)
         self.gui.pushButton_InsertHeader.setEnabled(False)
         self.gui.pushButton_InsertHeader.clicked.connect(self.overwrite_header)
+        # replaces the former menu entry File/Overwrite header (shortcut Alt+H stays, see core_v);
+        # active only in EDIT mode, see activate_WAVEDIT
+        self.gui.pushButton_OverwriteHeader.setEnabled(False)
+        self.gui.pushButton_OverwriteHeader.clicked.connect(self.overwrite_header)
         self.gui.radioButton_WAVEDIT.setEnabled(True)
         self.gui.radioButton_WAVEDIT.setChecked(False)
         self.gui.radioButton_WAVEDIT.clicked.connect(self.activate_WAVEDIT)
@@ -257,11 +261,13 @@ class wavheader_editor_v(QObject):
         if self.gui.radioButton_WAVEDIT.isChecked() is True:
                     self.gui.tableWidget_basisfields.setEnabled(True)
                     self.gui.tableWidget_starttime.setEnabled(True)
-                    self.gui.tableWidget_3.setEnabled(True)      
+                    self.gui.tableWidget_3.setEnabled(True)
+                    self.gui.pushButton_OverwriteHeader.setEnabled(True)
         else:
                     self.gui.tableWidget_basisfields.setEnabled(False)
                     self.gui.tableWidget_starttime.setEnabled(False)
                     self.gui.tableWidget_3.setEnabled(False)
+                    self.gui.pushButton_OverwriteHeader.setEnabled(False)
 
     def updateGUIelements(self):
         """
@@ -299,6 +305,7 @@ class wavheader_editor_v(QObject):
         self.clear_WAVwidgets()
         self.gui.radioButton_WAVEDIT.setChecked(False)
         self.gui.label_8.setEnabled(False)
+        self.gui.pushButton_OverwriteHeader.setEnabled(False)
 
     
     def popup(self,i):

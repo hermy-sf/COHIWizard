@@ -23,6 +23,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cctype>
 #include <cmath>
 #include <fstream>
 #include <vector>
@@ -174,6 +175,20 @@ static std::streamoff wav_next_chunk(std::ifstream& f, std::streamoff start,
     return -1;
 }
 
+/* Raw IQ files of the old COHIRADIA RFCorder (.dat/.raw): no RIFF header, the
+ * first 216 bytes are reserved for one (same rule as sources/wavchunks.py,
+ * STANDARD_DATA_OFFSET). Their format is set by dsp_adlm_set_raw_format. */
+static constexpr std::streamoff RAW_DATA_OFFSET = 216;
+
+static bool is_raw_name(const std::string& path)
+{
+    const size_t dot = path.find_last_of('.');
+    if (dot == std::string::npos) return false;
+    std::string ext = path.substr(dot);
+    for (auto& c : ext) c = (char)std::tolower((unsigned char)c);
+    return ext == ".dat" || ext == ".raw";
+}
+
 /* ================================================================== */
 /* Constants                                                           */
 /* ================================================================== */
@@ -234,6 +249,10 @@ struct DspWorkerADALM {
     bool               useAGC      = true;
     bool               audio_only  = false;
     std::vector<std::string> filenames;
+    /* format of raw .dat/.raw files without RIFF header, see dsp_adlm_set_raw_format */
+    uint32_t rawSampleRate = 0;
+    uint16_t rawAudioFormat = 1;
+    uint16_t rawBitsPerSample = 16;
 
     /* --- callbacks ------------------------------------------------- */
     dsp_monitor_cb_t  mon_cb  = nullptr; void* mon_ud  = nullptr;
@@ -522,15 +541,25 @@ std::string DspWorkerADALM::process_file(const std::string& path)
     }
     if (nxt_cb) nxt_cb(path.c_str(), nxt_ud);
 
+    f.seekg(0, std::ios::end);
+    const std::streamoff fileSize = f.tellg();
+    f.seekg(0, std::ios::beg);
     RiffHeader riff;
     f.read(reinterpret_cast<char*>(&riff), sizeof(riff));
-    if (!f || std::memcmp(riff.chunkId, "RIFF", 4) != 0 || std::memcmp(riff.format, "WAVE", 4) != 0) {
+    const bool isRiff = static_cast<bool>(f)
+                        && std::memcmp(riff.chunkId, "RIFF", 4) == 0
+                        && std::memcmp(riff.format, "WAVE", 4) == 0;
+    const bool isRaw  = !isRiff && is_raw_name(path) && fileSize > RAW_DATA_OFFSET;
+    if (!isRiff && !isRaw) {
         if (err_cb) err_cb(("No RIFF/WAVE file: " + path).c_str(), err_ud);
         return "";
     }
-    f.seekg(0, std::ios::end);
-    const std::streamoff fileSize = f.tellg();
-    f.seekg((std::streamoff)sizeof(riff), std::ios::beg);
+    if (isRaw && rawSampleRate == 0) {
+        if (err_cb) err_cb(("Raw IQ file without format information: " + path).c_str(), err_ud);
+        return "";
+    }
+    f.clear();
+    f.seekg(isRaw ? RAW_DATA_OFFSET : (std::streamoff)sizeof(riff), std::ios::beg);
     bool dataFound = false;
 
     uint32_t sampleRate    = 0;
@@ -540,12 +569,25 @@ std::string DspWorkerADALM::process_file(const std::string& path)
     std::string nextFile;
     ChunkHeader chunk;
 
+    /* raw file: the samples start at RAW_DATA_OFFSET, the stream is already there;
+     * the loop below starts with a synthetic 'data' chunk instead of reading one */
+    bool rawPending = isRaw;
+    if (isRaw) {
+        sampleRate    = rawSampleRate;
+        audioFormat   = rawAudioFormat;
+        bitsPerSample = rawBitsPerSample;
+        numChannels   = 2;
+        std::memcpy(chunk.id, "data", 4);
+        chunk.size = (uint32_t)std::min<std::streamoff>(fileSize - RAW_DATA_OFFSET, 0xFFFFFFFFLL);
+    }
+
     printf("[ADALM2000_univ] Processing: %s\n", path.c_str());
     printf("[ADALM2000_univ] shiftFreq: %.0f Hz\n", shiftFreq);
 
-    while (f.read(reinterpret_cast<char*>(&chunk), sizeof(chunk))
+    while ((rawPending || f.read(reinterpret_cast<char*>(&chunk), sizeof(chunk)))
            && running.load(std::memory_order_acquire))
     {
+        rawPending = false;
         const std::streamoff chunkStart = (std::streamoff)f.tellg() - (std::streamoff)sizeof(chunk);
         if (!wav_valid_tag(chunk.id)) break;
         std::string tag(chunk.id, 4);
@@ -1184,6 +1226,15 @@ void dsp_adlm_seek(DspADLMHandle h, int64_t byte_pos, int whence)
     w->seek_req.pending = true;
     w->seek_req.pos     = byte_pos;
     w->seek_req.whence  = whence;
+}
+
+void dsp_adlm_set_raw_format(DspADLMHandle h, uint32_t sample_rate, int audio_format, int bits_per_sample)
+{
+    if (!h) return;
+    auto* w = static_cast<DspWorkerADALM*>(h);
+    w->rawSampleRate    = sample_rate;
+    w->rawAudioFormat   = (uint16_t)audio_format;
+    w->rawBitsPerSample = (uint16_t)bits_per_sample;
 }
 
 /* ================================================================== */

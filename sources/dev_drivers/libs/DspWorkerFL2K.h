@@ -91,6 +91,9 @@ void dsp_fl2k_set_dither(DspFL2KHandle h, int enable);
 int  dsp_fl2k_is_running(DspFL2KHandle h);
 int  dsp_fl2k_check_device(void);
 void dsp_fl2k_seek(DspFL2KHandle h, int64_t byte_pos, int whence);
+/* Format of raw .dat/.raw IQ files without RIFF header (samples from byte 216,
+ * 2 channels); audio_format 1 = PCM int, 3 = float. Call before dsp_fl2k_start. */
+void dsp_fl2k_set_raw_format(DspFL2KHandle h, uint32_t sample_rate, int audio_format, int bits_per_sample);
 
 #ifdef __cplusplus
 }

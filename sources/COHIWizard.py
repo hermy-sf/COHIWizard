@@ -596,6 +596,25 @@ class core_c(QObject):
 
 #from PyQt5.QtCore import QThread, pyqtSignal
 
+# user manual in <installation>/documentation (installed by cohi_setup.py)
+MANUAL_PDF = "User_Manual_COHIWizard_v2.3_en.pdf"
+
+
+def find_manual(doc_dir, configured=None):
+    """path of the user manual: the configured file if it exists, else MANUAL_PDF in doc_dir,
+    else the newest pdf in doc_dir (the file name changes with the version); None if none"""
+    if configured and os.path.isfile(configured):
+        return Path(configured)
+    default = os.path.join(doc_dir, MANUAL_PDF)
+    if os.path.isfile(default):
+        return Path(default)
+    try:
+        pdfs = [os.path.join(doc_dir, f) for f in os.listdir(doc_dir) if f.lower().endswith(".pdf")]
+    except OSError:
+        return None
+    return Path(max(pdfs, key=os.path.getmtime)) if pdfs else None
+
+
 class DeviceSearchWorker(QThread):
     finished = pyqtSignal(object)
 
@@ -645,6 +664,9 @@ class core_v(QObject):
         except:
             pass
         self.gui.actionFile_open.triggered.connect(self.cb_open_file)
+        # no longer in the File menu (button 'Overwrite Header' in the WAV header editor);
+        # added to the main window so that its shortcut Alt+H still works
+        self.gui.Mainwindowreference.addAction(self.gui.actionOverwrite_header)
         self.gui.actionOverwrite_header.triggered.connect(self.send_overwrite_header)
         try:
             self.gui.actionopen_pdf.triggered.connect(self.open_pdf)
@@ -750,8 +772,7 @@ class core_v(QObject):
             # base_dir = Path(__file__).resolve().parent #TODO make part of the configuration
             # doc_dir = base_dir.parent / "documentation"
             doc_dir = os.path.join(os.fspath(Path(self.m["rootpath"]).parent),  "documentation")
-            os.path.join(os.fspath(Path(self.m["rootpath"]).parent),  "documentation")
-            self.m["metadata"]["documentation"] = os.path.join(doc_dir, "UserManual_COHIWizard.pdf") 
+            self.m["metadata"]["documentation"] = os.path.join(doc_dir, MANUAL_PDF)
             #self.m["metadata"]["documentation_alt"] = os.path.join(alternative_doc_dir, "UserManual_COHIWizard_v2.x_en.pdf") 
             no_ffmpeg_path = True
             if not os.path.exists(default_recordingpath):
@@ -879,16 +900,17 @@ class core_v(QObject):
         :rtype: Boolean, str"""  
         errorstate = False
         value = ""
-        errorstate, value = auxi.fetch_configyaml("documentation")
-        if errorstate:
+        # entry of config_wizard.yaml, if present and still valid; otherwise the manual in
+        # <installation>/documentation (older configurations name a manual that the
+        # setup has meanwhile removed)
+        errorstate, configured = auxi.fetch_configyaml("documentation")
+        doc_dir = os.path.join(os.fspath(Path(self.m["rootpath"]).parent), "documentation")
+        pdf_path = find_manual(doc_dir, None if errorstate else configured)
+        if pdf_path is None:
+            value = f"PDF manual not found in {doc_dir}"
             auxi.standard_errorbox(value)
-            return errorstate, value   
-        pdf_path = Path(self.m["metadata"]["documentation"])
-        if not pdf_path.exists():
-            auxi.standard_errorbox(f"PDF manual not found at {pdf_path}")
-            errorstate = True
-            value = f"PDF manual not found at {pdf_path}"
-            return errorstate, value    
+            return True, value
+        self.m["metadata"]["documentation"] = str(pdf_path)
         
         if sys.platform.startswith("linux"):
             subprocess.Popen(["xdg-open", str(pdf_path)])

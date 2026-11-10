@@ -33,6 +33,43 @@ import platform
 
 
 
+class _AbsoluteClickStyle(QProxyStyle):
+    """a left click into the groove of a scrollbar (page areas before/after the slider
+    handle) moves the handle directly to the click position instead of one page step;
+    the handle stays grabbed until the mouse button is released, so sliderReleased
+    is emitted as after dragging the handle"""
+    def styleHint(self, hint, option=None, widget=None, returnData=None):
+        if hint == QStyle.SH_ScrollBar_LeftClickAbsolutePosition:
+            return 1
+        return super().styleHint(hint, option, widget, returnData)
+
+
+def data_bytes_available(m):
+    """number of IQ data bytes actually present in the current file m["f1"], in whole
+    sample frames: file size minus start of the data (m["readoffset"]). The size fields
+    of the header are not used, they are wrong for wav files > 2**32 bytes, files whose
+    header was not updated after recording and dat files with a generated header"""
+    wavheader = m["wavheader"]
+    align = max(1, int(wavheader['nBlockAlign']))
+    offset = m.get("readoffset", wavheader.get('data_offset', 216))
+    try:
+        size = os.path.getsize(m["f1"]) - offset
+    except (OSError, KeyError, TypeError):
+        size = wavheader['data_nChunkSize']
+    size = max(0, int(size))
+    return size - size % align
+
+
+def playlength_seconds(m):
+    """play time of the current file in seconds, from the data actually present and
+    the same bytes per second (m["timescaler"]) that are used for the file positions"""
+    wavheader = m["wavheader"]
+    timescaler = m.get("timescaler") or wavheader['nSamplesPerSec'] * wavheader['nBlockAlign']
+    if timescaler <= 0:
+        return 0
+    return data_bytes_available(m) / timescaler
+
+
 def data_file_position(m, position_raw):
     """absolute file position for a byte position position_raw within the IQ data:
     start of the data chunk (m["readoffset"], see wavchunks.py) plus whole sample frames,
@@ -41,8 +78,7 @@ def data_file_position(m, position_raw):
     wavheader = m["wavheader"]
     align = max(1, int(wavheader['nBlockAlign']))
     offset = m.get("readoffset", wavheader.get('data_offset', 216))
-    datasize = min(wavheader['data_nChunkSize'], wavheader.get('true_datachunksize', wavheader['data_nChunkSize']))
-    rel = max(0, min(int(position_raw), datasize))
+    rel = max(0, min(int(position_raw), data_bytes_available(m)))
     return offset + rel - rel % align
 
 class playrec_m(QObject):
@@ -563,8 +599,8 @@ class playrec_c(QObject):
         self.m["timescaler"] = self.m["wavheader"]['nSamplesPerSec']*self.m["wavheader"]['nBlockAlign']
         #TODO TODO TODO: generate list of playlengths in case of nextfile-chain !
         if not self.m["modulator"]:
-            true_filesize = os.path.getsize(self.m["f1"]) ########
-            self.m["playlength"] = true_filesize/self.m["wavheader"]['nAvgBytesPerSec'] ##########
+            # from the true file size, not from the header (see data_bytes_available)
+            self.m["playlength"] = playlength_seconds(self.m)
         else:
             self.m["playlength"] = 1e6
 
@@ -1308,6 +1344,9 @@ class playrec_v(QObject):
             self.mixer_save_timer.setInterval(500)
             self.mixer_save_timer.timeout.connect(self.save_mixer_db)
         self.gui.ScrollBar_playtime.sliderReleased.connect(self.jump_to_position)
+        # click into the groove jumps to the click position (reference kept: setStyle does not own it)
+        self._playtime_style = _AbsoluteClickStyle()
+        self.gui.ScrollBar_playtime.setStyle(self._playtime_style)
         #self.gui.ScrollBar_playtime.mousePressEvent = self.gui.scrollbar_mousePressEvent
 
         self.gui.lineEdit_LO_bias.setFont(QFont('arial',12))
@@ -2879,9 +2918,10 @@ class playrec_v(QObject):
         #time.sleep(0.00001) #TODO why so long ?
         timestr = str(self.m["wavheader"]['starttime_dt'] + ndatetime.timedelta(seconds=self.m["curtime"]))
         #print(f">>>>>>>>>>>>> updatecurtime: wavheaderstarttime: {self.m['wavheader']['starttime_dt']} curtime: {self.m['curtime']}")
-        true_filesize = os.path.getsize(self.m["f1"]) #TODO: can be calculated outside on file opening in the play thread
-        playlength = true_filesize/self.m["wavheader"]['nAvgBytesPerSec']
-        #print(f"updatecurtime playlength: {playlength}, filesize: {true_filesize}, bytespersec: {self.m['wavheader']['nAvgBytesPerSec']}") #TODO: can be calculated outside on file opening
+        # from the true file size and the same bytes per second as the file positions;
+        # stored, so that a jump with the scrollbar uses the same scale (jump_to_position_c)
+        playlength = playlength_seconds(self.m)
+        self.m["playlength"] = playlength
         if self.m["modality"] == 'play' and self.m["pausestate"] is False:
             if self.m["curtime"] > 0 and increment < 0:
                 self.m["curtime"] += increment
@@ -2916,7 +2956,10 @@ class playrec_v(QObject):
         if not self.gui.playrec_radioButton_RECAUTOSTART.isChecked():
             self.gui.lineEditCurTime.setText(timestr)
             #TODO TODO TODO: display true time since start of recording in hours!
-        self.gui.ScrollBar_playtime.setProperty("value", self.m["playprogress"])
+        # not while the user holds the handle: the timer tick would pull it back to the
+        # current play position; the new position is taken over on sliderReleased
+        if not self.gui.ScrollBar_playtime.isSliderDown():
+            self.gui.ScrollBar_playtime.setProperty("value", self.m["playprogress"])
         #self.lastupdatecurtime = datetime.now()
         #elapsed_time = datetime.now() - reftime
         #TODO: remove after tests:

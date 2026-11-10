@@ -2814,7 +2814,6 @@ class Ui_MainWindow(object):
         self.actionPlaylist_open.setObjectName("actionPlaylist_open")
         self.menuFile.addSeparator()
         self.menuFile.addAction(self.actionFile_open)
-        self.menuFile.addAction(self.actionOverwrite_header)
         self.menuFile.addAction(self.actionPlaylist_open)
         self.menuDocumentation.addAction(self.actionopen_pdf)
         self.menubar.addAction(self.menuFile.menuAction())

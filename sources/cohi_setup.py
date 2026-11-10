@@ -62,11 +62,11 @@ INFO_FILE = ".info"
 # Mandatory parts. Every file at the top level of sources/ is also mandatory,
 # except config_modules.yaml, which is generated.
 CORE_FILES = ["requirements.txt", "LICENSE", "README.md",
-              "documentation/UserManual_COHIWizard.pdf",
               "sources/dev_drivers/__init__.py",
               "sources/dev_drivers/playlist_paths.py"]   # used by the universal drivers
+# documentation/: the user manual (pdf) of the branch, whatever its file name
 CORE_DIRS = ["sources/core/", "sources/player/", "sources/resampler/",
-             "sources/logos/"]
+             "sources/logos/", "documentation/"]
 GENERATED_FILES = ["sources/config_modules.yaml"]
 # C++ sources of the shared DSP libs are always installed (small)
 LIBS_DIR = "sources/dev_drivers/libs/"

@@ -7892,7 +7892,6 @@ QSlider::handle:horizontal { width: 30px; margin: -12px 0; background: rgb(110, 
     </property>
     <addaction name="separator"/>
     <addaction name="actionFile_open"/>
-    <addaction name="actionOverwrite_header"/>
     <addaction name="actionPlaylist_open"/>
    </widget>
    <widget class="QMenu" name="menuDocumentation">

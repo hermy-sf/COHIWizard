@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'wavheader_editor_widget_rescale.ui'
+# Form implementation generated from reading ui file 'wavheader_editor/ressources/wavheader_editor_widget_skin_5.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.11
 #
@@ -448,6 +448,19 @@ class Ui_wavheader_editor_widget(object):
         self.label_8.setFrameShape(QtWidgets.QFrame.Panel)
         self.label_8.setObjectName("label_8")
         self.gridLayout.addWidget(self.label_8, 1, 2, 1, 2)
+        self.pushButton_OverwriteHeader = QtWidgets.QPushButton(wavheader_editor_widget)
+        self.pushButton_OverwriteHeader.setEnabled(False)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        sizePolicy.setHorizontalStretch(1)
+        sizePolicy.setVerticalStretch(1)
+        sizePolicy.setHeightForWidth(self.pushButton_OverwriteHeader.sizePolicy().hasHeightForWidth())
+        self.pushButton_OverwriteHeader.setSizePolicy(sizePolicy)
+        self.pushButton_OverwriteHeader.setMinimumSize(QtCore.QSize(10, 10))
+        font = QtGui.QFont()
+        font.setPointSize(10)
+        self.pushButton_OverwriteHeader.setFont(font)
+        self.pushButton_OverwriteHeader.setObjectName("pushButton_OverwriteHeader")
+        self.gridLayout.addWidget(self.pushButton_OverwriteHeader, 0, 3, 1, 1)
         self.pushButton_InsertHeader = QtWidgets.QPushButton(wavheader_editor_widget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         sizePolicy.setHorizontalStretch(1)
@@ -641,6 +654,8 @@ class Ui_wavheader_editor_widget(object):
         self.wavheader_timeEdit_subtr.setDisplayFormat(_translate("wavheader_editor_widget", "HH:mm:ss"))
         self.wavheader_dateTimeEdit_result.setDisplayFormat(_translate("wavheader_editor_widget", "dd.MM.yyyy HH:mm:ss"))
         self.label_8.setText(_translate("wavheader_editor_widget", "Convert dat -> wav"))
+        self.pushButton_OverwriteHeader.setToolTip(_translate("wavheader_editor_widget", "overwrite the header of the current wav file with the values in the tables (Alt+H)"))
+        self.pushButton_OverwriteHeader.setText(_translate("wavheader_editor_widget", "Overwrite Header"))
         self.pushButton_InsertHeader.setToolTip(_translate("wavheader_editor_widget", "insert wav-header with current metadata into dat file"))
         self.pushButton_InsertHeader.setText(_translate("wavheader_editor_widget", "Insert Header"))
 

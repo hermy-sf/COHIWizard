@@ -85,8 +85,18 @@ def scan(path):
                         f"(chunks read: {', '.join(chunks) or 'none'})")
 
 
+# raw IQ files of the old COHIRADIA RFCorder: no RIFF header, but the first 216 bytes are
+# reserved for one (the WAV editor writes the header there when converting to wav)
+RAW_EXTENSIONS = (".dat", ".raw")
+
+
 def data_offset(path):
-    """position of the first sample byte of a wav file (raises WavChunkError)"""
+    """position of the first sample byte of a wav file (raises WavChunkError);
+    dat/raw files without RIFF header: STANDARD_DATA_OFFSET"""
+    if os.path.splitext(path)[1].lower() in RAW_EXTENSIONS:
+        with open(path, "rb") as fh:
+            if fh.read(4) != b"RIFF":
+                return STANDARD_DATA_OFFSET
     return scan(path)["data_offset"]
 
 

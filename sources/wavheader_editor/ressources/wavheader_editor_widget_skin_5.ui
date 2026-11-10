@@ -1035,6 +1035,36 @@
        </property>
       </widget>
      </item>
+     <item row="0" column="3">
+      <widget class="QPushButton" name="pushButton_OverwriteHeader">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+         <horstretch>1</horstretch>
+         <verstretch>1</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>10</width>
+         <height>10</height>
+        </size>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>10</pointsize>
+        </font>
+       </property>
+       <property name="toolTip">
+        <string>overwrite the header of the current wav file with the values in the tables (Alt+H)</string>
+       </property>
+       <property name="text">
+        <string>Overwrite Header</string>
+       </property>
+      </widget>
+     </item>
      <item row="2" column="2" colspan="2">
       <widget class="QPushButton" name="pushButton_InsertHeader">
        <property name="sizePolicy">

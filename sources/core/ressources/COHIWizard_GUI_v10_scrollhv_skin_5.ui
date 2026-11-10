@@ -5790,7 +5790,6 @@ UFL</string>
     </property>
     <addaction name="separator"/>
     <addaction name="actionFile_open"/>
-    <addaction name="actionOverwrite_header"/>
     <addaction name="actionPlaylist_open"/>
    </widget>
    <widget class="QMenu" name="menuDocumentation">
