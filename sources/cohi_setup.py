@@ -38,6 +38,7 @@ import os
 import platform
 import shutil
 import socket
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -230,6 +231,76 @@ def prefer_ipv4():
     socket.getaddrinfo = _getaddrinfo_ipv4_first
 
 
+# Windows fallback for TLS-inspecting proxies / virus scanners and incomplete root
+# stores: Python's own certificate check fails ("unable to get local issuer
+# certificate") although the browser works. Then all further downloads go through
+# PowerShell (Invoke-WebRequest), i.e. with the Windows certificate store, the
+# Windows proxy settings and the user's proxy credentials - like the browser.
+_win_fetch = {"active": False}
+_win_fetch_lock = threading.Lock()
+
+
+def _is_cert_error(exc):
+    reason = getattr(exc, "reason", None)
+    return isinstance(exc, ssl.SSLCertVerificationError) or isinstance(reason, ssl.SSLCertVerificationError)
+
+
+def _use_windows_fetch(exc):
+    """True if downloads shall go (from now on) through PowerShell"""
+    if _win_fetch["active"]:
+        return True
+    if os_key() != "windows" or not _is_cert_error(exc):
+        return False
+    with _win_fetch_lock:
+        if not _win_fetch["active"]:
+            _win_fetch["active"] = True
+            print("certificate check of Python failed (proxy or virus scanner with HTTPS "
+                  "inspection?); downloading via Windows (PowerShell) from now on", flush=True)
+            file_log(f"switching to PowerShell downloads after: {exc}")
+    return True
+
+
+def windows_fetch(url, dest, headers=None, timeout=600):
+    """download url to dest with PowerShell Invoke-WebRequest (Windows only)"""
+    hdr = {k: v for k, v in (headers or {}).items() if k.lower() not in ("user-agent", "range")}
+    script = ("$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; "
+              "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; "
+              "[Net.WebRequest]::DefaultWebProxy.Credentials=[Net.CredentialCache]::DefaultNetworkCredentials; "
+              "$h=@{}; if ($env:COHI_HDR) { ($env:COHI_HDR | ConvertFrom-Json).PSObject.Properties | "
+              "ForEach-Object { $h[$_.Name]=$_.Value } }; "
+              "Invoke-WebRequest -UseBasicParsing -Uri $env:COHI_URL -OutFile $env:COHI_OUT "
+              "-UserAgent $env:COHI_UA -Headers $h")
+    env = dict(os.environ, COHI_URL=url, COHI_OUT=dest, COHI_UA=_UA["User-Agent"],
+               COHI_HDR=json.dumps(hdr) if hdr else "")
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                            "-Command", script], env=env, capture_output=True, text=True,
+                           timeout=timeout, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise OSError(f"PowerShell download failed: {exc}")
+    if r.returncode != 0 or not os.path.isfile(dest):
+        msg = (r.stderr or r.stdout or "").strip().splitlines()
+        msg = msg[0] if msg else f"exit code {r.returncode}"
+        code = next((c for c in (403, 404, 416) if f"({c})" in (r.stderr or "")), None)
+        if code:
+            raise urllib.error.HTTPError(url, code, msg, None, None)
+        raise OSError(f"PowerShell download failed: {msg}")
+
+
+def _windows_get(url, headers, timeout):
+    fd, tmp = tempfile.mkstemp(prefix="cohi_dl_")
+    os.close(fd)
+    try:
+        windows_fetch(url, tmp, headers, timeout=max(timeout, 120))
+        with open(tmp, "rb") as fh:
+            return fh.read()
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+
+
 def http_get(url, headers=None, timeout=60, retries=5):
     hdr = dict(_UA)
     hdr.update(headers or {})
@@ -237,6 +308,8 @@ def http_get(url, headers=None, timeout=60, retries=5):
     for attempt in range(retries):
         wait = 2.0 * (attempt + 1)
         try:
+            if _win_fetch["active"]:
+                return _windows_get(url, hdr, timeout)
             req = urllib.request.Request(url, headers=hdr)
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 return resp.read()
@@ -252,6 +325,8 @@ def http_get(url, headers=None, timeout=60, retries=5):
             # besides URLError/timeouts also ssl.SSLError, connection resets and
             # truncated responses (IncompleteRead), seen on Windows and WLAN
             last = exc
+            if not _win_fetch["active"] and _use_windows_fetch(exc):
+                continue        # same attempt again, now via PowerShell
         if attempt < retries - 1:
             time.sleep(wait)
     raise last
@@ -259,8 +334,20 @@ def http_get(url, headers=None, timeout=60, retries=5):
 
 def http_download(url, dest, progress=None, timeout=120):
     """Download url to dest (streaming); progress(done, total) optional."""
-    req = urllib.request.Request(url, headers=_UA)
     tmp = dest + ".part"
+    if not _win_fetch["active"]:
+        try:
+            return _http_download_python(url, dest, tmp, progress, timeout)
+        except OSError as exc:
+            if not _use_windows_fetch(exc):
+                raise
+    windows_fetch(url, tmp, timeout=3600)      # no progress display
+    os.replace(tmp, dest)
+    return dest
+
+
+def _http_download_python(url, dest, tmp, progress, timeout):
+    req = urllib.request.Request(url, headers=_UA)
     with urllib.request.urlopen(req, timeout=timeout) as resp, open(tmp, "wb") as fh:
         total = int(resp.headers.get("Content-Length") or 0)
         done = 0
@@ -1203,8 +1290,46 @@ PIP_PATIENCE = (
     "************************************************************************\n")
 
 
+# pip >= 24.2 verifies certificates with the operating system's store on Python >= 3.10
+# (truststore), like the browser: needed behind TLS-inspecting proxies / virus scanners.
+# The pip of Python 3.10.11 is older and cannot update itself there, so the wheel is
+# downloaded with http_get (PowerShell fallback) and installed from the local file.
+PIP_TRUSTSTORE_MIN = (24, 2)
+PIP_WHEEL_VERSION = "24.3.1"
+
+
+def ensure_modern_pip(python, log):
+    """Windows: make sure that the venv has a pip with system certificate store"""
+    try:
+        out = subprocess.run([python, "-m", "pip", "--version"], capture_output=True, text=True,
+                             timeout=60, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+        ver = tuple(int(x) for x in out.split()[1].split(".")[:2])
+    except (OSError, subprocess.SubprocessError, IndexError, ValueError):
+        ver = (0, 0)
+    if ver >= PIP_TRUSTSTORE_MIN:
+        return True
+    log(f"updating pip {'.'.join(map(str, ver))} -> {PIP_WHEEL_VERSION} (certificate check with the Windows store)")
+    try:
+        meta = json.loads(http_get(f"https://pypi.org/pypi/pip/{PIP_WHEEL_VERSION}/json"))
+        whl = next(u for u in meta["urls"] if u["filename"].endswith(".whl"))
+        path = os.path.join(tempfile.gettempdir(), whl["filename"])
+        with open(path, "wb") as fh:
+            fh.write(http_get(whl["url"], timeout=300))
+        if hashlib.sha256(open(path, "rb").read()).hexdigest() != whl["digests"]["sha256"]:
+            raise OSError("checksum of the pip wheel does not match")
+    except Exception as exc:
+        log(f"could not download pip {PIP_WHEEL_VERSION} ({exc}); continuing with the installed pip")
+        return False
+    rc = run_logged([python, "-m", "pip", "install", "--no-index", "--disable-pip-version-check", path], log)
+    if rc != 0:
+        log("pip update failed; continuing with the installed pip")
+    return rc == 0
+
+
 def pip_install(python, requirements, log):
     """pip install -r requirements; on ARM PyQt5 comes from the system packages."""
+    if os_key() == "windows":
+        ensure_modern_pip(python, log)
     req = requirements
     if is_arm():
         with open(requirements) as fh:

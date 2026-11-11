@@ -96,6 +96,24 @@ Type: files; Name: "{userdesktop}\COHIWizard.lnk"
 Type: dirifempty; Name: "{app}"
 
 [Code]
+{ Download with PowerShell: uses the Windows proxy settings (with the user's proxy
+  credentials) and the Windows certificate store like the browser; WinHTTP of
+  DownloadTemporaryFile ignores the proxy of the internet options (error 12029) }
+function PowerShellDownload(const Url, Dest: String): Boolean;
+var
+  Params: String;
+  ResultCode: Integer;
+begin
+  Params := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "' +
+            '$ErrorActionPreference=''Stop''; $ProgressPreference=''SilentlyContinue''; ' +
+            '[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; ' +
+            '[Net.WebRequest]::DefaultWebProxy.Credentials=[Net.CredentialCache]::DefaultNetworkCredentials; ' +
+            'Invoke-WebRequest -UseBasicParsing -Uri ''' + Url + ''' -OutFile ''' + Dest + '''"';
+  Result := Exec('powershell.exe', Params, '', SW_HIDE, ewWaitUntilTerminated, ResultCode)
+            and (ResultCode = 0) and FileExists(Dest);
+  Log('PowerShell download of ' + Url + ': exit code ' + IntToStr(ResultCode));
+end;
+
 function GetSetupScript(): String;
 begin
   Result := ExpandConstant('{tmp}\cohi_setup.py');
@@ -103,9 +121,12 @@ begin
     DownloadTemporaryFile('{#SetupUrl}', 'cohi_setup.py', '', nil);
   except
     Log('download of cohi_setup.py failed: ' + GetExceptionMessage);
-    SuppressibleMsgBox(FmtMessage(CustomMessage('DownloadFailed'), [GetExceptionMessage]),
-                       mbInformation, MB_OK, IDOK);
-    ExtractTemporaryFile('cohi_setup.py');
+    if not PowerShellDownload('{#SetupUrl}', Result) then
+    begin
+      SuppressibleMsgBox(FmtMessage(CustomMessage('DownloadFailed'), [GetExceptionMessage]),
+                         mbInformation, MB_OK, IDOK);
+      ExtractTemporaryFile('cohi_setup.py');
+    end;
   end;
 end;
 
