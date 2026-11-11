@@ -246,6 +246,17 @@ _load_libdspadlm()
 # playrec_worker
 # ---------------------------------------------------------------------------
 
+class _SeekProxy:
+    """file handle substitute for the player (playrec.jump_to_position_c / updatecurtime):
+    seek() is passed to the C++ worker, which repositions its file stream"""
+    def __init__(self, handle, lib):
+        self._handle = handle
+        self._lib    = lib
+
+    def seek(self, offset, whence=0):
+        self._lib.dsp_adlm_seek(self._handle, ctypes.c_int64(int(offset)), ctypes.c_int(whence))
+
+
 class playrec_worker(QObject):
     """
     Universal ADALM2000 worker — two operational modes selected at runtime:
@@ -920,6 +931,8 @@ class playrec_worker(QObject):
             self._close_adalm(ctx, ao, TEST)
             self.SigFinished.emit()
             return
+        # jumps (scrollbar, >>, <<) of the player go to the C++ worker
+        self.set_fileHandle(_SeekProxy(handle, _lib_adlm))
 
         try:
             fnames_bytes = [f.encode() for f in (filenames or [])]
@@ -1098,23 +1111,21 @@ class playrec_worker(QObject):
             push_t = threading.Thread(target=_push_thread, daemon=True)
             push_t.start()
 
-            _last_tick = time.time()
+            # the time display is driven by _on_monitor (once per second of processed
+            # data, as in fl2k_universal); a second wall-clock tick here counted twice
             while not self.stopix:
                 if done_ev.wait(timeout=0.1):
                     break
                 if not use_agc:
                     _lib_adlm.dsp_adlm_set_gain(handle, ctypes.c_float(self.get_gain()))
                 _send_audio_mix()
-                now = time.time()
-                if now - _last_tick >= 1.0:
-                    self.SigIncrementCurTime.emit()
-                    _last_tick = now
 
             stopev.set()
             _lib_adlm.dsp_adlm_stop(handle)
             push_t.join(timeout=5.0)
 
         finally:
+            self.set_fileHandle(None)
             _lib_adlm.dsp_adlm_destroy(handle)
 
         self._stop_audio_streams()

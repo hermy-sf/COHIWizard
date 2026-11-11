@@ -2308,6 +2308,10 @@ class playrec_v(QObject):
                         else:
                             return False
                     else:
+                        # IQ file present (with or without audio overlay): normal file
+                        # playback for the player (time display, scrollbar, jumps,
+                        # nextfile chain), as with the universal drivers without "modulator"
+                        self.m["modulator"] = False
                         self.m["ifreq"] = self.m["wavheader"]['centerfreq'] + self.m["LO_offset"]
                         self.m["irate"] = self.m["wavheader"]['nSamplesPerSec']
                         self.m["timescaler"] = self.m["wavheader"]['nSamplesPerSec']*self.m["wavheader"]['nBlockAlign']
