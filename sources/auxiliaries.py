@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 from datetime import timedelta
 from PyQt5.QtWidgets import *
-from PyQt5.QtCore import QObject, pyqtSignal, Qt
+from PyQt5.QtCore import QObject, pyqtSignal, Qt, QEvent
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg,  NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 import subprocess
@@ -206,7 +206,44 @@ class timer_worker(QObject):
     def stoptick(self):
         self.SigFinished.emit()        
 
+class _ElideFilter(QObject):
+    """event filter of labels with middle-elided text (see auxiliaries.set_elided_text):
+    shortens the text again after every size or font change"""
+    def eventFilter(self, obj, event):
+        if event.type() in (QEvent.Resize, QEvent.FontChange):
+            _elide_label(obj)
+        return False
+
+
+_elide_filter = None
+
+
+def _elide_label(label):
+    full = label.property("elide_full_text") or ""
+    width = max(10, label.width() - 6)
+    label.setText(label.fontMetrics().elidedText(full, Qt.ElideMiddle, width))
+
+
 class auxiliaries():
+
+    @staticmethod
+    def set_elided_text(label, text):
+        """show text in label shortened in the middle ('abc…xyz') if it is too long, so
+        that start and end of a file name (date, frequency) stay visible; the full text
+        is the tooltip. The label is shortened again on every resize/font change.
+        :param label: QLabel
+        :param text: full text
+        """
+        global _elide_filter
+        if _elide_filter is None:
+            _elide_filter = _ElideFilter()
+        if not label.property("elide_filter_installed"):
+            label.installEventFilter(_elide_filter)
+            label.setProperty("elide_filter_installed", True)
+        text = text or ""
+        label.setProperty("elide_full_text", text)
+        label.setToolTip(text)
+        _elide_label(label)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

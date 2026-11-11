@@ -1,4 +1,5 @@
 #class for skin handling
+from player import skin_common
 
 class skinhandler():
 
@@ -25,6 +26,7 @@ class skinhandler():
         gui.menubar.setVisible(False)
         #redirect spinbox for LO offset for touchscreen only use
         gui.spinBox_LOoffset.valueChanged.connect(lambda: gui.lineEdit_LO_bias.setText(str(gui.spinBox_LOoffset.value())))
+        skinhandler.style_buttons(gui)
         #gui.lineEdit_LO_bias.text()
 
 
@@ -37,3 +39,10 @@ class skinhandler():
 
     def maxsize():
         return 50
+
+    # uniform font roles and 3-D button style, common with skin 3 (player/skin_common.py)
+    def font_roles(window_height):
+        return skin_common.font_roles(window_height)
+
+    def style_buttons(gui):
+        skin_common.style_buttons(gui)

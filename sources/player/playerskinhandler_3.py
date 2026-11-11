@@ -1,4 +1,5 @@
 #class for skin handling
+from player import skin_common
 
 class skinhandler():
 
@@ -21,6 +22,7 @@ class skinhandler():
         # same for the audio station list (csv) of the audio modulator
         gui.pushButton_csvopen.clicked.connect(gui.actionPlaylist_open.trigger)
         gui.menubar.setVisible(False)
+        skinhandler.style_buttons(gui)
         print("Redirecting global UI items to skin items")
 
 
@@ -35,3 +37,10 @@ class skinhandler():
 
     def maxsize():
         return 50
+
+    # uniform font roles and 3-D button style, common with skin 2 (player/skin_common.py)
+    def font_roles(window_height):
+        return skin_common.font_roles(window_height)
+
+    def style_buttons(gui):
+        skin_common.style_buttons(gui)

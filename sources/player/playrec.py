@@ -1415,7 +1415,7 @@ class playrec_v(QObject):
         #self.gui.playrec_RECSTART_dateTimeEdit.setText
         self.gui.playrec_RECSTART_dateTimeEdit.setDateTime(datetime.now())
         self.gui.playrec_radioButton_RECAUTOSTART.clicked.connect(self.toggleRecAutostart)
-        self.gui.label_Filename_Player.setText('')
+        auxi.set_elided_text(self.gui.label_Filename_Player, '')
 
         self.gui.comboBox_stemlab.clear()
         #self.mdl["devicelist"] = os.listdir(os.path.join(os.getcwd(), "dev_drivers"))
@@ -1714,7 +1714,7 @@ class playrec_v(QObject):
             if isinstance(self.m.get("metadata"), dict):
                 self.m["metadata"]["audioplaylist"] = ""   # keep cached copy consistent
             if hasattr(self.gui, "label_csv_filename"):
-                self.gui.label_csv_filename.setText("")
+                auxi.set_elided_text(self.gui.label_csv_filename, "")
         # rebuild the device list for the new type; keeps the current device
         # if compatible, then re-identify it (module lists were re-imported)
         self.modulator_type_handler()
@@ -1936,7 +1936,7 @@ class playrec_v(QObject):
         self.m["HostAddress"] = self.gui.lineEdit_IPAddress.text()
         #self.gui.lineEdit_IPAddress.setText(self.m["metadata"]["STM_IP_address"])
         self.logger.debug(f"update filename in display: {self.m['my_filename']}")
-        self.gui.label_Filename_Player.setText(self.m["my_filename"] + self.m["ext"])
+        auxi.set_elided_text(self.gui.label_Filename_Player, self.m["my_filename"] + self.m["ext"])
 
     def reset_GUI(self):
         #self.playrec_c.cb_Butt_STOP()   ### remove after tests 28-06-2026
@@ -1947,9 +1947,9 @@ class playrec_v(QObject):
         self.SigRelay.emit("cexex_resample",["reset_GUI",0])
         # an IQ file kept loaded after STOP stays displayed
         if self.m["fileopened"]:
-            self.gui.label_Filename_Player.setText(self.m["my_filename"] + self.m["ext"])
+            auxi.set_elided_text(self.gui.label_Filename_Player, self.m["my_filename"] + self.m["ext"])
         else:
-            self.gui.label_Filename_Player.setText('')
+            auxi.set_elided_text(self.gui.label_Filename_Player, '')
 
         if self.m["playlist_active"] == True:
             self.gui.pushButton_act_playlist.setChecked(False)
@@ -2035,7 +2035,7 @@ class playrec_v(QObject):
                 if self.gui.core_checkBox_show_spectrum.isChecked():
                     self.showRFdata()
             if  _value[0].find("showFilename") == 0:
-                self.gui.label_Filename_Player.setText(Path(_value[1]).name)
+                auxi.set_elided_text(self.gui.label_Filename_Player, Path(_value[1]).name)
             if  _value[0].find("listhighlighter") == 0:
                 try:
                     self.listhighlighter(_value[1])
@@ -2619,7 +2619,7 @@ class playrec_v(QObject):
         # so keep showing its name; empty only if no playlist is loaded
         _pl = self.m.get("modulator_playlist", "")
         if hasattr(self.gui, "label_csv_filename"):
-            self.gui.label_csv_filename.setText(Path(_pl).name if _pl else "")
+            auxi.set_elided_text(self.gui.label_csv_filename, Path(_pl).name if _pl else "")
 
     def indicate_bufoverflow(self):
         """_indicate if during recording a buffer underflow occurred

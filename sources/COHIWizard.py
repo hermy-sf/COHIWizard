@@ -140,6 +140,7 @@ class starter(QMainWindow):
         #self.gui = COHIWizard_GUI_v10_scrollhv.Ui_MainWindow()
         #TODO: import correct skin, use dynamic import
         self.maxsize = 20
+        self.player_skinhandler = None
 
         module_name = f"COHIWizard_GUI_v10_scrollhv_skin_{skinindex}"
         full_module = f"core.{module_name}"
@@ -151,6 +152,7 @@ class starter(QMainWindow):
             player_full_module = f"player.{player_module_name}"
             player_imported = importlib.import_module(player_full_module)
             self.maxsize = player_imported.skinhandler.maxsize()
+            self.player_skinhandler = player_imported.skinhandler
         except ImportError:
             # default to skin 5
             imported_module = importlib.import_module("core.COHIWizard_GUI_v10_scrollhv_skin_5")
@@ -237,6 +239,13 @@ class starter(QMainWindow):
             #print("resize icon in button called")
 
         
+        # optional font roles of the skin (player skinhandler.font_roles): a few uniform
+        # sizes from the window height instead of blowing up every text to the size of
+        # its field; the fit below then only shrinks texts that do not fit
+        roles = None
+        font_roles = getattr(self.player_skinhandler, "font_roles", None)
+        if callable(font_roles):
+            roles = font_roles(self.height())
         for widget in self.widgets_with_font:
             # Schriftgröße als Anteil der Widget-Höhe
             # h = widget.height()
@@ -247,10 +256,27 @@ class starter(QMainWindow):
             # widget.setFont(font)
             min_size=11
             max_size=self.maxsize
+            if roles is not None:
+                role = roles["widgets"].get(widget.objectName(), "normal")
+                max_size = max(min_size, roles[role])
+                if isinstance(widget, QComboBox):
+                    # no text() to fit: role size, limited by the height of the box
+                    font = widget.font()
+                    font.setPixelSize(max(min_size, min(max_size, int(widget.height() * 0.6))))
+                    widget.setFont(font)
+                    continue
             self.fit_font_to_widget(widget, min_size, max_size)
 
     def fit_font_to_widget(self, widget, min_size=8, max_size=100):
         if self.INACTIVATE_RESIZE:
+            return
+        if widget.objectName() in ("label_Filename_Player", "label_csv_filename"):
+            # file names: font from the height of the field, not from the text length
+            # (long names made it tiny), also while still empty; too long names are
+            # shortened in the middle, see auxiliaries.set_elided_text
+            font = widget.font()
+            font.setPixelSize(max(min_size, min(max_size, int(widget.height() * 0.6))))
+            widget.setFont(font)
             return
         text = getattr(widget, "text", lambda: "")()
         if not text:
@@ -264,9 +290,14 @@ class starter(QMainWindow):
             font = widget.font()
             font.setPixelSize(mid)
             fm = QFontMetrics(font)
-            rect = fm.boundingRect(widget.rect(), Qt.TextWordWrap, text)
+            avail = widget.rect()
+            if isinstance(widget, (QRadioButton, QCheckBox)):
+                # the indicator (80 % of the text height, see below) and its spacing
+                # take part of the width; without this the text was cut off
+                avail = avail.adjusted(int(mid * 0.8) + 10, 0, 0, 0)
+            rect = fm.boundingRect(avail, Qt.TextWordWrap, text)
 
-            if rect.width() <= widget.width() and rect.height() <= widget.height():
+            if rect.width() <= avail.width() and rect.height() <= widget.height():
                 best_size = mid
                 low = mid + 1
             else:
@@ -281,6 +312,12 @@ class starter(QMainWindow):
         else:
             font.setPixelSize(best_size)
         widget.setFont(font)
+        # the indicator (radio knob / check box) does not scale with the font by
+        # itself and looked tiny next to large texts: about 80 % of the text height
+        if isinstance(widget, (QRadioButton, QCheckBox)):
+            cls = "QRadioButton" if isinstance(widget, QRadioButton) else "QCheckBox"
+            size = max(13, int(font.pixelSize() * 0.8))
+            widget.setStyleSheet(f"{cls}::indicator {{ width: {size}px; height: {size}px; }}")
 
     def find_icon_buttons(self):
         if self.INACTIVATE_RESIZE:
@@ -1341,7 +1378,7 @@ class core_v(QObject):
             if isinstance(self.m.get("metadata"), dict):
                 self.m["metadata"]["audioplaylist"] = value   # keep cached copy consistent
             if hasattr(self.gui, "label_csv_filename"):
-                self.gui.label_csv_filename.setText(str(Path(value).stem) + str(Path(value).suffix))
+                auxi.set_elided_text(self.gui.label_csv_filename, str(Path(value).stem) + str(Path(value).suffix))
         if errorstate:
             auxi.standard_errorbox(value)
             self.logger.info(f'cb_open_audiofile: {value}')
