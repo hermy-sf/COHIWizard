@@ -1130,6 +1130,12 @@
                   <verstretch>0</verstretch>
                  </sizepolicy>
                 </property>
+                <property name="minimumSize">
+                 <size>
+                  <width>125</width>
+                  <height>0</height>
+                 </size>
+                </property>
                 <property name="palette">
                  <palette>
                   <active>
@@ -1306,10 +1312,10 @@
                  <bool>true</bool>
                 </property>
                 <property name="text">
-                 <string>SDR device:</string>
+                 <string>SDR</string>
                 </property>
                 <property name="alignment">
-                 <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                 <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
                 </property>
                </widget>
               </item>
@@ -1801,7 +1807,7 @@
                  <bool>true</bool>
                 </property>
                 <property name="text">
-                 <string>LO offset (kHz)</string>
+                 <string>Offset (kHz)</string>
                 </property>
                 <property name="autoExclusive">
                  <bool>false</bool>
@@ -1844,7 +1850,7 @@
                    </property>
                    <property name="minimumSize">
                     <size>
-                     <width>10</width>
+                     <width>48</width>
                      <height>0</height>
                     </size>
                    </property>
@@ -2001,10 +2007,10 @@
                  <bool>true</bool>
                 </property>
                 <property name="text">
-                 <string>Rec Bandwidth (kHz): </string>
+                 <string>REC BW (kHz)</string>
                 </property>
                 <property name="alignment">
-                 <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                 <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
                 </property>
                </widget>
               </item>
@@ -2588,7 +2594,7 @@
                  <bool>true</bool>
                 </property>
                 <property name="text">
-                 <string>Rec LO (kHz): </string>
+                 <string>REC LO (kHz)</string>
                 </property>
                 <property name="alignment">
                  <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
@@ -4169,7 +4175,7 @@
                  <bool>true</bool>
                 </property>
                 <property name="text">
-                 <string>REC AUTOSTART</string>
+                 <string>AUTOSTART</string>
                 </property>
                 <property name="autoExclusive">
                  <bool>false</bool>
@@ -5667,7 +5673,7 @@
                  </sizepolicy>
                 </property>
                 <property name="text">
-                 <string>Modulator type</string>
+                 <string>MODE</string>
                 </property>
                </widget>
               </item>
@@ -5779,6 +5785,12 @@ UFL</string>
                      <horstretch>0</horstretch>
                      <verstretch>0</verstretch>
                     </sizepolicy>
+                   </property>
+                   <property name="minimumSize">
+                    <size>
+                     <width>48</width>
+                     <height>0</height>
+                    </size>
                    </property>
                    <property name="text">
                     <string>csv:</string>

@@ -36,3 +36,15 @@ class skinhandler():
 
     def maxsize():
         return 20
+
+    # uniform font sizes as in skins 2/3 (COHIWizard starter.resize_actor): every text
+    # gets the size of its role and is only made smaller if it does not fit; the
+    # window of skin 5 is larger, hence a smaller factor (16 px at 860 px)
+    FONT_ROLE_WIDGETS = {
+        "lineEditCurTime": "large",
+    }
+
+    def font_roles(window_height):
+        normal = max(11, min(20, round(window_height * 0.0186)))
+        return {"normal": normal, "small": max(11, round(normal * 0.8)),
+                "large": round(normal * 1.6), "widgets": skinhandler.FONT_ROLE_WIDGETS}
