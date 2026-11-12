@@ -1275,7 +1275,8 @@ class core_v(QObject):
     def cb_open_file(self):
         """ slot function for the File Open action in the Menubar of the Main GUI. It checks some conditions for proper opening of a new data file; 
         if all conditions are met FileOpen() is called which does the detailed work
-        returns without action if a playthread is currently active; 
+        if a playthread is currently active, the new file is selected first, then the player is stopped,
+        the file is opened and the player is restarted (see switch_file_during_play); a running recording blocks file access;
         if a file is open, the method asks if a new file should be opened (yes/no); returns on 'No'
         The method relays the variable m["fileopened"] via the SigRelay signal to all other modules
         
@@ -1286,11 +1287,13 @@ class core_v(QObject):
         :type: Boolean
         """
         
-        self.setactivity_tabs("all","activate",[])
-
-        if self.m["playthreadActive"] == True:
-            auxi.standard_errorbox("Player is currently active, no access to data file is possible; Please stop Player before new file access")
+        if self.m["playthreadActive"] == True and self.m.get("player_recording", False):
+            auxi.standard_errorbox("Recording is currently active, no access to data file is possible; Please stop recording before new file access")
             return False
+        if getattr(self, "fileswitch_timer", None) is not None and self.fileswitch_timer.isActive():
+            return False     # a file switch is still waiting for the player to stop
+
+        self.setactivity_tabs("all","activate",[])
         try:
             stream = open("config_wizard.yaml", "r")
             self.m["metadata"] = yaml.safe_load(stream)
@@ -1303,7 +1306,10 @@ class core_v(QObject):
             return False
 
         self.SigRelay.emit("cm_playrec",["HostAddress",self.m["HostAddress"]])
-        
+
+        if self.m["playthreadActive"] == True:
+            return self.switch_file_during_play()
+
         if self.m["fileopened"] is True:
             msg = QMessageBox()
             msg.setIcon(QMessageBox.Question)
@@ -1324,6 +1330,48 @@ class core_v(QObject):
                 return False
             else:
                 self.SigRelay.emit("cm_all_",["fileopened",True])
+
+    FILESWITCH_TIMEOUT = 10.0   # s; the fl2k/ADALM device teardown after STOP may take a few s
+
+    def switch_file_during_play(self):
+        """File open while the player is running: select the new file, STOP the
+        player, wait until its thread has really finished (playthreadActive is
+        reset asynchronously in playrec EOF_manager), open the file and restart Play.
+        No query to the user except on timeout or errors.
+
+        :returns: True if the switch was started, False otherwise
+        :type: Boolean
+        """
+        filename = self.select_datafile()
+        if not filename:
+            return False        # dialog cancelled, the old file keeps playing
+        self.fileswitch_filename = filename
+        self.fileswitch_deadline = time.time() + self.FILESWITCH_TIMEOUT
+        self.SigRelay.emit("cexex_playrec",["stop_player",0])
+        if getattr(self, "fileswitch_timer", None) is None:
+            self.fileswitch_timer = QTimer()
+            self.fileswitch_timer.timeout.connect(self.fileswitch_poll)
+        self.fileswitch_timer.start(100)
+        return True
+
+    def fileswitch_poll(self):
+        """QTimer slot of switch_file_during_play: waits for the player to stop,
+        then opens the new file and restarts the player
+        """
+        if self.m["playthreadActive"]:
+            if time.time() < self.fileswitch_deadline:
+                return
+            self.fileswitch_timer.stop()
+            self.logger.error("fileswitch: player did not stop within %.0f s", self.FILESWITCH_TIMEOUT)
+            auxi.standard_errorbox(f"Player did not stop within {self.FILESWITCH_TIMEOUT:.0f} s, "
+                                   "the new file has not been opened. Please press STOP and open the file again.")
+            return
+        self.fileswitch_timer.stop()
+        if self.fileOpen(self.fileswitch_filename) is False:
+            self.SigRelay.emit("cm_all_",["fileopened",False])
+            return
+        self.SigRelay.emit("cm_all_",["fileopened",True])
+        self.SigRelay.emit("cexex_playrec",["start_player",0])
 
     def cb_open_modulatorplaylist(self):
         """ slot function for the playlist open action in the Menubar of the Main GUI. 
@@ -1485,7 +1533,25 @@ class core_v(QObject):
         return errorstate, value
 
         
-    def fileOpen(self):   #TODO: shift to controller
+    def select_datafile(self):
+        """file selection dialog for IQ data files
+
+        :returns: selected filename, '' if cancelled
+        :type: str
+        """
+        filters = "SDR wav files (*.wav);;Raw IQ (*.dat *.raw )"
+        selected_filter = "SDR wav files (*.wav)"
+        if self.ismetadata == False:
+            filename =  QtWidgets.QFileDialog.getOpenFileName(gui,
+                                                            "Open data file"
+                                                            , self.standardpath, filters, selected_filter)
+        else:
+            filename =  QtWidgets.QFileDialog.getOpenFileName(gui,
+                                                            "Open data file"
+                                                            ,self.m["metadata"]["last_path"] , filters, selected_filter)
+        return filename[0]
+
+    def fileOpen(self, filename=None):   #TODO: shift to controller
 
         '''
         
@@ -1505,8 +1571,8 @@ class core_v(QObject):
 
         :TODO shift to controller module  !!!!!:
 
-        :params: none
-        :type: none
+        :params: filename: file to be opened; None opens the file selection dialog
+        :type: str
         :returns: True, if successful, False otherwise
         :type: Boolean
 
@@ -1517,19 +1583,11 @@ class core_v(QObject):
         self.SigRelay.emit("cm_all_",["ismetadata",self.ismetadata])
         self.SigRelay.emit("cm_all_",["metadata",self.m["metadata"]])
         # file selection menu
-        filters = "SDR wav files (*.wav);;Raw IQ (*.dat *.raw )"
-        selected_filter = "SDR wav files (*.wav)"
-        if self.ismetadata == False:
-            filename =  QtWidgets.QFileDialog.getOpenFileName(gui,
-                                                            "Open data file"
-                                                            , self.standardpath, filters, selected_filter)
-        else:
-            filename =  QtWidgets.QFileDialog.getOpenFileName(gui,
-                                                            "Open data file"
-                                                            ,self.m["metadata"]["last_path"] , filters, selected_filter)
+        if filename is None:
+            filename = self.select_datafile()
 
         st = time.time()
-        self.SigRelay.emit("cm_all_",["f1", filename[0]])
+        self.SigRelay.emit("cm_all_",["f1", filename])
         if not self.m["f1"]:
             return False
         self.logger.info(f'fileOpen: core_v File opened: {self.m["f1"]}')

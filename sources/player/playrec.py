@@ -142,7 +142,7 @@ class playrec_m(QObject):
         self.mdl["device_ID_dict"] = {}
         self.mdl["REC_AGC"] = False
         self.mdl["volume_mode"] = "mean" #default, may be changed by device driver, e.g. to "crest" for stemlabcontrol
-        self.mdl["modulator_type"] = "all" #default, may be changed by config_wizard.yaml
+        self.mdl["modulator_type"] = "band_only" #default, may be changed by config_wizard.yaml
         self.mdl["mixer_db"] = 0 #Mixer slider: audio overlay level rel. to audio_mix_level, not persistent
         #os.path.isdir(os.getcwd)
 
@@ -194,6 +194,8 @@ class playrec_c(QObject):
         #     print(f">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> playrec_c.__init__: ffmpeg path not found, generating: {self.m['metadata']}")
         self.m["ffmpeg_path"] = self.m["metadata"]["ffmpeg_path"]
         self.m["ffmpeg_autocheck"] = False
+        self.startup_notice = None      # non-modal 'device is starting' info, see show_startup_notice()
+        self.startup_session = 0        # invalidates pending startup checks of earlier Play/REC starts
         #self.checkffmpeg_install()
         
         #self.SigRelay.connect()
@@ -376,6 +378,49 @@ class playrec_c(QObject):
         #print(f"display status of stemlabcontrol, status = {messagestring}") #TODO: define displaystatus in more elaborate form
 
 
+    STARTUP_NOTICE_DELAY_MS = 1500   # USB devices: notice only if no data after this time
+
+    def show_startup_notice(self):
+        """non-modal info that the SDR device is still starting up (fl2k dongle
+        just plugged in, STEMLAB server start, ...); closed by hide_startup_notice()
+        on the first SigIncrementCurTime of the worker, on STOP and on errors
+        """
+        if self.startup_notice is not None:
+            return
+        _dev = self.m["device_ID_dict"]
+        _name = _dev.get("device_name", "SDR device")
+        text = f"{_name} is starting up, please wait ...\n\nPlayback starts as soon as the device delivers data."
+        if "fl2k" in _name.lower():
+            text += ("\n\nAn fl2k dongle plugged in only now must first be released from the "
+                     "kernel mass storage driver; this may take more than 10 s.")
+        elif _dev.get("connection_type") == "ethernet":
+            text += "\n\nThe SDR server on the STEMLAB is being started and connected; this takes several seconds."
+        box = QMessageBox(QMessageBox.Information, "Starting SDR device", text,
+                          QMessageBox.NoButton, self.m.get("QTMAINWINDOWparent"))
+        box.setWindowModality(Qt.NonModal)
+        box.show()
+        self.startup_notice = box
+        # paint it now: the STEMLAB start blocks the GUI thread for several seconds
+        QApplication.processEvents()
+        QApplication.processEvents()
+
+    def hide_startup_notice(self):
+        self.startup_session += 1
+        if self.startup_notice is not None:
+            self.startup_notice.close()
+            self.startup_notice.deleteLater()
+            self.startup_notice = None
+
+    def arm_startup_notice(self):
+        """called after the worker thread has been started: show the notice if
+        the device has not delivered data within STARTUP_NOTICE_DELAY_MS
+        """
+        session = self.startup_session
+        def _check():
+            if session == self.startup_session and self.m["playthreadActive"] and not self.m["pausestate"]:
+                self.show_startup_notice()
+        QTimer.singleShot(self.STARTUP_NOTICE_DELAY_MS, _check)
+
     def play_manager(self):
         """Callback function for Play Button; Calls file_open
            starts data streaming to STEMLAB sdr server via method play_tstarter
@@ -468,6 +513,8 @@ class playrec_c(QObject):
 
         if self.m["TEST"] is False:
             self.m["sdr_configparams"]["TEST"] = False
+            if self.m["device_ID_dict"].get("connection_type") != "USB":
+                self.show_startup_notice()
             errorstate, process = self.stemlabcontrol.sdrserverstart(self.m["sdr_configparams"])
             # This 5s pause gives a real SDR server (e.g. STEMLAB) time to
             # boot after sdrserverstart(). Devices connected directly via
@@ -525,7 +572,9 @@ class playrec_c(QObject):
         :type value: str
         """
         self.logger.error(str(value))
+        self.hide_startup_notice()
         self.m["playthreadActive"] = False
+        self.relay_playstate()
         try: 
             if value.find("ERRORSSP") == 0:
                 #do something special here:
@@ -703,6 +752,7 @@ class playrec_c(QObject):
                                                 lambda: self.SigRelay.emit("cexex_playrec",["updatecurtime",1]))
         #self.SigRelay.emit("cexex_playrec",["updatecurtime",1])
         self.playrec_tworker.SigIncrementCurTime.connect(lambda: self.SigRelay.emit("cexex_playrec",["showRFdata",0]))
+        self.playrec_tworker.SigIncrementCurTime.connect(self.hide_startup_notice)
         if self.m["modality"] == "rec":        
             self.playrec_tworker.SigBufferOverflow.connect(
                                          lambda: self.SigRelay.emit("cexex_playrec",["indicate_bufoverflow",0])) #TODO reactivate
@@ -713,7 +763,8 @@ class playrec_c(QObject):
 
         if self.playthread.isRunning():
             self.m["playthreadActive"] = True
-            self.SigRelay.emit("cm_all_",["playthreadActive",self.m["playthreadActive"]])  ###TODO: geht nicht
+            self.relay_playstate()
+            self.arm_startup_notice()
             self.logger.info("playthread started in playthread_threadstarter = play_tstarter() (threadstarter)")
             # TODO replace playthreadflag by not self.playthread.isFinished()
             errorstate = False
@@ -750,10 +801,12 @@ class playrec_c(QObject):
         
 
     def infosigmanager(self,message):
+        self.hide_startup_notice()
         auxi.standard_infobox(message)
         print(message)
 
     def errorsigmanager(self,message):
+        self.hide_startup_notice()
         auxi.standard_errorbox(message)
         if platform.system() == "Windows" and ("fl2k" in message.lower() or "dongle" in message.lower()):
             self.fl2k_driver_check()
@@ -796,6 +849,8 @@ class playrec_c(QObject):
                     "rates": self.m["rates"], "icorr":self.m["icorr"],
                     "HostAddress":self.m["HostAddress"], "LO_offset":self.m["LO_offset"]}
         if self.m["TEST"] is False:
+            if self.m["device_ID_dict"].get("connection_type") != "USB":
+                self.show_startup_notice()
             if not self.stemlabcontrol.sdrserverstart(self.m["sdr_configparams"]):
                 self.cb_Butt_STOP()
                 errorstate = False
@@ -894,6 +949,10 @@ class playrec_c(QObject):
         self.SigRelay.emit("cm_all_",["fileopened",False])   ####TODO geht nicht
         if self.m["stopstate"]:
             self.logger.info("EOF-manager: player has been stopped")
+            # recording thread has finished (wait() above); without this reset
+            # playthreadActive stayed True after every recording
+            self.m["playthreadActive"] = False
+            self.relay_playstate()
             file_stats = os.stat(self.m["f1"])
             self.m["wavheader"]['filesize'] = file_stats.st_size
             self.m["wavheader"]['data_nChunkSize'] = self.m["wavheader"]['filesize'] - 208
@@ -927,6 +986,12 @@ class playrec_c(QObject):
         _f1 = self.m.get("f1", "")
         return bool(_f1) and _f1 != "no_file.dat" and os.path.isfile(_f1)
 
+    def relay_playstate(self):
+        """relays playthreadActive and whether a recording is running to all
+        modules; playrec_c.SigRelay only reaches playrec_v, which forwards it
+        """
+        self.SigRelay.emit("cexex_playrec",["relay_playstate",0])
+
     def EOF_manager(self):
         """_target of SigFinished from playloop. If signal is received, a decision is made whether 
             to stop the player completely, 
@@ -946,6 +1011,7 @@ class playrec_c(QObject):
         #TODO: check why this sequence incl file close needs to be outside the playthred worker; causes some problems
         
         #prfilehandle = self.playrec_tworker.get_fileHandle() ###TODO TODO TODO: obsolete, file is closed by tworker
+        self.hide_startup_notice()
         self.playthread.quit()
         self.playthread.wait()
         time.sleep(0.05)
@@ -959,6 +1025,7 @@ class playrec_c(QObject):
         # (running for the OLD session's SigFinished) was still using it,
         # and/or race the old device's still-in-progress native close.
         self.m["playthreadActive"] = False
+        self.relay_playstate()
         #prfilehandle.close() ###TODO TODO TODO: obsolete, file is closed by tworker
         # Do not unload a real IQ file here: this runs asynchronously after
         # STOP, i.e. after reset_playerbuttongroup() has already kept the
@@ -990,7 +1057,7 @@ class playrec_c(QObject):
                 self.m["playlist_ix"] += 1 #TODO: aktuell Hack, um bei erstem File keine Doppelabspielung zu triggern
             if self.m["playlist_ix"] < self.m["playlist_len"]: #TODO check if indexing is correct
                 self.m["playthreadActive"] = False
-                #self.SigRelay.emit("cm_all_",["playthreadActive",self.m["playthreadActive"]])####TODO geht nicht
+                self.relay_playstate()
                 self.SigRelay.emit("cexex_playrec",["listhighlighter",self.m["playlist_ix"]])
                 self.logger.debug("EOF manager: playlist index: %i", self.m['playlist_ix'])
                 self.logger.info("fetch next list file")
@@ -1094,6 +1161,7 @@ class playrec_c(QObject):
         """        
         #TODO: activate for player
         #print("STOP PRESSED R")
+        self.hide_startup_notice()
         self.m["stopstate"] = True
         self.m["recstate"] = False
         self.m["pausestate"] =False
@@ -1392,7 +1460,12 @@ class playrec_v(QObject):
         if logo is not None and not logo.hasScaledContents() and logo.pixmap() is not None \
                 and not logo.pixmap().isNull():
             self._logo_pixmap = QPixmap(logo.pixmap())
-            logo.installEventFilter(self)        
+            logo.installEventFilter(self)
+            # the main window is shown before this filter exists: the resize events of
+            # the first layout are missed and the unscaled (much too large) logo would
+            # stay until the next window resize, so scale it now and after startup
+            self.rescale_logo()
+            QTimer.singleShot(0, self.rescale_logo)        
         self.gui.pushButton_act_playlist.clicked.connect(self.cb_Butt_toggle_playlist)
         self.gui.lineEdit_IPAddress.returnPressed.connect(self.set_IP)
         #self.gui.lineEdit_IPAddress.setInputMask('000.000.000.000')
@@ -1424,13 +1497,15 @@ class playrec_v(QObject):
 
         
         error,value = auxi.fetch_configyaml("last_modulator_type")
-        #read modulator type from config-file, if not present, set to "all" and write to config-file
-        if not error:
+        #read modulator type from config-file, if not present or invalid (e.g. right
+        #after installation), set to "band_only" and write to config-file
+        modulator_types = ["band_only","band_and_audio","audio_only"]
+        if not error and value in modulator_types:
             self.m["modulator_type"] = value
-            if value not in ["all","audio_only","band_only","band_and_audio"]:
-                self.m["modulator_type"] = "all"
         else:
-            self.m["modulator_type"] = "all"
+            self.m["modulator_type"] = "band_only"
+            if hasattr(self.gui, "comboBox_modulator_type"):
+                auxi.update_configyaml("last_modulator_type",self.m["modulator_type"])
         if not hasattr(self.gui, "comboBox_modulator_type"):
             # skin without modulator selection: plain IQ playback only, no hidden
             # audio mode taken over from config_wizard.yaml (not written back)
@@ -1466,7 +1541,6 @@ class playrec_v(QObject):
             pass
         
         #self.modulator_type_handler()
-        modulator_types = ["band_only","band_and_audio","audio_only","all"]
         modulator_index = modulator_types.index(self.m["modulator_type"])
         if hasattr(self.gui, "comboBox_modulator_type"):
             self.gui.comboBox_modulator_type.setCurrentIndex(modulator_index)
@@ -1560,8 +1634,6 @@ class playrec_v(QObject):
         for ix, cf in enumerate(self.m["devicelist"]):
 
             ###TODO: test / check after 24-07-2026 after implementing modulator_listselected(self,cf) instead of repetitions of same code
-            if self.m["modulator_type"] == "all" and not (cf.find("__") == 0):
-                boxix = self.modulator_listselected(cf,boxix)
             if self.m["modulator_type"] == "audio_only" and (cf.endswith("_modulator") or cf in ("fl2k_universal", "stemlab_universal", "ADALM2000_universal")) and not (cf.find("__") == 0 ):
                 boxix = self.modulator_listselected(cf,boxix)
             if self.m["modulator_type"] == "band_and_audio" and (cf.endswith("_plus") or cf.endswith("_universal")) and not (cf.find("__") == 0 ):
@@ -1700,7 +1772,6 @@ class playrec_v(QObject):
         if modulatorindex == 2:
             self.m["modulator_type"] = "audio_only"
       
-        #if self.m["modulator_type"] = "all" and not (cf.find("__") == 0):
         auxi.update_configyaml("last_modulator_type",self.m["modulator_type"])
         self.update_mixer_enabled()
         if self.m["modulator_type"] == "band_only":
@@ -2023,6 +2094,14 @@ class playrec_v(QObject):
                 self.show_elapsed()
             if  _value[0].find("resetLObias") == 0:
                 self.reset_LO_bias()
+            if  _value[0].find("relay_playstate") == 0:
+                self.SigRelay.emit("cm_all_",["playthreadActive",self.m["playthreadActive"]])
+                self.SigRelay.emit("cm_all_",["player_recording",
+                                   self.m["playthreadActive"] and self.m["modality"] == "rec"])
+            if  _value[0].find("stop_player") == 0:
+                self.stop_for_fileswitch()
+            if  _value[0].find("start_player") == 0:
+                self.start_after_fileswitch()
             if  _value[0].find("updatecurtime") == 0:
                 #self.reset_LO_bias()
                 #evaltime = datetime.now() - reftime
@@ -2068,6 +2147,22 @@ class playrec_v(QObject):
                 self.cb_setgain()
             #evaltime = datetime.now() - reftime
             #print(f"rxhandler: within function evaltime from entry to finish: {evaltime}")
+
+    def stop_for_fileswitch(self):
+        """STOP requested by core before a new file is opened during playback.
+        Restart afterwards only if an IQ file was playing; the synthesizer
+        modes replace f1 by the dummy 'no_file.dat' at Play.
+        """
+        self.restart_after_fileswitch = self.m.get("f1", "") != "no_file.dat"
+        self.playrec_c.cb_Butt_STOP()
+
+    def start_after_fileswitch(self):
+        """Play requested by core once the new file has been opened"""
+        if not getattr(self, "restart_after_fileswitch", False):
+            return
+        self.restart_after_fileswitch = False
+        if self.gui.pushButton_Play.isEnabled() and not self.gui.pushButton_Play.isChecked():
+            self.gui.pushButton_Play.click()
 
     def logfilehandler(self,_value):
         if _value is False:
@@ -2647,12 +2742,21 @@ class playrec_v(QObject):
             text = f"Elapsed  {fmt(self.m['curtime'])}"
         self.gui.label_elapsed.setText(text)
 
+    def rescale_logo(self):
+        """scales the logo to the current size of its label, keeping the aspect ratio"""
+        logo = getattr(self.gui, "label_LOGO", None)
+        if logo is None or getattr(self, "_logo_pixmap", None) is None:
+            return
+        size = logo.size()
+        if size.width() < 2 or size.height() < 2:
+            return
+        logo.setPixmap(self._logo_pixmap.scaled(size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
     def eventFilter(self, obj, event):
-        """rescales the logo on every size change of its label, keeping the aspect ratio"""
-        if event.type() == QEvent.Resize and getattr(self, "_logo_pixmap", None) is not None \
+        """rescales the logo on every size change of its label and when it is shown"""
+        if event.type() in (QEvent.Resize, QEvent.Show) and getattr(self, "_logo_pixmap", None) is not None \
                 and obj is self.gui.label_LOGO:
-            obj.setPixmap(self._logo_pixmap.scaled(event.size(), Qt.KeepAspectRatio,
-                                                   Qt.SmoothTransformation))
+            self.rescale_logo()
         return super().eventFilter(obj, event)
 
     def hide_bufoverflow(self):
