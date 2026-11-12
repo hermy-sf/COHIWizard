@@ -638,13 +638,15 @@ MANUAL_PDF = "User_Manual_COHIWizard_v2.3_en.pdf"
 
 
 def find_manual(doc_dir, configured=None):
-    """path of the user manual: the configured file if it exists, else MANUAL_PDF in doc_dir,
-    else the newest pdf in doc_dir (the file name changes with the version); None if none"""
-    if configured and os.path.isfile(configured):
-        return Path(configured)
+    """path of the user manual: MANUAL_PDF in doc_dir, else the configured file if it exists,
+    else the newest pdf in doc_dir (the file name changes with the version); None if none.
+    MANUAL_PDF comes first: after an update from v2.2 the configuration still names the old
+    manual, which may still be present in doc_dir"""
     default = os.path.join(doc_dir, MANUAL_PDF)
     if os.path.isfile(default):
         return Path(default)
+    if configured and os.path.isfile(configured):
+        return Path(configured)
     try:
         pdfs = [os.path.join(doc_dir, f) for f in os.listdir(doc_dir) if f.lower().endswith(".pdf")]
     except OSError:
@@ -937,9 +939,9 @@ class core_v(QObject):
         :rtype: Boolean, str"""  
         errorstate = False
         value = ""
-        # entry of config_wizard.yaml, if present and still valid; otherwise the manual in
-        # <installation>/documentation (older configurations name a manual that the
-        # setup has meanwhile removed)
+        # the manual of this version in <installation>/documentation; the entry of
+        # config_wizard.yaml only if that file is missing (older configurations name the
+        # manual of v2.2, see find_manual)
         errorstate, configured = auxi.fetch_configyaml("documentation")
         doc_dir = os.path.join(os.fspath(Path(self.m["rootpath"]).parent), "documentation")
         pdf_path = find_manual(doc_dir, None if errorstate else configured)

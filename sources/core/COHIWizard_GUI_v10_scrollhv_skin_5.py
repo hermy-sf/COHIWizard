@@ -2399,7 +2399,7 @@ class Ui_MainWindow(object):
         self.pushButton_adv1byte.setShortcut(_translate("MainWindow", "Alt+T"))
         self.label_11.setText(_translate("MainWindow", "MODE"))
         self.comboBox_modulator_type.setItemText(0, _translate("MainWindow", "IQ band only"))
-        self.comboBox_modulator_type.setItemText(1, _translate("MainWindow", "IQ band_and audio modulator"))
+        self.comboBox_modulator_type.setItemText(1, _translate("MainWindow", "IQ band and audio modulator"))
         self.comboBox_modulator_type.setItemText(2, _translate("MainWindow", "audio modulator only"))
         self.label_32.setText(_translate("MainWindow", "BUF\n"
 "UFL"))
