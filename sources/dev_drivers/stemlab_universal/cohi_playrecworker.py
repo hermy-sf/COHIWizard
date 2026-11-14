@@ -37,6 +37,7 @@ import yaml
 from PyQt5.QtCore import QObject, QMutex, QThread, pyqtSignal
 
 from dev_drivers.playlist_paths import (resolve_csv_source, is_playlist, is_url,
+                                        is_station_m3u, load_station_m3u,
                                         read_m3u, check_local_file, skipped_message)
 
 # AVC level calibration relative to fl2k_stream (reference driver).
@@ -502,8 +503,10 @@ class playrec_worker(QObject):
         else:
             cmd = [
                 ffmpeg_bin,
-                "-reconnect", "1", "-reconnect_streamed", "1",
-                "-reconnect_delay_max", "5",
+                # reconnect options only for web sources (ffmpeg 7 refuses them for files);
+                # local files in real time (-re), otherwise ffmpeg sends them as fast as it can
+                *(["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"]
+                  if _is_http else ["-re"]),
                 "-i", _ffmpeg_url(url),
                 "-af", f"lowpass=f={lowpass_f},volume=0.8",
                 "-f", pcm_format, "-ar", str(audio_rate), "-ac", "1",
@@ -856,7 +859,14 @@ class playrec_worker(QObject):
         has_iq    = bool(filenames)
         if _op_mode == "audio_only" or config.get("synth_only", False):
             has_iq = False
-        _stations = parse_audio_playlist(_audioplaylist) if _audioplaylist else []
+        if is_station_m3u(_audioplaylist):
+            # station list in the extended m3u format (modulator_playlist_mode: m3u);
+            # #EXTPARAM_MODDEPTH replaces audio_mod_index of config_wizard.yaml
+            _stations, _m3u_moddepth = load_station_m3u(_audioplaylist, _ffmpeg_bin, self._concat_files)
+            if _m3u_moddepth is not None:
+                _mod_index = _m3u_moddepth
+        else:
+            _stations = parse_audio_playlist(_audioplaylist) if _audioplaylist else []
         has_audio = bool(_stations)
 
         sampling_rate = config["irate"]

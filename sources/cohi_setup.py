@@ -82,6 +82,7 @@ MODULES = [
     ("yaml_editor", "yaml_editor", "Yaml Editor"),
     ("annotator", "annotate", "Annotator"),
     ("synthesizer", "synthesizer", "Synthesizer"),
+    ("station_editor", "station_editor", "Station Editor"),
 ]
 MANDATORY_MODULES = ["resampler"]
 

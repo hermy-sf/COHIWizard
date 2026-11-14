@@ -47,6 +47,7 @@ import yaml
 from PyQt5.QtCore import QObject, QMutex, QThread, pyqtSignal
 
 from dev_drivers.playlist_paths import (resolve_csv_source, is_playlist, is_url,
+                                        is_station_m3u, load_station_m3u,
                                         read_m3u, check_local_file, skipped_message)
 
 # AVC level calibration relative to fl2k_stream (reference driver).
@@ -456,6 +457,12 @@ class playrec_worker(QObject):
         self._handle        = None
         self._ffmpeg_procs  = []
         self._concat_files  = []
+        self._monitor_band  = None
+
+    def get_monitor_band(self):
+        """(center frequency, sample rate) in Hz of the monitor data if they differ
+        from the IQ file / GUI settings, else None (used by playrec.showRFdata)"""
+        return getattr(self, "_monitor_band", None)
 
     # ---------------------------------------------------------------- accessors
     def set_filename(self, v):         self.__slots__[0]  = v
@@ -559,8 +566,9 @@ class playrec_worker(QObject):
                 _curl_cmd = None
                 cmd = [
                     ffmpeg_bin,
-                    "-reconnect", "1", "-reconnect_streamed", "1",
-                    "-reconnect_delay_max", "5", "-re",
+                    # reconnect options only for web sources: ffmpeg 7 refuses them for files
+                    *(["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"] if _is_http else []),
+                    "-re",
                     "-i", _ffmpeg_url(url),
                     "-af", f"lowpass=f={lowpass_f},volume=0.8",
                     "-f", "u8", "-ar", str(audio_rate), "-ac", "1",
@@ -663,6 +671,7 @@ class playrec_worker(QObject):
         TEST      = self.get_TEST()
         self.stopix = False
         self.set_fileclose(False)
+        self._monitor_band = None      # set by the audio-only path (_run_flmod_path)
 
         # ---- Read config_wizard.yaml ---------------------------------
         _use_agc_cpp   = False
@@ -700,7 +709,14 @@ class playrec_worker(QObject):
         has_iq    = bool(filenames)
         if _op_mode == "audio_only" or config.get("synth_only", False):
             has_iq = False   # pure synthesizer mode: IQ file is ignored even if loaded
-        _stations = parse_audio_playlist(_audioplaylist) if _audioplaylist else []
+        if is_station_m3u(_audioplaylist):
+            # station list in the extended m3u format (modulator_playlist_mode: m3u);
+            # #EXTPARAM_MODDEPTH replaces audio_mod_index of config_wizard.yaml
+            _stations, _m3u_moddepth = load_station_m3u(_audioplaylist, _ffmpeg_bin, self._concat_files)
+            if _m3u_moddepth is not None:
+                _mod_index = _m3u_moddepth
+        else:
+            _stations = parse_audio_playlist(_audioplaylist) if _audioplaylist else []
         has_audio = bool(_stations)
 
         print(f"[fl2k_universal] mode: has_iq={has_iq}, has_audio={has_audio}, op={_op_mode}")
@@ -986,6 +1002,9 @@ class playrec_worker(QObject):
         tSR = 10_000_000 * (1 + int((center_freq + _bb_rate / 2) * 2 / 10_000_000))
         tSR = min(100_000_000, max(10_000_000, tSR))
 
+        # monitor data: baseband IQ around the carrier centre at the baseband rate,
+        # not around the LO / sample rate of the GUI
+        self._monitor_band = (center_freq, _bb_rate)
         print(f"[fl2k_universal/mod] center={center_freq/1e3:.1f} kHz, "
               f"target={tSR/1e6:.0f} MS/s, baseband={_bb_rate/1e6:.3f} MS/s")
 

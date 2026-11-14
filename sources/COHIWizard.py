@@ -1,4 +1,4 @@
-#Version 2.3.7
+#Version 2.3.8
 # -*- coding: utf-8 -*-logfile
 # For reducing to RFCorder: disable all modules except resample in the config_modules.yaml file
 #
@@ -771,6 +771,12 @@ class core_v(QObject):
             if not "audio_mixer_db" in self.m["metadata"]:
                 self.m["metadata"]["audio_mixer_db"] = 0
                 no_audio_mixer_db = True
+            # format of the station list of the audio modulator: csv or m3u (default m3u);
+            # also an empty or invalid entry is replaced
+            no_playlist_mode = False
+            if str(self.m["metadata"].get("modulator_playlist_mode", "")).strip().lower() not in ("csv", "m3u"):
+                self.m["metadata"]["modulator_playlist_mode"] = "m3u"
+                no_playlist_mode = True
         except:
             print("cannot get config_wizard.yaml metadata, write a new initial config file")
             self.m["metadata"] = {"last_path": self.standardpath}
@@ -804,6 +810,8 @@ class core_v(QObject):
             no_volumefactor = False
             self.m["metadata"]["audio_mixer_db"] = 0
             no_audio_mixer_db = False
+            self.m["metadata"]["modulator_playlist_mode"] = "m3u"
+            no_playlist_mode = False
             self.m["metadata"]["autoAGC_DspWorker"] = False
             self.m["metadata"]["gain_correction_fl2k_C"] = 0.2
             self.m["metadata"]["playlist_continuation_mode"] = 1
@@ -846,6 +854,9 @@ class core_v(QObject):
             stream = open("config_wizard.yaml", "w")
             yaml.dump(self.m["metadata"], stream)
             stream.close()
+
+        if no_playlist_mode:
+            auxi.update_configyaml("modulator_playlist_mode", "m3u")
 
         ###TODO: re-organize, there should be no access to gui elements of other modules
         self.m["HostAddress"] = self.gui.lineEdit_IPAddress.text() #TODO: Remove after transfer of playrec
@@ -1418,17 +1429,13 @@ class core_v(QObject):
         else:
             errorstate, value = self.modulator_playlistOpen()
 
+        if not errorstate and value and not self.check_station_list(value):
+            return errorstate, value        # not accepted, the previous station list stays loaded
+
         if not errorstate and value == "":
             self.SigRelay.emit("cm_all_",["playlist_opened",False])
         elif not errorstate:
-            self.SigRelay.emit("cm_all_",["playlist_opened",True])
-            self.m["modulator_playlist"] = value
-            self.SigRelay.emit("cm_all_",["modulator_playlist",value])
-            auxi.update_configyaml("audioplaylist", value)
-            if isinstance(self.m.get("metadata"), dict):
-                self.m["metadata"]["audioplaylist"] = value   # keep cached copy consistent
-            if hasattr(self.gui, "label_csv_filename"):
-                auxi.set_elided_text(self.gui.label_csv_filename, str(Path(value).stem) + str(Path(value).suffix))
+            self.accept_station_list(value)
         if errorstate:
             auxi.standard_errorbox(value)
             self.logger.info(f'cb_open_audiofile: {value}')
@@ -1498,6 +1505,68 @@ class core_v(QObject):
 
     #@njit
 
+    def accept_station_list(self, value):
+        """makes the checked station list the one of the player (state, config entry, label)"""
+        self.SigRelay.emit("cm_all_",["playlist_opened",True])
+        self.m["modulator_playlist"] = value
+        self.SigRelay.emit("cm_all_",["modulator_playlist",value])
+        auxi.update_configyaml("audioplaylist", value)
+        if isinstance(self.m.get("metadata"), dict):
+            self.m["metadata"]["audioplaylist"] = value   # keep cached copy consistent
+        if hasattr(self.gui, "label_csv_filename"):
+            auxi.set_elided_text(self.gui.label_csv_filename, str(Path(value).stem) + str(Path(value).suffix))
+
+    def load_station_list(self, path):
+        """loads a station list without file dialog (button 'Load into Player' of the
+        station editor); an m3u switches modulator_playlist_mode to m3u
+
+        :returns: True if the station list is loaded
+        :type: Boolean
+        """
+        if self.m["playthreadActive"] == True:
+            auxi.standard_errorbox("Player is currently active; please stop the player before loading a station list")
+            return False
+        if not self.check_station_list(path):
+            return False
+        if is_station_m3u(path) and auxi.modulator_playlist_mode() != "m3u":
+            auxi.update_configyaml("modulator_playlist_mode", "m3u")
+            if isinstance(self.m.get("metadata"), dict):
+                self.m["metadata"]["modulator_playlist_mode"] = "m3u"
+            self.SigRelay.emit("cexex_playrec", ["show_playlist_mode", 0])
+        self.accept_station_list(path)
+        return True
+
+    def check_station_list(self, path):
+        """reads the selected station list (csv or extended m3u) before it is accepted.
+        No station readable -> error; mode 'IQ band and audio modulator' with an IQ file
+        loaded: all carriers must lie in the band of the IQ file, otherwise error; mode
+        'audio modulator only': LO and sample rate of an m3u are taken over into the
+        fields REC LO / REC BW. Problems with single stations are only reported.
+
+        :returns: True if the station list is accepted
+        :type: Boolean
+        """
+        stations, params, problems = parse_station_list(path)
+        listing = "\n".join(f"- {p}" for p in problems[:15])
+        if not stations:
+            auxi.standard_errorbox(f"No station could be read from {Path(path).name}."
+                                   + (f"\n\n{listing}" if listing else ""))
+            return False
+        _err, modtype = auxi.fetch_configyaml("last_modulator_type")
+        wh = self.m.get("wavheader") or {}
+        if (not _err and modtype == "band_and_audio" and self.m.get("fileopened")
+                and wh.get("centerfreq") and wh.get("nSamplesPerSec")):
+            msg = band_problem(stations, float(wh["centerfreq"]), float(wh["nSamplesPerSec"]))
+            if msg:
+                auxi.standard_errorbox(msg)
+                return False
+        if problems:
+            auxi.standard_infobox(f"Station list {Path(path).name}: {len(stations)} station(s) read. "
+                                  f"Remarks:\n\n{listing}")
+        if not _err and modtype == "audio_only" and ("lo_hz" in params or "samplerate_hz" in params):
+            self.SigRelay.emit("cexex_playrec", ["apply_station_params", params])
+        return True
+
     def modulator_playlistOpen(self):
         """
         acquires info about file to be opened and returns the filename to be opened
@@ -1511,17 +1580,24 @@ class core_v(QObject):
         errorstate = False
         value = ""
         keyerror, keyvalue = auxi.fetch_configyaml("last_modulator_playlist_path")
-        filters = "playlist csv files (*.csv);;"
-        selected_filter = "playlist csv files (*.csv)"
+        # format of the station list: config_wizard.yaml, key modulator_playlist_mode
+        if auxi.modulator_playlist_mode() == "m3u":
+            filters = "station list m3u (*.m3u *.m3u8);;"
+            selected_filter = "station list m3u (*.m3u *.m3u8)"
+            title = "Open station list (m3u)"
+        else:
+            filters = "playlist csv files (*.csv);;"
+            selected_filter = "playlist csv files (*.csv)"
+            title = "Open playlist csv file"
 
         if not keyerror:
             filenamelist =  QtWidgets.QFileDialog.getOpenFileName(gui,
-                                    "Open playlist csv file"
+                                    title
                                      ,keyvalue , filters, selected_filter)
 
         else:
             filenamelist =  QtWidgets.QFileDialog.getOpenFileName(gui,
-                                    "Open playlist csv file"
+                                    title
                                     ,os.getcwd() , filters, selected_filter)
 
         value = filenamelist[0]
@@ -1835,6 +1911,8 @@ class core_v(QObject):
             if  _value[0].find("resizeaction") == 0:
                 #print("resize action triggered in core")
                 _value[1].resize_initialize()
+            if  _value[0].find("load_station_list") == 0:
+                self.load_station_list(_value[1])
                 
 
 class SplashScreen(QWidget):
@@ -1942,6 +2020,7 @@ if __name__ == '__main__':
     #print(f"__main__: gui = {gui} gui.gui = {gui.gui}")
     from auxiliaries import WAVheader_tools
     from auxiliaries import auxiliaries as auxi
+    from dev_drivers.playlist_paths import parse_station_list, band_problem, is_station_m3u
     from auxiliaries import timer_worker as tw
     from auxiliaries import find_red_pitayas
     
@@ -2153,7 +2232,7 @@ if __name__ == '__main__':
         xcore_v.logger.debug("startup Tab not defined in configuration file config_wizard.yaml")
         xcore_v.gui.tabWidget.setCurrentIndex(0)
     xcore_v.timethread.start()
-    print("COHIWIzard Version 2.3.7 , 12-11-2026, (C) Hermann Scharfetter")
+    print("COHIWIzard Version 2.3.8 , 12-14-2026, (C) Hermann Scharfetter")
 
 
 

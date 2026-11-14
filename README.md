@@ -31,6 +31,7 @@ Each device is operated by a driver in `sources/dev_drivers`:
   Besides plain IQ playback they can add AM carriers generated from audio sources (web radio streams,
   local audio files, m3u/pls playlists) to the IQ band or synthesize a band from audio sources only
   ("modulator types" *IQ band only*, *IQ band and audio modulator*, *audio modulator only*).
+  The stations are defined in a station list, either a csv file or one extended m3u file.
   The computationally expensive parts run in C++ libraries.
 - **Reference drivers:** `fl2k_stream`, `stemlab_125_14`, `ADALM2000`, the drivers of v2.2
   (IQ playback only).
@@ -40,8 +41,17 @@ Each device is operated by a driver in `sources/dev_drivers`:
 - **New installation:** Windows installer and setup tool `cohi_setup.py` (Windows and LINUX), which
   download the program directly from GitHub, manage modules and drivers and perform updates. The
   zip file with `SDR_COHIWizard_v2.x.exe` is no longer used.
-- **New driver architecture** with universal drivers, audio modulator, audio station lists (csv)
+- **New driver architecture** with universal drivers, audio modulator, audio station lists
   and a mixer slider for the level of the audio carriers.
+- **Station lists as extended m3u:** besides the csv format, one m3u file can hold all stations
+  (`#PLAYLIST`, `#EXTGRP` frequency, `#EXTPARAM_BW` bandwidth) with their titles and global
+  parameters (prefix, LO, sample rate, silence between titles, modulation depth). The format is
+  selected with `modulator_playlist_mode: m3u|csv` in `config_wizard.yaml` (default `m3u`). Station lists are
+  checked when they are loaded; in the mode *IQ band and audio modulator* all carriers must lie in
+  the band of the IQ file.
+- **New tab 'Station Editor'** (optional module) for creating and editing m3u station lists:
+  stations table, titles per station (files, web addresses, drag & drop), global parameters,
+  check of the list and 'Load into Player'.
 - **GUI:** skin 5 as scalable default for PC screens, skins 2 and 3 for 7" displays (e.g. Raspberry
   Pi); a configuration dialog for rarely used settings; elapsed / total time display; a startup
   notice while the SDR device is starting.

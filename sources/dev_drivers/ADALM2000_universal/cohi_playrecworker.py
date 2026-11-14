@@ -36,6 +36,7 @@ import yaml
 from PyQt5.QtCore import QObject, QMutex, QThread, pyqtSignal
 
 from dev_drivers.playlist_paths import (resolve_csv_source, is_playlist, is_url,
+                                        is_station_m3u, load_station_m3u,
                                         read_m3u, check_local_file, skipped_message)
 
 # AVC level calibration relative to fl2k_stream (reference driver).
@@ -92,6 +93,28 @@ def _parse_freq(s: str) -> float:
     if sl.endswith("hz"):
         return float(s[:-2].strip())
     return float(s)
+
+
+def _real_to_baseband(x, fs, fc, bw):
+    """real samples x (rate fs) -> complex baseband of the band fc +- bw/2, interleaved
+    re/im like IQ file data, and (centre, rate) of the result; None if the band does not
+    fit. Scaled so that a carrier keeps its amplitude (per component the same RMS as the
+    real signal), so the AVC sees the same level."""
+    n = len(x)
+    if n < 64 or fs <= 0 or bw <= 0:
+        return None
+    df = fs / n
+    spec = np.fft.rfft(x.astype(np.float64))
+    k0 = max(0, int(round((fc - bw / 2) / df)))
+    k1 = min(len(spec), int(round((fc + bw / 2) / df)))
+    m = k1 - k0
+    kc = int(round(fc / df)) - k0
+    if m < 16 or not 0 <= kc < m:
+        return None
+    z = np.fft.ifft(np.roll(spec[k0:k1], -kc)) * (2.0 * m / n)
+    out = np.empty(2 * m, dtype=np.float32)
+    out[0::2], out[1::2] = z.real, z.imag
+    return out, ((k0 + kc) * df, m * df)
 
 
 def parse_audio_playlist(csv_path: str) -> list:
@@ -303,6 +326,7 @@ class playrec_worker(QObject):
         self.chunk_queue        = queue.Queue(maxsize=200)
         self._ffmpeg_procs      = []
         self._concat_files      = []
+        self._monitor_band      = None
 
         configpath = os.path.join(os.getcwd(), "config_wizard.yaml")
         try:
@@ -328,6 +352,11 @@ class playrec_worker(QObject):
     def get_pause(self):               return self.__slots__[3]
     def set_fileHandle(self, v):       self.__slots__[4]  = v
     def get_fileHandle(self):          return self.__slots__[4]
+    def get_monitor_band(self):
+        """(center frequency, sample rate) in Hz of the monitor data if they differ
+        from the IQ file / GUI settings, else None (used by playrec.showRFdata)"""
+        return getattr(self, "_monitor_band", None)
+
     def set_data(self, v):             self.__slots__[5]  = v
     def get_data(self):                return self.__slots__[5]
     def set_gain(self, v):             self.__slots__[6]  = v
@@ -433,8 +462,9 @@ class playrec_worker(QObject):
                 _curl_cmd = None
                 cmd = [
                     ffmpeg_bin,
-                    "-reconnect", "1", "-reconnect_streamed", "1",
-                    "-reconnect_delay_max", "5", "-re",
+                    # reconnect options only for web sources: ffmpeg 7 refuses them for files
+                    *(["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"] if _is_http else []),
+                    "-re",
                     "-i", _ffmpeg_url(url),
                     "-af", f"lowpass=f={lowpass_f},volume=0.8",
                     "-f", "u8", "-ar", str(audio_rate), "-ac", "1",
@@ -805,7 +835,14 @@ class playrec_worker(QObject):
         except Exception as e:
             print(f"[ADALM2000_univ] config read error: {e}")
 
-        _stations = parse_audio_playlist(_audioplaylist) if _audioplaylist else []
+        if is_station_m3u(_audioplaylist):
+            # station list in the extended m3u format (modulator_playlist_mode: m3u);
+            # #EXTPARAM_MODDEPTH replaces audio_mod_index of config_wizard.yaml
+            _stations, _m3u_moddepth = load_station_m3u(_audioplaylist, _ffmpeg_path, self._concat_files)
+            if _m3u_moddepth is not None:
+                _mod_index = _m3u_moddepth
+        else:
+            _stations = parse_audio_playlist(_audioplaylist) if _audioplaylist else []
         has_audio = bool(_stations)
         has_iq    = bool(filenames) and filenames[0] not in ("", "no_file.dat")
 
@@ -992,9 +1029,17 @@ class playrec_worker(QObject):
             _CB_FINISHED = ctypes.CFUNCTYPE(None, ctypes.c_void_p)
             _CB_ERROR    = ctypes.CFUNCTYPE(None, ctypes.c_char_p, ctypes.c_void_p)
 
+            # the C++ monitor delivers the real DAC signal (rate SRAdalm); showRFdata
+            # expects complex baseband: cut out LO +- SR/2 (else a mirrored spectrum appears)
+            _mon_fc = float(config.get("ifreq", 0.0))
+            _mon_bw = float(config.get("irate", 0.0))
+
             def _on_monitor(data_ptr, n, _ud):
                 try:
                     arr = np.ctypeslib.as_array(data_ptr, shape=(n,)).copy()
+                    band = _real_to_baseband(arr, SRAdalm, _mon_fc, _mon_bw)
+                    if band is not None:
+                        arr, self._monitor_band = band
                     self.set_data(arr * _AVC_MONITOR_CAL)
                     self.SigIncrementCurTime.emit()
                 except Exception as _exc:

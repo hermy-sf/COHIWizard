@@ -437,6 +437,13 @@ class auxiliaries():
             value = f"could not load key {key} from config_wizard.yaml"
         return errorstate, value
 
+    def modulator_playlist_mode():
+        """format of the station list of the audio modulator: 'csv' or 'm3u'
+        (config_wizard.yaml, key modulator_playlist_mode; 'm3u' if missing or invalid)"""
+        errorstate, value = auxiliaries.fetch_configyaml("modulator_playlist_mode")
+        value = str(value).strip().lower() if not errorstate else ""
+        return value if value in ("csv", "m3u") else "m3u"
+
 
     def show_infobox_withcheck(messagetext, checkboxtext):
         """

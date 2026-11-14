@@ -24,6 +24,7 @@ import logging
 import subprocess
 from auxiliaries import auxiliaries as auxi
 from auxiliaries import WAVheader_tools
+from dev_drivers.playlist_paths import parse_station_list, band_problem
 from datetime import datetime
 import datetime as ndatetime
 from player import stemlab_control
@@ -1461,6 +1462,7 @@ class playrec_v(QObject):
                                             getattr(self.gui, "comboBox_stemlab", None)) if cb is not None]
         for cb in self._popup_combos:
             cb.installEventFilter(self)
+        self.show_playlist_mode()
         # logo (skin 5): scaled with its aspect ratio to the size of its grid cell instead of
         # being stretched; skins with scaledContents keep their behaviour
         self._logo_pixmap = None
@@ -2102,6 +2104,10 @@ class playrec_v(QObject):
                 self.show_elapsed()
             if  _value[0].find("resetLObias") == 0:
                 self.reset_LO_bias()
+            if  _value[0].find("apply_station_params") == 0:
+                self.apply_station_params(_value[1])
+            if  _value[0].find("show_playlist_mode") == 0:
+                self.show_playlist_mode()
             if  _value[0].find("relay_playstate") == 0:
                 self.SigRelay.emit("cm_all_",["playthreadActive",self.m["playthreadActive"]])
                 self.SigRelay.emit("cm_all_",["player_recording",
@@ -2391,6 +2397,7 @@ class playrec_v(QObject):
                     if self.numeraltest(self.gui.lineEdit_playrec_LO.text(),self.LO_LOW,self.LO_HIGH,"LO value in recorder tab"):
                         self.m["ifreq"] = int(1000*int(self.gui.lineEdit_playrec_LO.text()))
                         self.m["irate"] = int(1000*int(self.gui.comboBox_playrec_targetSR.currentText()))
+                        self.m["wavheader"]['centerfreq'] = self.m["ifreq"]     # frequency axis of the monitor
                         self.m["wavheader"]['nSamplesPerSec'] = self.m["irate"]
                         self.m["wavheader"]['nAvgBytesPerSec'] = self.m["irate"]*self.m["wavheader"]['nBlockAlign']
                     else:
@@ -2429,6 +2436,7 @@ class playrec_v(QObject):
                 if self.numeraltest(self.gui.lineEdit_playrec_LO.text(), self.LO_LOW, self.LO_HIGH, "LO value in recorder tab"):
                     self.m["ifreq"] = int(1000 * int(self.gui.lineEdit_playrec_LO.text()))
                     self.m["irate"] = int(1000 * int(self.gui.comboBox_playrec_targetSR.currentText()))
+                    self.m["wavheader"]["centerfreq"]        = self.m["ifreq"]     # frequency axis of the monitor
                     self.m["wavheader"]["nSamplesPerSec"]    = self.m["irate"]
                     self.m["wavheader"]["nAvgBytesPerSec"]   = self.m["irate"] * self.m["wavheader"]["nBlockAlign"]
                 else:
@@ -2441,11 +2449,22 @@ class playrec_v(QObject):
                 self.m["timescaler"] = self.m["wavheader"]['nSamplesPerSec']*self.m["wavheader"]['nBlockAlign']
 
             if self.m["modulator_type"] != "band_only" and not os.path.exists(self.m["modulator_playlist"]):
-                auxi.standard_errorbox("playlist csv file must be opened before playing") #TODO TODO TODO: good errorhandling with errorstate, value; errorhandler
+                auxi.standard_errorbox(f"station list ({auxi.modulator_playlist_mode()} file) must be opened before playing") #TODO TODO TODO: good errorhandling with errorstate, value; errorhandler
                 # restore automatic call of fileopen in this case
                 #core_v.cb_open_modulatorplaylist() TODO: relaying command
                 self.reset_playerbuttongroup()
                 return False
+            # IQ band and audio modulator: LO and sample rate are given by the IQ file, all
+            # carriers of the station list must lie in its band (the file may have been
+            # opened after the station list)
+            if self.m["modulator_type"] == "band_and_audio" and not _no_iq_file:
+                _stations = parse_station_list(self.m["modulator_playlist"])[0]
+                _msg = band_problem(_stations, float(self.m["wavheader"]["centerfreq"]),
+                                    float(self.m["wavheader"]["nSamplesPerSec"]))
+                if _msg:
+                    auxi.standard_errorbox(_msg)
+                    self.reset_playerbuttongroup()
+                    return False
 
             errorstate, value = self.playrec_c.checkSTEMLABrates()
             self.st = self.et
@@ -2760,6 +2779,35 @@ class playrec_v(QObject):
             return
         logo.setPixmap(self._logo_pixmap.scaled(size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
+    def show_playlist_mode(self):
+        """names of the station list controls after config_wizard.yaml, key
+        modulator_playlist_mode: button 'csv ...'/'m3u ...' (skins 2/3), label
+        'csv:'/'m3u:' (skin 5), status tip of the menu entry 'Playlist open'"""
+        mode = auxi.modulator_playlist_mode()
+        if hasattr(self.gui, "pushButton_csvopen"):
+            self.gui.pushButton_csvopen.setText(f"{mode} ...")
+        if hasattr(self.gui, "label_13"):
+            self.gui.label_13.setText(f"{mode}:")
+        if hasattr(self.gui, "actionPlaylist_open"):
+            self.gui.actionPlaylist_open.setStatusTip(f"open modulator playlist ({mode})")
+
+    def apply_station_params(self, params):
+        """mode 'audio modulator only': LO and sample rate of the loaded m3u station list
+        into the fields REC LO / REC BW (only values the fields can take)"""
+        if "lo_hz" in params:
+            lo_khz = int(round(params["lo_hz"] / 1000))
+            if self.LO_LOW <= lo_khz <= self.LO_HIGH:
+                self.gui.lineEdit_playrec_LO.setText(str(lo_khz))
+        if "samplerate_hz" in params:
+            sr_txt = f"{params['samplerate_hz'] / 1000:g}"
+            ix = self.gui.comboBox_playrec_targetSR.findText(sr_txt)
+            if ix >= 0:
+                self.gui.comboBox_playrec_targetSR.setCurrentIndex(ix)
+            else:
+                auxi.standard_infobox(f"The sample rate {sr_txt} kHz of the station list is not available "
+                                      f"for this device; {self.gui.comboBox_playrec_targetSR.currentText()} kHz "
+                                      f"is kept.")
+
     def fit_combo_popup(self, combo):
         """popup list of the combo box at least as wide as its longest entry"""
         view = combo.view()
@@ -2942,8 +2990,13 @@ class playrec_v(QObject):
 
             N = len(spr)
             spr = np.fft.fftshift(spr)/N/normfactor
-            flo = self.m["wavheader"]['centerfreq'] - self.m["wavheader"]['nSamplesPerSec']/2
-            freq0 = np.linspace(0,self.m["wavheader"]['nSamplesPerSec'],N)
+            # centre and rate of the monitor data: from the driver if it says so (e.g.
+            # fl2k audio only: baseband around the carriers), else from the (dummy) header
+            _band = getattr(self.playrec_c.playrec_tworker, "get_monitor_band", None)
+            _band = _band() if callable(_band) else None
+            fc, fs = _band if _band else (self.m["wavheader"]['centerfreq'], self.m["wavheader"]['nSamplesPerSec'])
+            flo = fc - fs/2
+            freq0 = np.linspace(0,fs,N)
             freq = freq0 + flo
             datax = (np.floor(freq/1000))
             datay = 20*np.log10(spr)
