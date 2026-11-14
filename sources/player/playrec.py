@@ -1453,6 +1453,14 @@ class playrec_v(QObject):
         self.gui.pushButton_Stop.clicked.connect(self.playrec_c.cb_Butt_STOP)
         self.gui.pushButton_REC.clicked.connect(self.cb_Butt_REC)
         self.hide_bufoverflow()
+        # MODE and SDR combo boxes: the Windows styles make the popup list only as wide as
+        # the box and elide longer entries in the middle ('IQ band ...odulator'); the list
+        # is widened to its longest entry before it opens (see eventFilter), and the tooltip
+        # shows the full text of the current entry, which may be cut off in the closed box
+        self._popup_combos = [cb for cb in (getattr(self.gui, "comboBox_modulator_type", None),
+                                            getattr(self.gui, "comboBox_stemlab", None)) if cb is not None]
+        for cb in self._popup_combos:
+            cb.installEventFilter(self)
         # logo (skin 5): scaled with its aspect ratio to the size of its grid cell instead of
         # being stretched; skins with scaledContents keep their behaviour
         self._logo_pixmap = None
@@ -2752,11 +2760,26 @@ class playrec_v(QObject):
             return
         logo.setPixmap(self._logo_pixmap.scaled(size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
+    def fit_combo_popup(self, combo):
+        """popup list of the combo box at least as wide as its longest entry"""
+        view = combo.view()
+        view.setFont(combo.font())          # font roles change the font of the box at runtime
+        width = view.sizeHintForColumn(0) + 2 * view.frameWidth()
+        if combo.count() > combo.maxVisibleItems():
+            width += view.verticalScrollBar().sizeHint().width()
+        view.setMinimumWidth(width)
+
     def eventFilter(self, obj, event):
-        """rescales the logo on every size change of its label and when it is shown"""
+        """rescales the logo on every size change of its label and when it is shown;
+        MODE/SDR combo boxes: popup width before opening, tooltip with the current entry"""
         if event.type() in (QEvent.Resize, QEvent.Show) and getattr(self, "_logo_pixmap", None) is not None \
                 and obj is self.gui.label_LOGO:
             self.rescale_logo()
+        elif obj in getattr(self, "_popup_combos", ()):
+            if event.type() in (QEvent.MouseButtonPress, QEvent.KeyPress):
+                self.fit_combo_popup(obj)
+            elif event.type() == QEvent.ToolTip:
+                obj.setToolTip(obj.currentText())
         return super().eventFilter(obj, event)
 
     def hide_bufoverflow(self):
