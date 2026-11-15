@@ -123,7 +123,12 @@ static inline void lut_sincos_lerp(uint32_t phase,
 /* Frequency (Hz) → uint32_t phase increment at sample_rate */
 static inline uint32_t freq_to_pinc(double freq_hz, double sample_rate)
 {
-    return (uint32_t)(freq_hz / sample_rate * 4294967296.0);
+    /* negative frequencies (carrier below the band centre) must wrap modulo 2^32.
+     * A direct double -> uint32_t cast of a negative value is undefined behaviour:
+     * x86 wraps by chance, ARM64 (Raspberry Pi) saturates to 0, which put all
+     * carriers below the centre onto the centre. Via int64_t the conversion is
+     * defined and gives the same result as before on x86. */
+    return (uint32_t)(int64_t)(freq_hz / sample_rate * 4294967296.0);
 }
 
 /* Soft AM output limiter — see DspWorkerFLMod.cpp for description. */
