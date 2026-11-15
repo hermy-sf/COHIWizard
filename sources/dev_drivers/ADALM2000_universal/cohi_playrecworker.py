@@ -35,6 +35,7 @@ import yaml
 
 from PyQt5.QtCore import QObject, QMutex, QThread, pyqtSignal
 
+from dev_drivers.libcheck import lib_problem
 from dev_drivers.playlist_paths import (resolve_csv_source, is_playlist, is_url,
                                         is_station_m3u, load_station_m3u,
                                         read_m3u, check_local_file, skipped_message)
@@ -942,10 +943,9 @@ class playrec_worker(QObject):
             return
 
         if _lib_adlm is None:
-            self.SigError.emit(
-                "ADALM2000_universal: libdspadlm.so nicht gefunden.\n"
-                "Bitte 'make' im Verzeichnis ADALM2000_universal ausführen."
-            )
+            self.SigError.emit("ADALM2000_universal: " + lib_problem(
+                "libdspadlm", [os.path.dirname(os.path.abspath(__file__))],
+                "dev_drivers/ADALM2000_universal"))
             self.SigFinished.emit()
             return
 

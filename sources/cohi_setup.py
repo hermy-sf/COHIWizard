@@ -64,7 +64,8 @@ INFO_FILE = ".info"
 # except config_modules.yaml, which is generated.
 CORE_FILES = ["requirements.txt", "LICENSE", "README.md",
               "sources/dev_drivers/__init__.py",
-              "sources/dev_drivers/playlist_paths.py"]   # used by the universal drivers
+              "sources/dev_drivers/playlist_paths.py",   # used by the universal drivers
+              "sources/dev_drivers/libcheck.py"]
 # documentation/: the user manual (pdf) of the branch, whatever its file name
 CORE_DIRS = ["sources/core/", "sources/player/", "sources/resampler/",
              "sources/logos/", "documentation/"]
@@ -203,6 +204,45 @@ def os_key():
 
 def is_arm():
     return platform.machine().lower() in ("aarch64", "arm64", "armv7l", "armv6l")
+
+
+ELF_MACHINES = {0x03: "x86 (32 bit)", 0x3E: "x86-64", 0x28: "ARM (32 bit)", 0xB7: "ARM64"}
+THIS_MACHINE = {"x86_64": 0x3E, "amd64": 0x3E, "i386": 0x03, "i686": 0x03,
+                "aarch64": 0xB7, "arm64": 0xB7, "armv7l": 0x28, "armv6l": 0x28}
+
+
+def lib_unusable(path):
+    """reason why the shared library path cannot be used on this computer, None if it
+    can (the libraries in the repository are built for x86-64)"""
+    if not os.path.isfile(path):
+        return "missing"
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(20)
+    except OSError as exc:
+        return f"not readable ({exc})"
+    if head[:4] == b"\x7fELF" and len(head) == 20:
+        lib = int.from_bytes(head[18:20], "little" if head[5] == 1 else "big")
+        here = THIS_MACHINE.get(platform.machine().lower())
+        if here is not None and lib != here:
+            return f"built for {ELF_MACHINES.get(lib, hex(lib))}, this computer is {platform.machine()}"
+    res = subprocess.run([sys.executable, "-c", "import ctypes,sys; ctypes.CDLL(sys.argv[1])", path],
+                         capture_output=True, text=True)
+    if res.returncode != 0:
+        lines = (res.stderr or "").strip().splitlines()
+        return "cannot be loaded" + (f" ({lines[-1]})" if lines else "")
+    return None
+
+
+def osmo_fl2k_dev_present():
+    """header osmo-fl2k.h and library libosmo-fl2k usable by g++ (anywhere in its search paths,
+    also /usr/local from an own build of osmo-fl2k)"""
+    if not shutil.which("g++"):
+        return False
+    res = subprocess.run(["g++", "-x", "c++", "-", "-o", os.devnull, "-losmo-fl2k"],
+                         input="#include <osmo-fl2k.h>\nint main(){return 0;}\n",
+                         capture_output=True, text=True)
+    return res.returncode == 0
 
 
 def py_tag(version_info=None):
@@ -582,9 +622,14 @@ def make_plan(inst, tree, modules, drivers):
     have_drivers = inst.installed_drivers()
     plan.new_drivers = [d for d in plan.drivers if d not in have_drivers]
     want = wanted_files(tree, plan.modules, plan.drivers)
+    built_libs = inst.state.get("built_libs", {})     # libraries built here with make
     for path, (sha, _size, _mode) in sorted(want.items()):
         local = inst.p(path)
         if os.path.isfile(local) and blob_sha(local) == sha:
+            plan.uptodate += 1
+        elif os.path.isfile(local) and built_libs.get(path) == sha:
+            # built here from the same repository version: keep it, do not download the
+            # x86-64 build of the repository again
             plan.uptodate += 1
         else:
             plan.download.append(path)
@@ -923,6 +968,73 @@ class Installer:
                 if self.ui.ask("The FL2K dongle needs the WinUSB driver under Windows.\n"
                                "Download and start Zadig now?\n\n" + ZADIG_HINT):
                     launch_zadig(self.inst.sources, self.ui.log)
+
+    def ensure_native_libs(self, plan, tree):
+        """Linux: the DSP libraries of the universal drivers (dev_drivers/libs,
+        ADALM2000_universal) in the repository are built for x86-64. If they cannot be
+        loaded here (e.g. ARM64 of a Raspberry Pi), they are built with make from the
+        sources downloaded with them; after an update of a directory built here, it is
+        built again."""
+        if os_key() != "linux" or self.dry_run:
+            return
+        dirs = {}
+        for d in plan.drivers:
+            for lib in driver_spec(d)["libs"].get("linux", []):
+                dirs.setdefault(LIBS_DIR, set()).add(lib)
+            ddir = f"sources/dev_drivers/{d}/"
+            for path in tree:
+                if path.startswith(ddir) and path.count("/") == ddir.count("/") and path.endswith(".so"):
+                    dirs.setdefault(ddir, set()).add(path.rsplit("/", 1)[-1])
+        built = set(self.inst.state.get("built_lib_dirs", []))
+        changed = {p.rsplit("/", 1)[0] + "/" for p in plan.download}
+        for rdir, libs in sorted(dirs.items()):
+            local = os.path.join(self.inst.target, rdir)
+            if not os.path.isfile(os.path.join(local, "Makefile")):
+                continue
+            bad = {lib: lib_unusable(os.path.join(local, lib)) for lib in sorted(libs)}
+            bad = {k: v for k, v in bad.items() if v}
+            if not bad and not (rdir in built and rdir in changed):
+                self.ui.log(f"{rdir}: libraries usable on this computer")
+                continue
+            for lib, why in bad.items():
+                self.ui.log(f"{rdir}{lib}: {why}")
+            self.ui.log(f"{rdir}: building the libraries for this computer (make)")
+            if not self._build_tools(rdir):
+                self.manual_steps.append(f"cd {local} && make")
+                continue
+            if run_logged(["make", "clean"], self.ui.log, cwd=local) != 0 \
+                    or run_logged(["make"], self.ui.log, cwd=local) != 0:
+                self.ui.log(f"{rdir}: make failed")
+                self.manual_steps.append(f"cd {local} && make")
+                continue
+            still = [f"{lib}: {lib_unusable(os.path.join(local, lib))}" for lib in sorted(libs)
+                     if lib_unusable(os.path.join(local, lib))]
+            if still:
+                self.ui.log(f"{rdir}: still not usable after make: " + "; ".join(still))
+                self.manual_steps.append(f"cd {local} && make")
+            else:
+                self.ui.log(f"{rdir}: built for this computer")
+                built.add(rdir)
+                for lib in libs:
+                    if rdir + lib in tree:
+                        self.inst.state.setdefault("built_libs", {})[rdir + lib] = tree[rdir + lib][0]
+        self.inst.state["built_lib_dirs"] = sorted(built)
+        self.inst.save_state()
+
+    def _build_tools(self, rdir):
+        """g++, make and for dev_drivers/libs the osmo-fl2k development files; missing ones
+        are installed with apt after confirmation. True if everything is present."""
+        pkgs = [p for p, ok in (("g++", shutil.which("g++")), ("make", shutil.which("make"))) if not ok]
+        if rdir == LIBS_DIR and (pkgs or not osmo_fl2k_dev_present()):
+            pkgs.append("libosmo-fl2k-dev")
+        if not pkgs:
+            return True
+        if not shutil.which("apt-get"):
+            self.ui.log("please install with your package manager: " + " ".join(pkgs))
+            return False
+        return self.run_root(["apt-get update", "apt-get install -y " + " ".join(pkgs)],
+                             "The DSP libraries of the drivers must be built for this computer; "
+                             "this needs: " + ", ".join(pkgs))
 
     def _linux_packages(self, needs):
         import ctypes.util
@@ -1553,6 +1665,7 @@ def run_install(inst, ui, branch, modules, drivers, dry_run, shortcut=True, reso
     if not installer.pip_install_requirements():
         installer.manual_steps.append(f'"{inst.python}" -m pip install -r requirements.txt')
     installer.ensure_third_party(plan)
+    installer.ensure_native_libs(plan, tree)
     installer.create_launchers(shortcut)
     if installer.manual_steps:
         ui.info("Please complete these steps manually:\n\n" + "\n".join("- " + s for s in installer.manual_steps))

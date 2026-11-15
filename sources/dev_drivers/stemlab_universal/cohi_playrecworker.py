@@ -36,6 +36,7 @@ import numpy as np
 import yaml
 from PyQt5.QtCore import QObject, QMutex, QThread, pyqtSignal
 
+from dev_drivers.libcheck import lib_problem
 from dev_drivers.playlist_paths import (resolve_csv_source, is_playlist, is_url,
                                         is_station_m3u, load_station_m3u,
                                         read_m3u, check_local_file, skipped_message)
@@ -683,10 +684,8 @@ class playrec_worker(QObject):
         """
         lib = _load_lib_mod()
         if lib is None:
-            self.SigError.emit(
-                "[stemlab_universal] Cannot load libdspflmod.so – "
-                "build it in dev_drivers/libs/ with 'make'."
-            )
+            self.SigError.emit("stemlab_universal: " + lib_problem("libdspflmod", [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "libs")],
+                                                                   "dev_drivers/libs"))
             return None, None
 
         handle = lib.dsp_flmod_create()

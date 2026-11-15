@@ -46,6 +46,7 @@ import psutil
 import yaml
 from PyQt5.QtCore import QObject, QMutex, QThread, pyqtSignal
 
+from dev_drivers.libcheck import lib_problem
 from dev_drivers.playlist_paths import (resolve_csv_source, is_playlist, is_url,
                                         is_station_m3u, load_station_m3u,
                                         read_m3u, check_local_file, skipped_message)
@@ -723,10 +724,8 @@ class playrec_worker(QObject):
 
         if has_iq:
             if _LIB_PLUS is None:
-                self.SigError.emit(
-                    "libdspfl2k.so not found.\n"
-                    "Build it with:  cd dev_drivers/libs && make"
-                )
+                self.SigError.emit(lib_problem("libdspfl2k", [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "libs")],
+                                               "dev_drivers/libs"))
                 self.SigFinished.emit()
                 return
             self._run_fl2k_plus_path(
@@ -736,10 +735,8 @@ class playrec_worker(QObject):
             )
         elif has_audio:
             if _LIB_MOD is None:
-                self.SigError.emit(
-                    "libdspflmod.so not found.\n"
-                    "Build it with:  cd dev_drivers/libs && make"
-                )
+                self.SigError.emit(lib_problem("libdspflmod", [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "libs")],
+                                               "dev_drivers/libs"))
                 self.SigFinished.emit()
                 return
             self._run_flmod_path(
