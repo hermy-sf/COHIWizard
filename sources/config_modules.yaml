@@ -5,6 +5,7 @@ modules:
   yaml_editor: yaml_editor
   annotator: annotate
   synthesizer: synthesizer
+  station_editor: station_editor
 module_names:
   spectralviewer: View Spectra
   resampler: Resampler
@@ -12,6 +13,7 @@ module_names:
   yaml_editor: Yaml Editor
   annotator: Annotator
   synthesizer: Synthesizer
+  station_editor: Station Editor
 dev_workers:
   adalm2000: cohi_playrecworker.py
   fl2k_plus: cohi_playrecworker.py

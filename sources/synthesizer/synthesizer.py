@@ -13,6 +13,8 @@ import datetime as ndatetime
 import matplotlib.pyplot as plt
 #import pyfda.pyfdax
 from auxiliaries import auxiliaries as auxi
+from dev_drivers.playlist_paths import (read_station_m3u_raw, entry_path, parse_frequency,
+                                        parse_seconds, is_url)
 #from auxiliaries import ffmpeg_installtools as ffinst
 import logging
 import yaml
@@ -2350,7 +2352,21 @@ class synthesizer_v(QObject):
                 return
 
 
+    def output_dir(self):
+        """folder of the synthesized files: that of #EXTPARAM_OUTPUTFILE of an imported m3u
+        (created if necessary), else the recording path of the player"""
+        out = self.m.get("m3u_outputfile", "")
+        if out:
+            folder = out if (out.endswith(("/", "\\")) or os.path.isdir(out)) else os.path.dirname(out)
+            try:
+                os.makedirs(folder, exist_ok=True)
+                return folder
+            except OSError:
+                pass
+        return self.m["recording_path"]
+
     def clear_project(self):
+        self.m["m3u_outputfile"] = ""      # output file given by an imported m3u (#EXTPARAM_OUTPUTFILE)
         #errorstatus, value = self.checkffmpeg_install()
         # if errorstatus:
         #     self.errorhandler("NOCLEAR" + value)
@@ -2596,7 +2612,7 @@ class synthesizer_v(QObject):
             #print(f"{YELLOW} expected filesize: {expected_filesize}, HIRES: {HIRES}")
             #print(f"{RESET}") 
         try:
-            errorstatus, value = self.synthesizer_c.checkdiskspace(expected_filesize, self.m["recording_path"])
+            errorstatus, value = self.synthesizer_c.checkdiskspace(expected_filesize, self.output_dir())
         except:
             errorstatus = True
             value = "Error when checking disk space, please make sure that the recording path (set in player Tab) is correct"
@@ -2662,7 +2678,8 @@ class synthesizer_v(QObject):
                 #TODO: why does it take so long to display the existing file list ?
                 output_base_name, _ = QFileDialog.getSaveFileName(self.m["QTMAINWINDOWparent"], 
                                                         "Save File", 
-                                                        self.m["recording_path"],  # Standard rec path, Standardmäßig kein voreingestellter Dateiname
+                                                        # output file of the imported m3u, else the recording path of the player
+                                                        self.m.get("m3u_outputfile") or self.m["recording_path"],
                                                         "wav Files (*.wav)",  # Filter for data type wav
                                                         options=options)
                 if output_base_name:
@@ -2861,9 +2878,9 @@ class synthesizer_v(QObject):
 
         #TODO: future versions: autoinstall with routines in Autoinstall_ffmpeg_import os.py
         try: 
-            value.find("NOCLEAR") == 0
             self.activate_control_elements(False)
-            auxi.standard_errorbox(str(value[7:]))
+            # the prefix NOCLEAR is removed; other messages were cut by 7 characters before
+            auxi.standard_errorbox(value[7:] if value.startswith("NOCLEAR") else value)
         except:
             if str(value) == "None":
                 value = "unknown error, maybe the internet connection was required and could not be established. Please check."
@@ -3057,6 +3074,7 @@ class synthesizer_v(QObject):
         #TODO TODO TODO: add all settings to be saved:
         #self.comboBox_targetSR_2.setCurrentIndex(###)
         pr["projectdata"]["modfactor"] = self.gui.lineEdit_modfactor.text()
+        pr["projectdata"]["m3u_outputfile"] = self.m.get("m3u_outputfile", "")
         #pr["projectdata"]["carrier_low"] = self.gui.lineEdit_fc_low.text()
         #Target filename
         qtimeedit = self.gui.timeEdit_reclength
@@ -3133,6 +3151,7 @@ class synthesizer_v(QObject):
             self.gui.comboBox_targetSR.setCurrentIndex(pr["projectdata"]["targetSR_index"])
             self.gui.comboBox_targetSR_2.setCurrentIndex(pr["projectdata"]["presetband_index"])
             self.gui.lineEdit_modfactor.setText(str(pr["projectdata"]["modfactor"])) 
+            self.m["m3u_outputfile"] = pr["projectdata"].get("m3u_outputfile", "")
             self.load_index = True
             try:
                 self.gui.radiobutton_CustomCarriers.toggled.disconnect(self.customcarrier_handler)
@@ -3402,7 +3421,8 @@ class synthesizer_v(QObject):
         except:
             print("dummy")
 
-        if len(self.readFileList[self.m["carrier_ix"]]) < 1:
+        if self.m["carrier_ix"] >= len(self.readFileList) or len(self.readFileList[self.m["carrier_ix"]]) < 1:
+            # also after clear_project, when the carrier list still shows more carriers
             value = "read File List empty"
             self.gui.listWidget_playlist.model().rowsInserted.connect(self.playlist_update_delayed)
             return(errorstatus,value)
@@ -3496,7 +3516,7 @@ class synthesizer_v(QObject):
                     if errorstatus:
                         #auxi.standard_errorbox(f"Error when determining duration of {file_path}. Giving up")
                         self.clear_project()
-                        return(errorstatus, value)
+                        return(errorstatus, aux)    # the message of get_stream_duration (value was None here)
                     duration += aux
                     value = duration
                     #print(f"end read URL list @ {ctime}, duration: {duration}")
@@ -3564,7 +3584,7 @@ class synthesizer_v(QObject):
             hours, minutes, seconds = map(float, match.groups())
             value = hours * 3600 + minutes * 60 + seconds  # Dauer in Sekunden
         else:
-            value = "Error when trying to get duration of stream {url}. Aborting procedure "
+            value = f"Error when trying to get duration of stream {url}. Aborting procedure "
             errorstatus = True
             return(errorstatus, value)
         return(errorstatus, value)
@@ -4241,6 +4261,28 @@ class synthesizer_v(QObject):
             table.setItem(i, 0, item)  # (Zeile, Spalte)
 
 
+    def url_problem(self, url):
+        """reason why a URL cannot be used for the synthesis, None if it can: live streams
+        have no duration (downloading them in readsoundfile would never end), unreachable
+        URLs (e.g. 403 Forbidden, 404) would make the later playtime check clear the project"""
+        cmd = [os.path.join(self.m["ffmpeg_path"], "ffmpeg"), "-hide_banner",
+               "-user_agent", self.m["user_agent"], "-i", url]
+        try:
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20,
+                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except subprocess.TimeoutExpired:
+            return "no answer within 20 s (live stream?)"
+        except OSError as exc:
+            return f"ffmpeg could not be started ({exc})"
+        err = res.stderr.decode(errors="replace")
+        if "Duration: N/A" in err:
+            return "live stream without duration"
+        if re.search(r"Duration: \d+:\d+:\d+", err):
+            return None
+        m = re.search(r"(Server returned [^\r\n]*|HTTP error [^\r\n]*|Failed to resolve[^\r\n]*|"
+                      r"Connection refused|Connection timed out|No route to host)", err)
+        return f"not reachable ({m.group(1).strip()})" if m else "duration cannot be determined"
+
     def import_m3u(self):
         """import an m3u playlist with special format containing fields of the form
         #EXTGRP: <carrierfrequency>
@@ -4282,105 +4324,147 @@ class synthesizer_v(QObject):
         yaml.dump(self.m["metadata"], stream)
         stream.close()
 
-        #with open(filename, 'r', encoding='utf-8') as f:
-        with open(filename[0], 'r') as f:
-            playlist_content = f.read()
+        if not filename[0]:                         # file dialog cancelled
+            self.activate_control_elements(True)
+            self.gui.pushButton_importProject.clicked.connect(self.import_m3u)
+            return
 
-        # Initialize variables
-        sub_playlists = []  # This will hold the sub-playlists
-        headers = []        # This will hold the associated headers
-        # Temporary variables to store the current sub-playlist and header
-        current_playlist = []
-        current_header = None
-        #clear and iniialize playlist
+        # read with the parser of the player and the station editor (dev_drivers/playlist_paths.py),
+        # so that both the station lists of the station editor and the older synthesizer m3u files
+        # (#EXTPARAM_BW / #EXTPARAM_RECLENGTH after the first #PLAYLIST) are understood
+        params, stations, problems = read_station_m3u_raw(filename[0])
+        base = os.path.dirname(os.path.abspath(filename[0]))
+        prefix = params.get("FILEPREFIX", "")
         self.readFileList = []
-        current_filelist = []
         self.readFilePath = []
-        current_filepath = []
-        # Iterate through each line in the playlist content
-        for line in playlist_content.splitlines():
-            # Look for #EXTGRP lines
-            if line.startswith('#EXTPARAM_BW:'):
-                BW_info = line.split(':')[1].strip()  # sometext_index
-                self.m["audioBW"] = float(BW_info.split('_')[-1])  #
-                self.gui.lineEdit_audiocutoff_freq.setText(str(self.m["audioBW"]))
-                #self.audioBW_update("nup")
-            if line.startswith('#EXTPARAM_RECLENGTH:'):
-                hour_info = line.split(':')[1].strip()  # sometext_index
-                min_info = line.split(':')[2].strip()  # sometext_index
-                sec_info = line.split(':')[3].strip()  # sometext_index
-
-        # preset_time = QTime(0,0,20) 
-        # self.create_duration = self.gui.timeEdit_reclength.time()
-        # self.gui.timeEdit_reclength.setTime(preset_time)
-
-                preset_time = QTime(int(hour_info), int(min_info), int(sec_info))#
-                self.gui.timeEdit_reclength.setTime(preset_time)
-                self.create_duration = self.gui.timeEdit_reclength.time()
-            if line.startswith('#EXTGRP:'):
-                # If there's already a current sub-playlist, store it
-                if current_playlist:
-                    sub_playlists.append(current_playlist)
-                    headers.append(current_header)
-                # Extract the index from the #EXTGRP line (example: #EXTGRP: sometext_1)
-                # You can split on the underscore or colon based on your format
-                group_info = line.split(':')[1].strip()  # sometext_index
-                current_header = (group_info.split('_')[-1])  # Extract the index part
-                # # Set the new current header and reset current_playlist
-                # current_header = {'index': index}
-                # index = 0 #TODO: only testindex
-                for element in current_playlist:
-                    current_filelist.append(Path(element).stem + Path(element).suffix)
-                    if element.find("http") == 0:
-                        pp = element[0:element.find(Path(element).stem)-1]
-                        current_filepath.append(pp)
-                    else:
-                        current_filepath.append(Path(element).parent.as_posix())
-                current_playlist = []  # Reset the current playlist
-                if len(current_filelist) > 0:
-                    self.readFileList.append(current_filelist)
-                    self.readFilePath.append(current_filepath)
-                current_filelist = []
-                current_filepath = []
-            else:
-                # Add playlist entries (e.g., media URLs) to the current sub-playlist
-                if line.startswith('#') and line:  # Ignoriere Kommentare und leere Zeilen
-                    #print(line)  # Mediendateipfad
-                    pass
-                if not line.startswith('#') and line:  # TODO TODO TODO: IGNORIERE AUCH leere Linien mit länge > 0 !!!!   Ignoriere Kommentare und leere Zeilen
-                    current_playlist.append(line)
-
-        # Append the last sub-playlist after the loop has ended
-        #TODO: not elegant, shift to strategically optimal point !
-        if current_playlist:
-            sub_playlists.append(current_playlist)
-            headers.append(current_header)
-            for element in current_playlist:
-                current_filelist.append(Path(element).stem + Path(element).suffix)
-                if element.find("http") == 0:
-                    pp = element[0:element.find(Path(element).stem)-1]
-                    current_filepath.append(pp)
-                else:
-                    current_filepath.append(Path(element).parent.as_posix())
-            self.readFileList.append(current_filelist)
-            self.readFilePath.append(current_filepath)
-
-        # Now, sub_playlists holds the segmented playlists and headers contains the associated index for each
-        #print(sub_playlists)
-        #print(headers)
         custom_carriers = []
-        for ix in range(len(headers)):#TODO necessary ?
-            #custom_carriers.append(headers[ix]["index"])
-            custom_carriers.append(headers[ix])
-        #TODO: validate, if headers is consistent and has the same length as sub_playlists
-        #if not: return without success
-        #if success: call method for integrating into current playlists:
-        #   copy sub_playlists into internal playlist structure:
-        #self.readFilePath[ix]: list
-        #self.readFileList[ix]: list for carrier ix
-        #   copy carriers to custom carriertable >>>>>> DONE
-        #   set custom carrier button Checked without triggering table edit 
-        #   carry out GUI update and validation by accessing the slot function of table edit OK
+        bandwidths = []
+        used = set()
+        for sta in stations:
+            name = sta["name"] or f"line {sta['line']}"
+            try:
+                # older files may give the frequency as <text>_<frequency>
+                f_khz = parse_frequency(str(sta["freq"]).split("_")[-1], 1e3) / 1e3
+            except ValueError:
+                problems.append(f"'{name}': no valid frequency (#EXTGRP), left out")
+                continue
+            if f_khz in used:
+                problems.append(f"'{name}': {f_khz:g} kHz is used twice, left out")
+                continue
+            if not sta["titles"]:
+                problems.append(f"'{name}': no titles, left out")
+                continue
+            filelist, filepath = [], []
+            for _, entry in sta["titles"]:
+                element = entry_path(entry, prefix, base)
+                if is_url(element):
+                    why = self.url_problem(element)
+                else:
+                    # a missing file would make the later playtime check clear the project
+                    why = None if os.path.isfile(element) else "file not found"
+                if why:
+                    problems.append(f"'{name}': {why}, title left out: {element}")
+                    continue
+                if is_url(element):
+                    cut = element.rfind("/")
+                    filepath.append(element[:cut])
+                    filelist.append(element[cut + 1:])
+                else:
+                    filepath.append(Path(element).parent.as_posix())
+                    filelist.append(Path(element).name)
+            if not filelist:
+                problems.append(f"'{name}': no title left, station left out")
+                continue
+            used.add(f_khz)
+            self.readFileList.append(filelist)
+            self.readFilePath.append(filepath)
+            custom_carriers.append(f"{f_khz:g}")
+            if str(sta["bw"]).strip():
+                try:
+                    bandwidths.append(parse_frequency(sta["bw"], 1e3) / 1e3)
+                except ValueError:
+                    problems.append(f"'{name}': cannot read bandwidth '{sta['bw']}'")
+        # the synthesizer expects ascending carrier frequencies (carrier spacing check);
+        # station lists of the station editor may be in any order
+        order = sorted(range(len(custom_carriers)), key=lambda k: float(custom_carriers[k]))
+        custom_carriers = [custom_carriers[k] for k in order]
+        self.readFileList = [self.readFileList[k] for k in order]
+        self.readFilePath = [self.readFilePath[k] for k in order]
+        if not self.readFileList:
+            auxi.standard_errorbox(f"No carrier could be read from {Path(filename[0]).name}."
+                                   + ("\n\n- " + "\n- ".join(problems[:15]) if problems else ""))
+            self.activate_control_elements(True)
+            self.gui.pushButton_importProject.clicked.connect(self.import_m3u)
+            return
+
+        # global parameters; the synthesizer has one audio bandwidth for all carriers: the global
+        # #EXTPARAM_BW, else the largest bandwidth of the stations
+        try:
+            bw = parse_frequency(params["BW"], 1e3) / 1e3 if params.get("BW") else (max(bandwidths) if bandwidths else None)
+        except ValueError:
+            bw = None
+            problems.append(f"#EXTPARAM_BW: cannot read '{params['BW']}'")
+        if bw is not None:
+            if len(set(bandwidths)) > 1:
+                problems.append(f"the stations have different bandwidths; the synthesizer uses one audio "
+                                f"bandwidth for all carriers: {bw:g} kHz")
+            if 2.5 <= bw <= 16:
+                self.m["audioBW"] = bw
+                self.gui.lineEdit_audiocutoff_freq.setText(f"{bw:g}")
+            else:
+                problems.append(f"audio bandwidth {bw:g} kHz outside 2.5 - 16 kHz, not taken over")
+        if params.get("OUTPUTFILE"):
+            # replaces the recording path of the player as output of the synthesis; relative
+            # paths refer to the folder of the m3u file like all entries
+            out = entry_path(params["OUTPUTFILE"], "", base)
+            if not (out.endswith(("/", "\\")) or os.path.isdir(out)) and not out.lower().endswith(".wav"):
+                out += ".wav"
+            self.m["m3u_outputfile"] = out
+        # RECLENGTH replaces the setting 'Duration'
+        if params.get("RECLENGTH"):
+            try:
+                secs = int(round(parse_seconds(params["RECLENGTH"])))
+                self.gui.timeEdit_reclength.setTime(QTime(min(secs // 3600, 23), secs // 60 % 60, secs % 60))
+                self.create_duration = self.gui.timeEdit_reclength.time()
+            except ValueError:
+                problems.append(f"#EXTPARAM_RECLENGTH: cannot read '{params['RECLENGTH']}'")
+        if params.get("LOFREQ"):
+            try:
+                lo = parse_frequency(params["LOFREQ"], 1e3) / 1e3
+                self.gui.lineEdit_LO.setText(f"{lo:g}")
+                self.m["LO"] = lo
+            except ValueError:
+                problems.append(f"#EXTPARAM_LOFREQ: cannot read '{params['LOFREQ']}'")
+        if params.get("SAMPLERATE"):
+            try:
+                sr_txt = f"{parse_frequency(params['SAMPLERATE'], 1e3) / 1e3:g}"
+                ix = self.gui.comboBox_targetSR.findText(sr_txt)
+                if ix >= 0:
+                    self.gui.comboBox_targetSR.blockSignals(True)   # validated with the new carriers below
+                    self.gui.comboBox_targetSR.setCurrentIndex(ix)
+                    self.gui.comboBox_targetSR.blockSignals(False)
+                    self.m["sample_rate"] = int(sr_txt)
+                    self.m["SR_currindex"] = ix
+                else:
+                    problems.append(f"sample rate {sr_txt} kHz is not available in the synthesizer")
+            except ValueError:
+                problems.append(f"#EXTPARAM_SAMPLERATE: cannot read '{params['SAMPLERATE']}'")
+        if params.get("SILENCE"):
+            try:
+                self.gui.spinBox_pauseseconds.setValue(int(round(parse_seconds(params["SILENCE"]))))
+            except ValueError:
+                problems.append(f"#EXTPARAM_SILENCE: cannot read '{params['SILENCE']}'")
+        if params.get("MODDEPTH"):
+            try:
+                md = float(params["MODDEPTH"].replace(",", "."))
+                md = md / 100.0 if md > 1.0 else md
+                self.gui.lineEdit_modfactor.setText(f"{md:g}")
+                self.m["modfactor"] = md
+            except ValueError:
+                problems.append(f"#EXTPARAM_MODDEPTH: cannot read '{params['MODDEPTH']}'")
+        if problems:
+            auxi.standard_infobox(f"{Path(filename[0]).name}: {len(self.readFileList)} carrier(s) read. Remarks:"
+                                  "\n\n- " + "\n- ".join(problems[:15]))
 
         self.m["numcarriers"] = len(self.readFileList)
         self.freq_carriers_update(self,custom_carriers)

@@ -26,7 +26,7 @@ Two formats of the station list exist (config_wizard.yaml: modulator_playlist_mo
     #EXTPARAM_SAMPLERATE: <sample rate in kHz>       (audio modulator only)
     #EXTPARAM_SILENCE: <silence between the titles in s>
     #EXTPARAM_MODDEPTH: <modulation depth 0..1>
-    #EXTPARAM_RECLENGTH / #EXTPARAM_OUTPUTFILE      (only for COHI-Coder)
+    #EXTPARAM_RECLENGTH / #EXTPARAM_OUTPUTFILE      (synthesizer and COHI-Coder, not the player)
     #PLAYLIST: <programme name>
     #EXTGRP: <carrier frequency in kHz>
     #EXTPARAM_BW: <optional bandwidth of this station in kHz>
@@ -191,6 +191,18 @@ PARAM_KEYS = ["RECLENGTH", "BW", "OUTPUTFILE", "FILEPREFIX", "LOFREQ", "SAMPLERA
 PARAM_ALIASES = {"FILEPREXIX": "FILEPREFIX"}  # spelling in early example files
 
 
+def read_text_lines(path: str):
+    """lines of a text file: UTF-8 (with or without BOM), else Latin-1 (older m3u files
+    written on Windows); raises OSError"""
+    with open(path, "rb") as fh:
+        data = fh.read()
+    try:
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = data.decode("latin-1")
+    return text.splitlines()
+
+
 def read_station_m3u_raw(path: str):
     """extended m3u as written in the file -> (params, stations, problems)
 
@@ -199,13 +211,15 @@ def read_station_m3u_raw(path: str):
               texts of #PLAYLIST, #EXTGRP, #EXTPARAM_BW and the #EXTINF title / entry lines
               unchanged (prefix not applied, paths not resolved); used by the station editor
     problems: messages; an unreadable file gives ([], {}, [message])
+
+    Older synthesizer files have no #PLAYLIST: there an #EXTGRP begins the next station,
+    named after a preceding '#Category:' line.
     """
     try:
-        with open(path, encoding="utf-8-sig", errors="replace") as fh:
-            lines = fh.read().splitlines()
+        lines = read_text_lines(path)
     except OSError as exc:
         return {}, [], [f"station list not readable: {path} ({exc.strerror or exc})"]
-    params, stations, problems, cur, title = {}, [], [], None, ""
+    params, stations, problems, cur, title, category = {}, [], [], None, "", ""
     for lineno, raw in enumerate(lines, 1):
         line = raw.strip()
         if not line:
@@ -222,11 +236,15 @@ def read_station_m3u_raw(path: str):
         if tag == "PLAYLIST":
             cur = {"name": value, "freq": "", "bw": "", "titles": [], "line": lineno}
             stations.append(cur)
+        elif tag == "CATEGORY":
+            category = value
         elif tag == "EXTGRP":
-            if cur is None:
-                problems.append(f"line {lineno}: #EXTGRP before the first #PLAYLIST ignored")
-            else:
-                cur["freq"] = value
+            if cur is None or cur["freq"]:
+                # older format without #PLAYLIST: #EXTGRP begins the next station
+                cur = {"name": category, "freq": "", "bw": "", "titles": [], "line": lineno}
+                stations.append(cur)
+            category = ""
+            cur["freq"] = value
         elif tag == "EXTINF":
             title = value.split(",", 1)[1].strip() if "," in value else ""
         elif tag.startswith("EXTPARAM_"):
