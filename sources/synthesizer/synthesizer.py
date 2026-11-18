@@ -33,6 +33,7 @@ from scipy.signal import sosfilt, butter, resample
 from pathlib import Path
 import urllib
 import sys
+import concurrent.futures
 from scipy.optimize import fsolve
 import platform
 import psutil
@@ -512,11 +513,8 @@ class modulate_worker(QObject):
         file_index = 0
         # Open first output file to write combined signal blockwise
         output_file_name = f"{output_base_name}_{file_index}.wav"
-        out_file = sf.SoundFile(output_file_name, 'w', samplerate=sample_rate, channels=1, subtype='PCM_16')
+        out_file = self.open_iq_file(output_file_name)
         done = False
-        #write 216 - 44 =  172 Null Bytes so as to leave room for the SDR-wavheader which will finally overwrite the current header
-        prephaser = np.zeros(172)
-        out_file.write(prephaser)
         #generate starting timestamp for wavheader
         next_starttime = datetime.now()
         next_starttime = next_starttime.astimezone(pytz.utc)
@@ -597,7 +595,7 @@ class modulate_worker(QObject):
             if samples_to_write + total_samples_written > max_samples_per_file:
                 # If the file exceeds 2GB, close the current file, enter the wav-header and start a new one
                 out_file.close()
-                filesize = max_samples_per_file*4
+                filesize = self.IQ_DATA_OFFSET + total_samples_written*4
                 self.logger.debug(f"process_multiple_carriers_blockwise: next starttime {next_starttime}")
                 output_file_name_wavheader = output_file_name
                 file_index += 1
@@ -605,7 +603,7 @@ class modulate_worker(QObject):
                 filesize_towav = min(2 * 1024**3, filesize)
                 next_starttime = self.wav_header_generator(output_file_name_wavheader,filesize_towav,sample_rate,next_starttime,output_file_name)
                 print("wavheader written")
-                out_file = sf.SoundFile(output_file_name, 'w', samplerate=sample_rate, channels=1, subtype='PCM_16')
+                out_file = self.open_iq_file(output_file_name)
                 total_samples_written = 0  # Reset the sample counter for the new file
 
         
@@ -616,7 +614,8 @@ class modulate_worker(QObject):
             block_to_write[1::2] = np.imag(combined_signal_block)
             block_to_write[0::2] = np.real(combined_signal_block)
             try:
-                out_file.write(block_to_write)
+                # float -> PCM_16 like soundfile did before, but clipped instead of wrapped
+                out_file.write(np.clip(np.rint(block_to_write*32767), -32768, 32767).astype('<i2').tobytes())
             except:
                 print("write error")
             total_samples_written += samples_to_write
@@ -633,18 +632,34 @@ class modulate_worker(QObject):
             #print(f"block with size : {block_size} written, time: {deltatime}")            
         # Close the final output file
         out_file.close()
-        filesize = total_samples_written*4
+        filesize = self.IQ_DATA_OFFSET + total_samples_written*4
         self.logger.debug(f"synthesizer modulate: filesize last out file: {filesize}")
 
         output_file_name_wavheader = output_file_name
         self.wav_header_generator(output_file_name_wavheader,filesize,sample_rate,next_starttime,"")
         self.logger.debug(f"write last wavheader into {output_file_name_wavheader}")
+        if file_index == 0:
+            # no 2 GB splitting took place: same file name as in FAST mode, without _0
+            try:
+                os.replace(output_file_name, f"{output_base_name}.wav")
+            except OSError as e:
+                self.logger.error(f"process_multiple_carriers_blockwise: cannot rename {output_file_name}: {e}")
         
         #TODO : Check if already completely o.k. ! write true SDRUno-Header into the first 216 bytes of the closed file
         for file_handle_dict in file_handles:
             for handle in file_handle_dict.values():
                 handle.close()
         self.logger.debug(f"synthesizer modulate task completed")
+
+    IQ_DATA_OFFSET = 216    # space for the auxi header, see auxiliaries.write_sdruno_header
+
+    def open_iq_file(self, output_file_name):
+        """open a raw output file whose first IQ_DATA_OFFSET bytes are reserved (zeros) for the auxi
+        header written by wav_header_generator at the end; a 44 byte header as written by soundfile
+        cannot be overwritten by an auxi header without shifting the samples"""
+        out_file = open(output_file_name, 'wb')
+        out_file.write(b'\x00' * self.IQ_DATA_OFFSET)
+        return out_file
 
     def wav_header_generator(self, output_file_name, filesize,sample_rate, starttime, next_output_file_name):
         """generate wavheader for output_file_name:
@@ -2001,6 +2016,7 @@ class synthesizer_v(QObject):
         self.FIXSCALE_FAKTOR_RF = 0.8 # guard factor for fixed RF levelling: assumed max. RF level: #carriers * (1+C_m) * C_FIXSCALE_FAKTOR_RF. RF overload may occur if C_FIXSCALE_FAKTOR_RF < 1 
         self.NO2GBSPLITTING = False # if True suppress 2 GB splitting of outputfiles
         self.NOPLAYLISTUPDATE = False
+        self.duration_cache = {}    # path/URL -> playing time in s; ffmpeg queries of URLs take seconds each
         self.DATABLOCKSIZE = 1024*32
         self.STD_AUDIOBW = "4.5"
         self.STD_CARRIERDISTANCE = "9"
@@ -2372,6 +2388,7 @@ class synthesizer_v(QObject):
         #     self.errorhandler("NOCLEAR" + value)
         #     return
         self.m3uflag = False
+        self.duration_cache = {}    # files may have been changed in the meantime
         #self.init_synthesizer_ui()
         self.reinitialize_gui()
         self.gui.listWidget_sourcelist.clear()
@@ -2611,19 +2628,8 @@ class synthesizer_v(QObject):
             RESET = "\033[0m" 
             #print(f"{YELLOW} expected filesize: {expected_filesize}, HIRES: {HIRES}")
             #print(f"{RESET}") 
-        try:
-            errorstatus, value = self.synthesizer_c.checkdiskspace(expected_filesize, self.output_dir())
-        except:
-            errorstatus = True
-            value = "Error when checking disk space, please make sure that the recording path (set in player Tab) is correct"
-        if errorstatus:
-            self.logger.debug(errorstatus)
-            self.FIRSTPREVIEW = True
-            self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_slot)
-            self.gui.synthesizer_pushbutton_preview.clicked.connect(self.preview)
-            auxi.standard_errorbox(value)
-            self.clear_project()
-            return
+        # the disk space is checked for the folder chosen in the save dialog below; on failure the
+        # project is kept so that one can free space or choose another folder and press Create again
 
         if not self.m["proj_loaded"]:
             self.autosave = True
@@ -2696,16 +2702,24 @@ class synthesizer_v(QObject):
                             existcheck = False
                     else:
                         existcheck = False
+                    if not existcheck:
+                        errorstatus, value = self.check_output_diskspace(expected_filesize, output_base_name)
+                        if errorstatus:
+                            # the save dialog opens again: other folder/drive, or cancel keeps the project
+                            auxi.standard_errorbox(value)
+                            existcheck = True
                 else:
                     existcheck = False
-                    self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_slot)
-                    self.gui.synthesizer_pushbutton_preview.clicked.connect(self.preview)
-                    self.FIRSTPREVIEW = True
                     self.logger.debug("create_band_thread: no output file name given, cancel creation")
-                    self.activate_control_elements(True)
+                    self.abort_create()
                     return(False)
         else:
             output_base_name = os.path.join(self.m["recording_path"],"preview_temp_000.wav")
+            errorstatus, value = self.check_output_diskspace(expected_filesize, output_base_name)
+            if errorstatus:
+                auxi.standard_errorbox(value)
+                self.abort_create()
+                return(False)
 
         #TODO TODO: modify output base name so that it doesn't contain any extension and no _# at the end
 
@@ -2782,6 +2796,30 @@ class synthesizer_v(QObject):
         self.gui.synthesizer_pushbutton_preview.clicked.connect(self.preview)
         
         return(True)
+
+    def check_output_diskspace(self, expected_filesize, output_file_name):
+        """check the free disk space in the folder of output_file_name
+        :return: errorstatus (True if insufficient or not checkable), errortext"""
+        folder = os.path.dirname(os.path.abspath(output_file_name))
+        try:
+            free = shutil.disk_usage(folder).free
+        except OSError as e:
+            return(True, f"Cannot check the disk space of {folder}: {e}")
+        if free < expected_filesize:
+            return(True, f"Not enough disk space in {folder} for this synthesis (including temporary files): "
+                         f"needed about {expected_filesize/1e9:.1f} GB, free {free/1e9:.1f} GB. "
+                         "Please free at least {:.1f} GB or choose another folder. "
+                         "The project is kept.".format((expected_filesize - free)/1e9))
+        return(False, "")
+
+    def abort_create(self):
+        """Create/Preview not started: restore buttons, controls and the other tabs; the project is kept"""
+        self.FIRSTPREVIEW = True
+        self.gui.synthesizer_pushbutton_create.clicked.connect(self.create_slot)
+        self.gui.synthesizer_pushbutton_preview.clicked.connect(self.preview)
+        self.activate_control_elements(True)
+        self.SigActivateOtherTabs.emit("synthesizer","activate",[])
+        self.display_worker_message("")
 
     def query(self,query):
         """Query for automatic installation
@@ -3523,16 +3561,14 @@ class synthesizer_v(QObject):
                 #self.gui.label_audioset_name.setText("")
                 #self.gui.label_audioset_name.setStyleSheet("background-color: #FFFFFF; color: black;")  # weiss
                 else:
-                    errorstatus, a = self.synthesizer_c.readsoundfile(file_path)
-                    #TODO TODO TODO LAST: catch error when returned False: Fils not foun o.ä. --> break loop
+                    # only the duration is needed: no conversion to a temp wav as in readsoundfile
+                    errorstatus, a = self.file_duration(file_path)
                     if errorstatus:
                         value = a
                         print("show_playlength, return error and break")
                         break
-                    #print("show_playlength: ########### current point of development reached, proceed from here###########")
-                    duration += a.frames/a.samplerate
+                    duration += a
                     value = duration
-                    a.close()
                 #self.display_worker_message('')
                 #QApplication.processEvents()
                 #self.display_worker_message('')
@@ -3561,6 +3597,8 @@ class synthesizer_v(QObject):
         :rtype: _type_
         """
         errorstatus = False
+        if url in self.duration_cache:
+            return(errorstatus, self.duration_cache[url])
         ffmpeg_command = [
             os.path.join(self.m["ffmpeg_path"], "ffmpeg"),
             "-user_agent", self.m["user_agent"],
@@ -3568,7 +3606,12 @@ class synthesizer_v(QObject):
             "-hide_banner"  # hide unnecessary info outputs
         ]        
         process = subprocess.Popen(ffmpeg_command, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-        stdout, stderr = process.communicate()
+        try:
+            stdout, stderr = process.communicate(timeout=30)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate()
+            return(True, f"no answer from {url} within 30 s. Aborting procedure ")
 
         match1 = re.search(r"Failed to resolve", stderr.decode())
         match2 = re.search(r"Error opening input file", stderr.decode())
@@ -3583,11 +3626,35 @@ class synthesizer_v(QObject):
         if match:
             hours, minutes, seconds = map(float, match.groups())
             value = hours * 3600 + minutes * 60 + seconds  # Dauer in Sekunden
+            self.duration_cache[url] = value
         else:
             value = f"Error when trying to get duration of stream {url}. Aborting procedure "
             errorstatus = True
             return(errorstatus, value)
         return(errorstatus, value)
+
+    def file_duration(self, file_path):
+        """playing time of a local audio file in s, cached; soundfile reads wav, mp3, flac, ogg
+        directly, otherwise ffprobe
+        :return: errorstatus, duration in s or errorstring"""
+        if file_path in self.duration_cache:
+            return(False, self.duration_cache[file_path])
+        if not os.path.isfile(file_path):
+            return(True, f"Error: Cannot find file {file_path}")
+        try:
+            info = sf.info(file_path)
+            value = info.frames / info.samplerate
+        except Exception:
+            cmd = [os.path.join(self.m["ffmpeg_path"], "ffprobe"), "-v", "error", "-show_entries",
+                   "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", file_path]
+            try:
+                res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=60,
+                                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                value = float(res.stdout.strip())
+            except (OSError, ValueError, subprocess.TimeoutExpired):
+                return(True, f"Error when determining the duration of {file_path}")
+        self.duration_cache[file_path] = value
+        return(False, value)
 
     # # Beispielaufruf
     # stream_url = "https://example.com/audio.mp3"
@@ -3682,11 +3749,8 @@ class synthesizer_v(QObject):
                         auxi.standard_errorbox("custom carrier table contains non-numeric values, please correct !")
                         return False
             numcar = len(custom_carriers)
-            if len(self.m["carrierarray"]) > 1:
-                # determine the minimum difference between two carrier frequencies in a non-equally spaced list
-                mindifference = np.min(np.diff(custom_carriers))
-                #set the carrierdistance field to the minimum value for later validation
-                self.gui.lineEdit_carrierdistance.setText(str(mindifference))
+            if numcar > 0:
+                self.adapt_spacing_to_custom_carriers(custom_carriers)
             self.gui.spinBox_numcarriers.valueChanged.disconnect(self.on_value_changed)
             self.gui.spinBox_numcarriers.setProperty("value", numcar)
             self.gui.spinBox_numcarriers.valueChanged.connect(self.on_value_changed)
@@ -3779,6 +3843,35 @@ class synthesizer_v(QObject):
             self.carrierselect_update()
         return True
     
+    def adapt_spacing_to_custom_carriers(self, custom_carriers):
+        """set the carrier distance field to the smallest spacing of the custom carriers for the
+        validation (carrier spacing >= 2*audio bandwidth); the frequencies themselves are fixed:
+        - one carrier: the spacing is meaningless, it is raised to 2*audio bandwidth if necessary
+        - carriers closer than 2*audio bandwidth: the audio bandwidth is reduced (down to 2.5 kHz)
+        with an infobox, otherwise validate_params reports the conflict as before
+        """
+        audioBW = float(self.gui.lineEdit_audiocutoff_freq.text())
+        if len(custom_carriers) > 1:
+            # minimum difference between two carrier frequencies in a non-equally spaced list
+            spacing = float(np.min(np.diff(np.sort(custom_carriers))))
+            if spacing < 2*audioBW:
+                newBW = np.floor(spacing/2*10)/10
+                if newBW >= 2.5:
+                    auxi.standard_infobox(f"The smallest carrier spacing is {spacing:g} kHz, the audio bandwidth "
+                                          f"({audioBW:g} kHz) must be at most half of it. The audio bandwidth has "
+                                          f"been reduced to {newBW:g} kHz.")
+                    self.gui.lineEdit_audiocutoff_freq.setText(f"{newBW:g}")
+                    self.m["audioBW"] = newBW
+        else:
+            current = float(self.gui.lineEdit_carrierdistance.text())
+            spacing = max(current, 2*audioBW)
+            if spacing > current:
+                auxi.standard_infobox(f"Only one carrier: the carrier spacing has been set from {current:g} kHz "
+                                      f"to {spacing:g} kHz (2 x audio bandwidth {audioBW:g} kHz). "
+                                      "It has no effect with a single carrier.")
+        self.gui.lineEdit_carrierdistance.setText(f"{spacing:g}")
+        self.m["carrier_distance"] = spacing
+
     def popup(self,i):
         """
         """
@@ -4277,7 +4370,10 @@ class synthesizer_v(QObject):
         err = res.stderr.decode(errors="replace")
         if "Duration: N/A" in err:
             return "live stream without duration"
-        if re.search(r"Duration: \d+:\d+:\d+", err):
+        m = re.search(r"Duration: (\d+):(\d+):(\d+(?:\.\d+)?)", err)
+        if m:
+            # remembered for show_playlength, which would otherwise ask ffmpeg again
+            self.duration_cache[url] = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
             return None
         m = re.search(r"(Server returned [^\r\n]*|HTTP error [^\r\n]*|Failed to resolve[^\r\n]*|"
                       r"Connection refused|Connection timed out|No route to host)", err)
@@ -4335,6 +4431,20 @@ class synthesizer_v(QObject):
         params, stations, problems = read_station_m3u_raw(filename[0])
         base = os.path.dirname(os.path.abspath(filename[0]))
         prefix = params.get("FILEPREFIX", "")
+        # check all URLs in parallel (each ffmpeg query takes seconds, live streams up to the timeout)
+        # while the GUI stays responsive
+        urls = {entry_path(entry, prefix, base) for sta in stations for _, entry in sta["titles"]}
+        urls = [u for u in urls if is_url(u)]
+        url_why = {}
+        if urls:
+            self.display_worker_message(f"checking {len(urls)} URL(s), please wait")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(16, len(urls))) as pool:
+                futures = {pool.submit(self.url_problem, u): u for u in urls}
+                while not all(f.done() for f in futures):
+                    QApplication.processEvents()
+                    time.sleep(0.05)
+                url_why = {futures[f]: f.result() for f in futures}
+            self.display_worker_message("")
         self.readFileList = []
         self.readFilePath = []
         custom_carriers = []
@@ -4358,7 +4468,7 @@ class synthesizer_v(QObject):
             for _, entry in sta["titles"]:
                 element = entry_path(entry, prefix, base)
                 if is_url(element):
-                    why = self.url_problem(element)
+                    why = url_why.get(element)
                 else:
                     # a missing file would make the later playtime check clear the project
                     why = None if os.path.isfile(element) else "file not found"
