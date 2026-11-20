@@ -229,7 +229,7 @@ class Ui_station_editor_widget(object):
         item = self.tableWidget_stations.horizontalHeaderItem(2)
         item.setText(_translate("station_editor_widget", "Name"))
         item = self.tableWidget_stations.horizontalHeaderItem(3)
-        item.setText(_translate("station_editor_widget", "Playlist"))
+        item.setText(_translate("station_editor_widget", "Playlist/Stream URL"))
         self.pushButton_addstation.setText(_translate("station_editor_widget", "Add station"))
         self.pushButton_removestation.setText(_translate("station_editor_widget", "Remove station"))
         self.groupBox_params.setTitle(_translate("station_editor_widget", "Global parameters"))

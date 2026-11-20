@@ -7948,7 +7948,7 @@ QSlider::handle:horizontal { width: 30px; margin: -12px 0; background: rgb(110, 
     <bool>true</bool>
    </property>
    <property name="text">
-    <string>File open</string>
+    <string>Open IQ band file</string>
    </property>
    <property name="shortcut">
     <string>Alt+F</string>
@@ -7979,7 +7979,7 @@ QSlider::handle:horizontal { width: 30px; margin: -12px 0; background: rgb(110, 
   </action>
   <action name="actionPlaylist_open">
    <property name="text">
-    <string>Playlist open</string>
+    <string>Open station list</string>
    </property>
    <property name="toolTip">
     <string>open modulator playlist (csv)</string>

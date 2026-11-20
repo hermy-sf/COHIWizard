@@ -543,33 +543,6 @@
                 </property>
                </widget>
               </item>
-              <item row="20" column="8">
-               <widget class="QCheckBox" name="checkBox_UTC">
-                <property name="sizePolicy">
-                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-                  <horstretch>1</horstretch>
-                  <verstretch>1</verstretch>
-                 </sizepolicy>
-                </property>
-                <property name="minimumSize">
-                 <size>
-                  <width>0</width>
-                  <height>10</height>
-                 </size>
-                </property>
-                <property name="font">
-                 <font>
-                  <pointsize>11</pointsize>
-                 </font>
-                </property>
-                <property name="toolTip">
-                 <string>switch to UTC</string>
-                </property>
-                <property name="text">
-                 <string>UTC</string>
-                </property>
-               </widget>
-              </item>
               <item row="6" column="13">
                <widget class="QComboBox" name="comboBox_stemlab">
                 <property name="sizePolicy">
@@ -604,7 +577,7 @@
                  <bool>true</bool>
                 </property>
                 <property name="sizePolicy">
-                 <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+                 <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
                   <horstretch>1</horstretch>
                   <verstretch>1</verstretch>
                  </sizepolicy>
@@ -613,6 +586,12 @@
                  <size>
                   <width>1</width>
                   <height>1</height>
+                 </size>
+                </property>
+                <property name="maximumSize">
+                 <size>
+                  <width>66</width>
+                  <height>16777215</height>
                  </size>
                 </property>
                 <property name="palette">
@@ -955,7 +934,7 @@
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>16777215</width>
+                  <width>66</width>
                   <height>16777215</height>
                  </size>
                 </property>
@@ -2753,6 +2732,12 @@
                   <horstretch>1</horstretch>
                   <verstretch>1</verstretch>
                  </sizepolicy>
+                </property>
+                <property name="maximumSize">
+                 <size>
+                  <width>66</width>
+                  <height>16777215</height>
+                 </size>
                 </property>
                 <property name="palette">
                  <palette>
@@ -5784,7 +5769,7 @@ UFL</string>
                 </property>
                </widget>
               </item>
-              <item row="20" column="0" colspan="8">
+              <item row="20" column="0" colspan="9">
                <layout class="QHBoxLayout" name="horizontalLayout_csvfile" stretch="0,1">
                 <item>
                   <widget class="QLabel" name="label_13">
@@ -5872,7 +5857,7 @@ UFL</string>
     <bool>true</bool>
    </property>
    <property name="text">
-    <string>File open</string>
+    <string>Open IQ band file</string>
    </property>
    <property name="shortcut">
     <string>Alt+F</string>
@@ -5903,7 +5888,7 @@ UFL</string>
   </action>
   <action name="actionPlaylist_open">
    <property name="text">
-    <string>Playlist open</string>
+    <string>Open station list</string>
    </property>
    <property name="toolTip">
     <string>open modulator playlist (csv)</string>

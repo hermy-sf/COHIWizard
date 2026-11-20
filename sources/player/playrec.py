@@ -1713,6 +1713,67 @@ class playrec_v(QObject):
         self.gui.pushButton_Loop.setEnabled(value)
         self.gui.pushButton_adv1byte.setEnabled(value)
 
+    PLAYGROUP_KEYS = ("fileopened", "f1", "playlist_opened", "modulator_playlist")
+
+    def update_playgroup_ready(self, force=False):
+        """enables Play/REW/FF/Loop only if the files required by the MODE are loaded:
+        band_only: IQ file, audio_only: station list, band_and_audio: both (pure synthesizer
+        devices need no IQ file). The playlist windows and 'Activate Playlist' are only
+        enabled if an IQ file is loaded and the MODE/device plays IQ files.
+        Not applied while the player is running, except with force (reset_playerbuttongroup).
+
+        :param force: also apply while playthreadActive is still True (after STOP)
+        :type force: bool
+        """
+        if not force and (self.gui.pushButton_Play.isChecked() or self.m.get("playthreadActive", False)
+                          or self.m.get("recstate", False)):
+            return
+        _dev = self.m.get("device_ID_dict") or {}
+        _dev_name = self.gui.comboBox_stemlab.currentText()
+        _mtype = self.m.get("modulator_type", "band_only")
+        _iq_used = not (_dev_name.endswith("_modulator") or _mtype == "audio_only"
+                        or _dev.get("modulator") == "M")
+        _stations_used = _mtype != "band_only"
+        _iq_loaded = self.playrec_c.iqfile_keep_loaded()
+        _stations = self.m.get("modulator_playlist") or ""
+        _stations_loaded = bool(_stations) and os.path.isfile(_stations)
+        _ready = (bool(_dev.get("TX", True)) and (_iq_loaded or not _iq_used)
+                  and (_stations_loaded or not _stations_used))
+        for _b in (self.gui.pushButton_Play, self.gui.pushButton_REW,
+                   self.gui.pushButton_FF, self.gui.pushButton_Loop):
+            _b.setEnabled(_ready)
+        _playlist_ok = _iq_used and _iq_loaded
+        if not _playlist_ok and self.m.get("playlist_active", False):
+            self.gui.pushButton_act_playlist.setChecked(False)
+            self.m["playlist_active"] = False
+        self.gui.pushButton_act_playlist.setEnabled(_playlist_ok)
+        _lists_on = _playlist_ok and self.m.get("playlist_active", False)
+        self.gui.listWidget_sourcelist.setEnabled(_lists_on)
+        self.gui.listWidget_playlist.setEnabled(_lists_on)
+        # file fields: name of the loaded file, a highlighted request if the MODE needs a
+        # file which is not loaded yet, empty if the MODE does not use it
+        self.show_file_field(self.gui.label_Filename_Player, _iq_used, _iq_loaded,
+                             Path(self.m.get("f1", "")).name)
+        if hasattr(self.gui, "label_csv_filename"):
+            self.show_file_field(self.gui.label_csv_filename, _stations_used, _stations_loaded,
+                                 Path(_stations).name)
+
+    SELECT_FILE_TEXT = "Please select file from file menu"
+    SELECT_FILE_SHORT = "Select file (File menu)"     # narrow fields, e.g. m3u field of skin 2
+    # colours only: a font property in the style sheet would replace the font size set by
+    # COHIWizard.fit_font_to_widget, the field would differ from the other labels
+    SELECT_FILE_STYLE = "background-color: #fff3a0; color: #a00000;"
+
+    def show_file_field(self, label, used, loaded, name):
+        """file name field of the player: name if loaded, highlighted SELECT_FILE_TEXT if
+        the MODE needs the file, else empty"""
+        if used and not loaded:
+            label.setStyleSheet(self.SELECT_FILE_STYLE)
+            auxi.set_elided_text(label, self.SELECT_FILE_TEXT, self.SELECT_FILE_SHORT)
+        else:
+            label.setStyleSheet("")
+            auxi.set_elided_text(label, name if (used and loaded) else "")
+
     def activate_samplingparameters(self,value):
         """activates or inactivates GUI elements of the Sampling parameters functions based on
         value (True,False)
@@ -1796,10 +1857,18 @@ class playrec_v(QObject):
                 self.m["metadata"]["audioplaylist"] = ""   # keep cached copy consistent
             if hasattr(self.gui, "label_csv_filename"):
                 auxi.set_elided_text(self.gui.label_csv_filename, "")
+        if self.m["modulator_type"] == "audio_only" and self.m.get("f1", ""):
+            # an IQ file is meaningless for the pure audio modulator: unload it
+            # (state and file field; the synthesizer uses the dummy 'no_file.dat' at Play)
+            self.m["f1"] = ""
+            self.m["fileopened"] = False
+            self.SigRelay.emit("cm_all_",["f1",""])
+            self.SigRelay.emit("cm_all_",["fileopened",False])
         # rebuild the device list for the new type; keeps the current device
         # if compatible, then re-identify it (module lists were re-imported)
         self.modulator_type_handler()
         self.sdrdevice_changehandler()
+        self.update_playgroup_ready()
 
 
 
@@ -1836,6 +1905,7 @@ class playrec_v(QObject):
                 self.playgroup_activate(False)
             else:
                 self.playgroup_activate(True)
+            self.update_playgroup_ready()     # Play etc. only with the files required by the MODE
             if not self.m["device_ID_dict"]["RX"]:
                 self.recordinggroup_activate(False)
             else:
@@ -2037,6 +2107,7 @@ class playrec_v(QObject):
             self.gui.listWidget_sourcelist.setEnabled(False)
             self.gui.listWidget_playlist.setEnabled(False)
             self.m["playlist_active"] = False
+        self.update_playgroup_ready()     # file fields: name or highlighted request
   
     def addplaylistitem(self):
         item = QtWidgets.QListWidgetItem()
@@ -2090,6 +2161,8 @@ class playrec_v(QObject):
         if _key.find("cm_playrec") == 0 or _key.find("cm_all_") == 0:
             #set mdl-value
             self.m[_value[0]] = _value[1]
+            if _value[0] in self.PLAYGROUP_KEYS:
+                self.update_playgroup_ready()
         if _key.find("cui_playrec") == 0:
             _value[0](_value[1]) #STILL UNCLEAR
         if _key.find("cexex_playrec") == 0  or _key.find("cexex_all_") == 0:
@@ -2728,6 +2801,8 @@ class playrec_v(QObject):
         self.gui.pushButton_Stop.setEnabled(True)
         self.gui.pushButton_REC.setEnabled(True)
         self.gui.verticalSlider_Gain.setEnabled(True)
+        self.m["playlist_active"] = False      # Activate Playlist has been unchecked above
+        self.update_playgroup_ready(force=True)
         self.gui.playrec_label_REC_duration.setStyleSheet("background-color : lightgray")
         font = self.gui.playrec_label_REC_duration.font()
         font.setPointSize(14)
@@ -2782,12 +2857,14 @@ class playrec_v(QObject):
     def show_playlist_mode(self):
         """names of the station list controls after config_wizard.yaml, key
         modulator_playlist_mode: button 'csv ...'/'m3u ...' (skins 2/3), label
-        'csv:'/'m3u:' (skin 5), status tip of the menu entry 'Playlist open'"""
+        'csv:'/'m3u:' (skin 5), status tip of the menu entry 'Open station list'"""
         mode = auxi.modulator_playlist_mode()
         if hasattr(self.gui, "pushButton_csvopen"):
-            self.gui.pushButton_csvopen.setText(f"{mode} ...")
+            self.gui.pushButton_csvopen.setText(f"{mode} list ...")
         if hasattr(self.gui, "label_13"):
-            self.gui.label_13.setText(f"{mode}:")
+            self.gui.label_13.setText(f"{mode} list:")
+        if hasattr(self.gui, "label_48"):
+            self.gui.label_48.setText("IQ file:")
         if hasattr(self.gui, "actionPlaylist_open"):
             self.gui.actionPlaylist_open.setStatusTip(f"open modulator playlist ({mode})")
 

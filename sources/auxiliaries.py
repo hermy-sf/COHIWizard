@@ -221,18 +221,22 @@ _elide_filter = None
 def _elide_label(label):
     full = label.property("elide_full_text") or ""
     width = max(10, label.width() - 6)
+    short = label.property("elide_short_text") or ""
+    if short and label.fontMetrics().horizontalAdvance(full) > width:
+        full = short        # alternative wording for narrow fields (e.g. skin 2)
     label.setText(label.fontMetrics().elidedText(full, Qt.ElideMiddle, width))
 
 
 class auxiliaries():
 
     @staticmethod
-    def set_elided_text(label, text):
+    def set_elided_text(label, text, short=""):
         """show text in label shortened in the middle ('abc…xyz') if it is too long, so
         that start and end of a file name (date, frequency) stay visible; the full text
         is the tooltip. The label is shortened again on every resize/font change.
         :param label: QLabel
         :param text: full text
+        :param short: shorter wording used instead of text if text does not fit
         """
         global _elide_filter
         if _elide_filter is None:
@@ -242,6 +246,7 @@ class auxiliaries():
             label.setProperty("elide_filter_installed", True)
         text = text or ""
         label.setProperty("elide_full_text", text)
+        label.setProperty("elide_short_text", short or "")
         label.setToolTip(text)
         _elide_label(label)
 

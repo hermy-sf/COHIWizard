@@ -266,6 +266,42 @@ class starter(QMainWindow):
                     widget.setFont(font)
                     continue
             self.fit_font_to_widget(widget, min_size, max_size)
+        self.unify_file_fields(roles)
+
+    FILE_FIELDS = ("label_Filename_Player", "label_csv_filename")
+    FILE_CAPTIONS = ("label_48", "label_13")    # 'IQ file:', 'm3u list:' (label_13 only skin 5)
+
+    def unify_file_fields(self, roles, min_size=11):
+        """same font size for the file name fields of the player and their captions:
+        role size 'normal' (else maxsize), limited by the height of the lowest field and
+        by the width of captions in a grid; captions with fixed width (skin 5) are made
+        wide enough for their text"""
+        fields = [getattr(self.gui, n) for n in self.FILE_FIELDS if hasattr(self.gui, n)]
+        captions = [getattr(self.gui, n) for n in self.FILE_CAPTIONS if hasattr(self.gui, n)]
+        if not fields:
+            return
+        size = roles["normal"] if roles is not None else self.maxsize
+        size = min(size, min(int(w.height() * 0.7) for w in fields))   # text height about 1.2 x px
+        for cap in captions:
+            if cap.sizePolicy().horizontalPolicy() != QSizePolicy.Fixed:
+                # width given by the grid: largest size at which the text fits
+                font = cap.font()
+                while size > min_size:
+                    font.setPixelSize(size)
+                    if QFontMetrics(font).horizontalAdvance(cap.text()) + 6 <= cap.width():
+                        break
+                    size -= 1
+        size = max(min_size, size)
+        for w in fields + captions:
+            font = w.font()
+            font.setPixelSize(size)
+            w.setFont(font)
+        fixed = [c for c in captions if c.sizePolicy().horizontalPolicy() == QSizePolicy.Fixed]
+        if fixed:
+            # one width for all, so that the fields below each other start at the same x
+            width = max(c.fontMetrics().horizontalAdvance(c.text()) for c in fixed) + 6
+            for cap in fixed:
+                cap.setMinimumWidth(width)
 
     def fit_font_to_widget(self, widget, min_size=8, max_size=100):
         if self.INACTIVATE_RESIZE:
@@ -777,6 +813,11 @@ class core_v(QObject):
             if str(self.m["metadata"].get("modulator_playlist_mode", "")).strip().lower() not in ("csv", "m3u"):
                 self.m["metadata"]["modulator_playlist_mode"] = "m3u"
                 no_playlist_mode = True
+            # RF output trim of the ADALM2000_universal driver in dB (manual and AVC operation)
+            no_adalm_output_trim = False
+            if not "adalm_output_trim_db" in self.m["metadata"]:
+                self.m["metadata"]["adalm_output_trim_db"] = -10
+                no_adalm_output_trim = True
         except:
             print("cannot get config_wizard.yaml metadata, write a new initial config file")
             self.m["metadata"] = {"last_path": self.standardpath}
@@ -812,6 +853,8 @@ class core_v(QObject):
             no_audio_mixer_db = False
             self.m["metadata"]["modulator_playlist_mode"] = "m3u"
             no_playlist_mode = False
+            self.m["metadata"]["adalm_output_trim_db"] = -10
+            no_adalm_output_trim = False
             self.m["metadata"]["autoAGC_DspWorker"] = False
             self.m["metadata"]["gain_correction_fl2k_C"] = 0.2
             self.m["metadata"]["playlist_continuation_mode"] = 1
@@ -857,6 +900,9 @@ class core_v(QObject):
 
         if no_playlist_mode:
             auxi.update_configyaml("modulator_playlist_mode", "m3u")
+
+        if no_adalm_output_trim:
+            auxi.update_configyaml("adalm_output_trim_db", -10)
 
         ###TODO: re-organize, there should be no access to gui elements of other modules
         self.m["HostAddress"] = self.gui.lineEdit_IPAddress.text() #TODO: Remove after transfer of playrec

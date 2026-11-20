@@ -102,6 +102,15 @@
                 </property>
                </widget>
               </item>
+            <item row="3" column="0" colspan="2"><widget class="QCheckBox" name="checkBox_UTC">
+                <property name="toolTip">
+                 <string>show and record times in UTC instead of local time</string>
+                </property>
+                <property name="text">
+                 <string>UTC</string>
+                </property>
+               </widget>
+              </item>
           </layout>
         </widget>
       </item>

@@ -47,6 +47,7 @@ from dev_drivers.playlist_paths import (resolve_csv_source, is_playlist, is_url,
 # Scaling the monitor data by +X dB makes the AVC settle X dB lower at the
 # RF output; manual gain operation is not affected.
 AVC_MONITOR_CAL_DB = 3.5
+
 _AVC_MONITOR_CAL   = 10.0 ** (AVC_MONITOR_CAL_DB / 20.0)
 
 # Audio-only: the multi-carrier sum has a higher crest factor than an IQ band.

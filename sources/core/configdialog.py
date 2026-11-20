@@ -1,7 +1,7 @@
 """Configuration dialog of the COHIWizard
 
 Rarely used settings (STEMLAB IP address, startup tab, recording path, logfile,
-spectrum monitor, test mode) live in a window of their own which looks the same
+UTC, spectrum monitor, test mode) live in a window of their own which looks the same
 for all skins. The layout is core/ressources/config_dialog.ui, generated with
     pyuic5 -x core/ressources/config_dialog.ui -o core/config_dialog.py
 (call from sources/).
@@ -23,6 +23,7 @@ CONFIG_WIDGETS = (
     "playrec_pushButton_recordingpath",
     "playrec_lineEdit_recordingpath",
     "playrec_radioButtonpushButton_write_logfile",
+    "checkBox_UTC",
     "core_checkBox_show_spectrum",
     "checkBox_TESTMODE",
 )

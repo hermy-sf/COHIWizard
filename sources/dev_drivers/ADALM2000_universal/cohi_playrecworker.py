@@ -16,6 +16,7 @@ config_wizard.yaml keys used:
   ffmpeg_path       str    ffmpeg binary (default 'ffmpeg')
   relaxfactor_OSR   float  OSR safety margin (default 1.2); SRAdalm >= 2*relax*band edge
   volumefactor      float  global volume scale (default 1.0)
+  adalm_output_trim_db float RF output trim in dB, manual and AVC (default -10)
 """
 
 import array
@@ -46,7 +47,17 @@ from dev_drivers.playlist_paths import (resolve_csv_source, is_playlist, is_url,
 # Scaling the monitor data by +X dB makes the AVC settle X dB lower at the
 # RF output; manual gain operation is not affected.
 AVC_MONITOR_CAL_DB = -8.0
+AVC_MONITOR_CAL_DB = -15
+
 _AVC_MONITOR_CAL   = 10.0 ** (AVC_MONITOR_CAL_DB / 20.0)
+
+# Global RF output trim: applied to the gain handed to the C++ lib (manual and AVC
+# operation).  The monitor data are taken before the gain, so the AVC loop and the
+# slider values are not affected.  No effect with the internal C++ AGC
+# (autoAGC_DspWorker), which regulates to a fixed level.
+# The value is read from adalm_output_trim_db in config_wizard.yaml at every start
+# of the playback; OUTPUT_TRIM_DB is the default if the key is missing.
+OUTPUT_TRIM_DB = -10.0
 
 # Band edge for the OSR choice in audio_only mode.
 # The ADALM2000 holds each sample for OSR DAC clocks (ZOH, no reconstruction
@@ -819,9 +830,11 @@ class playrec_worker(QObject):
         _op_mode       = ""
         _ffmpeg_path   = self.ffmpeg_path
         _use_agc_cpp   = False
+        _trim_db       = OUTPUT_TRIM_DB
         try:
             with open(os.path.join(os.getcwd(), "config_wizard.yaml"), "r") as f:
                 _cfg = yaml.safe_load(f) or {}
+            _trim_db       = float(_cfg.get("adalm_output_trim_db", OUTPUT_TRIM_DB))
             _audioplaylist = str(_cfg.get("audioplaylist",  "")).strip()
             _audio_rate    = int(_cfg.get("audio_rate_hz",  25000))
             _mix_level     = float(_cfg.get("audio_mix_level", 1.0))
@@ -835,6 +848,8 @@ class playrec_worker(QObject):
                 print("[ADALM2000_univ] operating mode = band_only: audio overlay suppressed")
         except Exception as e:
             print(f"[ADALM2000_univ] config read error: {e}")
+        self._output_trim = 10.0 ** (_trim_db / 20.0)
+        print(f"[ADALM2000_univ] RF output trim: {_trim_db:g} dB")
 
         if is_station_m3u(_audioplaylist):
             # station list in the extended m3u format (modulator_playlist_mode: m3u);
@@ -982,7 +997,7 @@ class playrec_worker(QObject):
                 handle,
                 ctypes.c_float(SRAdalm),
                 ctypes.c_float(lo_shift),
-                ctypes.c_float(gain),
+                ctypes.c_float(gain * self._output_trim),
                 ctypes.c_int(1 if use_agc else 0),
                 ctypes.c_int(1 if audio_only else 0),
                 fnames_arr,
@@ -1162,7 +1177,7 @@ class playrec_worker(QObject):
                 if done_ev.wait(timeout=0.1):
                     break
                 if not use_agc:
-                    _lib_adlm.dsp_adlm_set_gain(handle, ctypes.c_float(self.get_gain()))
+                    _lib_adlm.dsp_adlm_set_gain(handle, ctypes.c_float(self.get_gain() * self._output_trim))
                 _send_audio_mix()
 
             stopev.set()

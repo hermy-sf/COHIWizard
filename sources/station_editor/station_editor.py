@@ -183,9 +183,19 @@ class station_editor_v(QObject):
     # ------------------------------------------------------------------ setup
     def init_station_editor_ui(self):
         g = self.gui
-        for table, widths in ((g.tableWidget_stations, (170, 160, 260)), (g.tableWidget_titles, (380,))):
-            for col, w in enumerate(widths):
-                table.setColumnWidth(col, w)
+        # Frequency and BW only as wide as their header, so that the last column
+        # (Playlist/Stream URL) gets the room; headers left-aligned, so that at least the
+        # beginning of a text cut off at the right edge is readable
+        st = g.tableWidget_stations
+        fm = st.horizontalHeader().fontMetrics()
+        for col in (COL_FREQ, COL_BW):
+            item = st.horizontalHeaderItem(col)
+            item.setText(item.text().replace(" (", "\n("))    # unit in a second line
+            st.setColumnWidth(col, max(fm.horizontalAdvance(line) for line in item.text().split("\n")) + 24)
+        st.setColumnWidth(COL_NAME, 180)
+        g.tableWidget_titles.setColumnWidth(COL_TITLE, 380)
+        for table in (st, g.tableWidget_titles):
+            table.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         g.pushButton_new.clicked.connect(self.cb_new)
         g.pushButton_open.clicked.connect(self.cb_open)
         g.pushButton_save.clicked.connect(self.cb_save)
