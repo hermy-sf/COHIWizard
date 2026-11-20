@@ -638,12 +638,7 @@ class modulate_worker(QObject):
         output_file_name_wavheader = output_file_name
         self.wav_header_generator(output_file_name_wavheader,filesize,sample_rate,next_starttime,"")
         self.logger.debug(f"write last wavheader into {output_file_name_wavheader}")
-        if file_index == 0:
-            # no 2 GB splitting took place: same file name as in FAST mode, without _0
-            try:
-                os.replace(output_file_name, f"{output_base_name}.wav")
-            except OSError as e:
-                self.logger.error(f"process_multiple_carriers_blockwise: cannot rename {output_file_name}: {e}")
+        # file names: <base>_0.wav, <base>_1.wav, ... also for a single file (as in FAST mode)
         
         #TODO : Check if already completely o.k. ! write true SDRUno-Header into the first 216 bytes of the closed file
         for file_handle_dict in file_handles:
@@ -1397,21 +1392,7 @@ class modulate_worker_ffmpeg(QObject):
         # file_index = 0
         # audio_gain = np.zeros(len(playlists))
 
-        file_stats = os.stat(output_IQ_filename)
-        filesize = file_stats.st_size
-        #self.logger.debug(f"synthesizer modulate: filesize last out file: {filesize}")
-        output_file_name_with_wavheader = os.path.join(os.path.dirname(output_IQ_filename),Path(output_IQ_filename).stem)
-        output_file_name_with_wavheader += ".wav"
-        #check if file exists and delete it before renaming the new file
-        try:
-            os.remove(output_file_name_with_wavheader)
-        except:
-            pass
-        os.rename(output_IQ_filename, output_file_name_with_wavheader)
-        production_starttime = datetime.now()
-        production_starttime = production_starttime.astimezone(pytz.utc)
-        self.logger.debug(f"process multiple carriers ffmpeg: generate wavheader, filename: {output_file_name_with_wavheader} ")
-        self.wav_header_generator(output_file_name_with_wavheader,filesize,sample_rate, production_starttime,"")
+        self.finalize_iq_output(output_IQ_filename, sample_rate, max_file_size)
         # self.logger.debug(f"write last wavheader into {output_file_name_wavheader}")
         
         # #TODO : Check if already completely o.k. ! write true SDRUno-Header into the first 216 bytes of the closed file
@@ -1646,21 +1627,7 @@ class modulate_worker_ffmpeg(QObject):
         # file_index = 0
         # audio_gain = np.zeros(len(playlists))
 
-        file_stats = os.stat(output_IQ_filename)
-        filesize = file_stats.st_size
-        #self.logger.debug(f"synthesizer modulate: filesize last out file: {filesize}")
-        output_file_name_with_wavheader = os.path.join(os.path.dirname(output_IQ_filename),Path(output_IQ_filename).stem)
-        output_file_name_with_wavheader += ".wav"
-        #check if file exists and delete it before renaming the new file
-        try:
-            os.remove(output_file_name_with_wavheader)
-        except:
-            pass
-        os.rename(output_IQ_filename, output_file_name_with_wavheader)
-        production_starttime = datetime.now()
-        production_starttime = production_starttime.astimezone(pytz.utc)
-        self.logger.debug(f"process multiple carriers ffmpeg: generate wavheader, filename: {output_file_name_with_wavheader} ")
-        self.wav_header_generator(output_file_name_with_wavheader,filesize,sample_rate, production_starttime,"")
+        self.finalize_iq_output(output_IQ_filename, sample_rate, max_file_size)
         # self.logger.debug(f"write last wavheader into {output_file_name_wavheader}")
         
         # #TODO : Check if already completely o.k. ! write true SDRUno-Header into the first 216 bytes of the closed file
@@ -1673,6 +1640,62 @@ class modulate_worker_ffmpeg(QObject):
 
 
 
+
+    IQ_HEADER_BYTES = 216      # auxi header, see auxiliaries.write_sdruno_header
+    SPLIT_COPY_BLOCK = 16 * 1024**2
+
+    def finalize_iq_output(self, output_IQ_filename, sample_rate, max_file_size):
+        """turn the raw IQ file written by ffmpeg into <base>_0.wav, <base>_1.wav, ... with
+        auxi headers, each file at most max_file_size bytes (2 GB splitting as in the normal
+        mode; one file if 'no 2GB splitting' is set).
+        <base>_0.wav is the beginning of the raw file itself, its header overwrites the first
+        216 bytes as before. The following parts get 216 reserved bytes plus their data; they
+        are copied from the end of the raw file backwards and the raw file is truncated after
+        each part, so that at most one part needs additional disk space.
+
+        :param output_IQ_filename: raw s16le IQ file <base>.raw
+        :param sample_rate: sample rate in S/s
+        :param max_file_size: maximum size of one output file in bytes
+        """
+        filesize = os.stat(output_IQ_filename).st_size
+        base = os.path.join(os.path.dirname(output_IQ_filename), Path(output_IQ_filename).stem)
+        data_per_part = (max(max_file_size, 2 * self.IQ_HEADER_BYTES) - self.IQ_HEADER_BYTES) // 4 * 4
+        first_size = data_per_part + self.IQ_HEADER_BYTES
+        bounds = [(0, min(filesize, first_size))]
+        pos = first_size
+        while pos < filesize:
+            bounds.append((pos, min(filesize, pos + data_per_part)))
+            pos += data_per_part
+        names = [f"{base}_{k}.wav" for k in range(len(bounds))]
+        for name in names:
+            # also an older file with the same name (overwrite has been confirmed)
+            try:
+                os.remove(name)
+            except OSError:
+                pass
+        if len(bounds) > 1:
+            self.SigMessage.emit(f"splitting into {len(bounds)} files of max. {max_file_size/1024**3:.0f} GB")
+            self.logger.debug(f"finalize_iq_output: {filesize} bytes split into {len(bounds)} files")
+        with open(output_IQ_filename, "r+b") as raw:
+            for k in range(len(bounds) - 1, 0, -1):
+                start, stop = bounds[k]
+                raw.seek(start)
+                with open(names[k], "wb") as out:
+                    out.write(b"\x00" * self.IQ_HEADER_BYTES)
+                    remaining = stop - start
+                    while remaining > 0:
+                        block = raw.read(min(self.SPLIT_COPY_BLOCK, remaining))
+                        if not block:
+                            break
+                        out.write(block)
+                        remaining -= len(block)
+                raw.truncate(start)
+        os.rename(output_IQ_filename, names[0])
+        starttime = datetime.now().astimezone(pytz.utc)
+        for k, name in enumerate(names):
+            nextname = names[k + 1] if k + 1 < len(names) else ""
+            self.logger.debug(f"finalize_iq_output: generate wavheader, filename: {name}")
+            starttime = self.wav_header_generator(name, os.stat(name).st_size, sample_rate, starttime, nextname)
 
     def wav_header_generator(self, output_file_name, filesize,sample_rate, starttime, next_output_file_name):
         """generate wavheader for output_file_name:
