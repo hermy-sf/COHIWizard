@@ -167,6 +167,9 @@ class playrec_c(QObject):
         self.m["playlist_ix"] = 0
         self.logger = playrec_m.logger
         self.RecBitsPerSample = 16 #Default 16 bit recording, may be changed in the future
+        # timing diagnosis (self.st = self.et ...): set here, otherwise REC as first action after
+        # the start (play_manager not yet called) raised AttributeError in play_tstarter
+        self.st = self.et = time.time()
         #self.TESTFILELISTCONTINUOUS = True
         try:
             stream = open("config_wizard.yaml", "r")
@@ -390,7 +393,8 @@ class playrec_c(QObject):
             return
         _dev = self.m["device_ID_dict"]
         _name = _dev.get("device_name", "SDR device")
-        text = f"{_name} is starting up, please wait ...\n\nPlayback starts as soon as the device delivers data."
+        _what = "Recording" if self.m.get("modality") == "rec" else "Playback"
+        text = f"{_name} is starting up, please wait ...\n\n{_what} starts as soon as the device delivers data."
         if "fl2k" in _name.lower():
             text += ("\n\nAn fl2k dongle plugged in only now must first be released from the "
                      "kernel mass storage driver; this may take more than 10 s.")
@@ -943,7 +947,8 @@ class playrec_c(QObject):
         if self.m["modality"] == "play":
             return
         prfilehandle = self.playrec_tworker.get_fileHandle()
-        prfilehandle.close()
+        if prfilehandle is not None and not prfilehandle.closed:
+            prfilehandle.close()
         self.playthread.quit()
         self.playthread.wait()
         #time.sleep(0.1)
@@ -985,6 +990,10 @@ class playrec_c(QObject):
         The synthesizer dummy 'no_file.dat' is never kept.
         """
         _f1 = self.m.get("f1", "")
+        if self.m.get("modality") == "rec":
+            # f1 is the file just recorded, not an opened IQ file (header and my_filename
+            # are not set up for playback); modality returns to "play" when a file is opened
+            return False
         return bool(_f1) and _f1 != "no_file.dat" and os.path.isfile(_f1)
 
     def relay_playstate(self):
@@ -2098,7 +2107,7 @@ class playrec_v(QObject):
         self.SigRelay.emit("cexex_resample",["reset_GUI",0])
         # an IQ file kept loaded after STOP stays displayed
         if self.m["fileopened"]:
-            auxi.set_elided_text(self.gui.label_Filename_Player, self.m["my_filename"] + self.m["ext"])
+            auxi.set_elided_text(self.gui.label_Filename_Player, self.m.get("my_filename", "") + self.m.get("ext", ""))
         else:
             auxi.set_elided_text(self.gui.label_Filename_Player, '')
 
@@ -2107,7 +2116,10 @@ class playrec_v(QObject):
             self.gui.listWidget_sourcelist.setEnabled(False)
             self.gui.listWidget_playlist.setEnabled(False)
             self.m["playlist_active"] = False
-        self.update_playgroup_ready()     # file fields: name or highlighted request
+        # file fields: name or highlighted request; after STOP the worker thread may not have
+        # finished yet (playthreadActive), the buttons are released anyway
+        self.update_playgroup_ready(force=not (self.gui.pushButton_Play.isChecked()
+                                               or self.m.get("recstate", False)))
   
     def addplaylistitem(self):
         item = QtWidgets.QListWidgetItem()
@@ -2161,6 +2173,9 @@ class playrec_v(QObject):
         if _key.find("cm_playrec") == 0 or _key.find("cm_all_") == 0:
             #set mdl-value
             self.m[_value[0]] = _value[1]
+            if _value[0] == "f1" and _value[1] and not self.m.get("recstate", False):
+                # a file opened by the core (File menu): no longer the file of the last recording
+                self.m["modality"] = "play"
             if _value[0] in self.PLAYGROUP_KEYS:
                 self.update_playgroup_ready()
         if _key.find("cui_playrec") == 0:

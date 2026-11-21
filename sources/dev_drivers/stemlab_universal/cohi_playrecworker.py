@@ -1095,38 +1095,65 @@ class playrec_worker(QObject):
 
     # ---------------------------------------------------------------- rec_loop
     def rec_loop(self):
-        """Recording via STEMLAB – delegates to stemlab_125_14 pattern."""
+        """Recording via STEMLAB, same procedure as rec_loop of stemlab_125_14:
+        float32 IQ from the data socket -> int16 into the file; once per second of data
+        SigIncrementCurTime (time display, closes the startup notice) and monitor data
+        (set_data); stops before 2 GB (recloopmanager then starts the next file).
+        The file handle stays set: recloopmanager closes it after SigFinished."""
         self.GAINFACTOR = 1
-        gain        = self.get_gain()
+        self.gain   = self.get_gain()
         size2G      = 2 ** 31
         self.stopix = False
         filename    = self.get_filename()
-        timescaler  = self.get_timescaler()
-        RECSEC      = timescaler * 2
+        RECSEC      = self.get_timescaler() * 2   # bytes per second of float32 IQ (2 x i16 in the file)
         TEST        = self.get_TEST()
 
         fileHandle = open(filename, "ab")
         self.set_fileHandle(fileHandle)
-        config     = self.get_configparameters()
+        self.set_datablocksize(self.DATABLOCKSIZE)
+        data = np.empty(self.DATABLOCKSIZE, dtype=np.float32)
 
-        if not hasattr(self.stemlabcontrol, "data_sock") or \
-                self.stemlabcontrol.data_sock is None:
+        if not TEST and getattr(self.stemlabcontrol, "data_sock", None) is None:
             self.SigError.emit("[stemlab_universal] No TCP socket for recording.")
             self.SigFinished.emit()
             return
 
+        readbytes = 0
+        totbytes  = 0
+        locked    = False
         try:
-            while not self.stopix:
-                data = self.stemlabcontrol.data_sock.recv(self.DATABLOCKSIZE * 2)
-                if not data:
-                    break
-                arr = np.frombuffer(data, dtype=np.float32)
-                arr = (arr * 32767.0).astype(np.int16)
-                fileHandle.write(arr.tobytes())
+            if TEST:
+                while not self.stopix:       # dummy operation for testing without SDR
+                    time.sleep(1)
+                    a = np.array([1638, 7, -7], dtype=np.int16)
+                    self.mutex.lock()
+                    fileHandle.write(a.tobytes())
+                    self.set_data(a)
+                    self.mutex.unlock()
+                    self.SigIncrementCurTime.emit()
+            else:
+                size = self.stemlabcontrol.data_sock.recv_into(data)
+                self.set_data((data[0:size // 4] * 32767).astype(np.int16))
+                while size > 0 and not self.stopix:
+                    self.mutex.lock()
+                    locked = True
+                    fileHandle.write((self.gain * self.GAINFACTOR * data[0:size // 4] * 32767)
+                                     .astype(np.int16).tobytes())
+                    size = self.stemlabcontrol.data_sock.recv_into(data)
+                    readbytes += size
+                    if readbytes > RECSEC:
+                        self.gain = self.get_gain()
+                        self.set_data((self.gain * data[0:size // 4] * 32767).astype(np.int16))
+                        self.SigIncrementCurTime.emit()
+                        totbytes += int(readbytes / 2)
+                        readbytes = 0
+                    if totbytes > size2G - self.DATABLOCKSIZE * 4:
+                        self.stopix = True
+                    self.mutex.unlock()
+                    locked = False
         except Exception as exc:
-            self.SigError.emit(f"[stemlab_universal] Recording error: {exc}")
-        finally:
-            fileHandle.close()
-            self.set_fileHandle(None)
-            self.set_fileclose(True)
-            self.SigFinished.emit()
+            if locked:
+                self.mutex.unlock()
+            if not self.stopix:
+                self.SigError.emit(f"[stemlab_universal] Recording error: {exc}")
+        self.SigFinished.emit()
