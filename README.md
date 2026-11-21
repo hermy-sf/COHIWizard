@@ -41,7 +41,28 @@ Each device is operated by a driver in `sources/dev_drivers`:
 - **New installation:** Windows installer and setup tool `cohi_setup.py` (Windows and LINUX), which
   download the program directly from GitHub, manage modules and drivers and perform updates. The
   zip file with `SDR_COHIWizard_v2.x.exe` is no longer used.
-- **New driver architecture** with universal drivers, audio modulator, audio station lists
+  
+- **New driver architecture** with universal drivers.These now offer the following capabilities in addition to simply playing classic recordings
+in WAV format:
+- Playing any number of web radio streams from the Internet on an equal number of user-defined frequencies on the connected radio
+
+- Playing custom-compiled spectra with any number of transmission frequencies, onto which audio content from your own playlists. The audio sources can be local music files or audio sources accessible on the web.
+
+This last feature is particularly interesting for the jukebox concept of COHIRADIA: Previously, artificially mixed spectra had to be
+generated as standard WAV files using a synthesizer tool (COHIWizard) and stored locally. With the new
+method, the spectra are generated at the moment of playback but are not permanently stored on the hard drive.
+The advantages are obvious:
+
+(1) No disk space is consumed by the typically very large IQ-WAV files
+(2) Copyright issues are avoided when streaming an audio source is permitted but downloading is not.
+
+This also opens up enormous new possibilities for expanding the “jukebox.” For example, archival recordings can now be played in international media libraries as long as they are publicly accessible via streaming on the web. Using the new module 'Station Editor' in COHIWizard, every user can create their own playlists and play them on their own radios.
+
+The new drivers even make it possible to mix “real” recordings with historical spectra and individual carriers with your own content.
+
+In this context the following new feature appear:
+
+- **New GUI appearance of the Player** with universal drivers, audio modulator, audio station lists
   and a mixer slider for the level of the audio carriers.
 - **Station lists as extended m3u:** besides the csv format, one m3u file can hold all stations
   (`#PLAYLIST`, `#EXTGRP` frequency, `#EXTPARAM_BW` bandwidth) with their titles and global
