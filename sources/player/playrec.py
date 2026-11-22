@@ -859,7 +859,15 @@ class playrec_c(QObject):
         self.m["sdr_configparams"] = {"ifreq":self.m["ifreq"], "irate":self.m["irate"],
                     "rates": self.m["rates"], "icorr":self.m["icorr"],
                     "HostAddress":self.m["HostAddress"], "LO_offset":self.m["LO_offset"]}
-        if self.m["TEST"] is False:
+        if self.m["TEST"] is False and next_file and getattr(self.stemlabcontrol, "data_sock", None) is not None:
+            # next file of a recording > 2 GB: the SDR server keeps running and the data socket
+            # stays connected, only a new worker writes into the new file. Restarting the server
+            # via ssh and reconnecting here made the following file receive only a fraction of
+            # the data (2 GB took 25 min instead of 7 min at 1250 kS/s)
+            errorstate, value = self.play_tstarter()
+            if errorstate:
+                return(errorstate, value)
+        elif self.m["TEST"] is False:
             if self.m["device_ID_dict"].get("connection_type") != "USB" and not next_file:
                 self.show_startup_notice()
             if not self.stemlabcontrol.sdrserverstart(self.m["sdr_configparams"]):
@@ -2053,10 +2061,12 @@ class playrec_v(QObject):
             #target_datetime = current_datetime.addSecs(hours * 3600 + minutes * 60 + seconds)
             # Differenz berechnen
             remaining_time = current_datetime.secsTo(self.target_datetime)
-            self.gui.lineEditCurTime.setText(str(time.strftime("%H:%M:%S", time.gmtime(remaining_time))))
+            self.gui.lineEditCurTime.setText(str(time.strftime("%H:%M:%S", time.gmtime(max(0, remaining_time)))))
             
             #print(f"playrec countdown residual time : {remaining_time}")
-            if remaining_time == 0:
+            if remaining_time <= 0:
+                # <= : a timer tick may skip the second with exactly 0 (the display then ran
+                # over to 23:59:59 and the recording did not stop)
                 self.playrec_c.cb_Butt_STOP()
             return
         countdown =  self.gui.playrec_RECSTART_dateTimeEdit.dateTime().toPyDateTime() - datetime.now()
