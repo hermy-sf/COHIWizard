@@ -1,0 +1,166 @@
+#EXTM3U
+
+#EXTPARAM_RECLENGTH:
+#EXTPARAM_BW: 4.5
+#EXTPARAM_OUTPUTFILE:
+#EXTPARAM_FILEPREFIX:
+#EXTPARAM_LOFREQ:
+#EXTPARAM_SAMPLERATE:
+#EXTPARAM_SILENCE:
+#EXTPARAM_MODDEPTH:
+
+
+#PLAYLIST: SRF 1
+#EXTGRP: 556
+#EXTINF: -1,SRF 1
+http://stream.srg-ssr.ch/drs1/mp3_128.m3u
+
+
+#PLAYLIST: SWR1
+#EXTGRP: 574
+#EXTINF: -1,SWR1
+https://liveradio.swr.de/sw282p3/swr1bw/
+
+
+#PLAYLIST: ORF Radio Wien
+#EXTGRP: 592
+#EXTINF: -1,ORF Radio Wien
+http://orf-live.ors-shoutcast.at/wie-q2a
+
+
+#PLAYLIST: UK 1940s Radio Station
+#EXTGRP: 610
+#EXTINF: -1,UK 1940s Radio Station
+http://solid2.streamupsolutions.com:24929/stream
+
+
+#PLAYLIST: 1920s Radio Network
+#EXTGRP: 638
+#EXTINF: -1,1920s Radio Network
+http://65.108.124.70:8181/live
+
+
+#PLAYLIST: WDR 3
+#EXTGRP: 658
+#EXTINF: -1,WDR 3
+http://wdr-wdr3-live.icecast.wdr.de/wdr/wdr3/live/mp3/128/stream.mp3
+
+
+#PLAYLIST: RTE Gold (Oldies)
+#EXTGRP: 677
+#EXTINF: -1,RTE Gold (Oldies)
+http://icecast2.rte.ie/gold
+
+
+#PLAYLIST: KCEA
+#EXTGRP: 704
+#EXTINF: -1,KCEA
+http://streaming.rubinbroadcasting.com/kcea
+
+
+#PLAYLIST: BR24 (Nachrichten)
+#EXTGRP: 740
+#EXTINF: -1,BR24 (Nachrichten)
+https://dispatcher.rndfnk.com/br/br24/live/mp3/mid
+
+
+#PLAYLIST: MDR SACHSEN (Oldies)
+#EXTGRP: 785
+#EXTINF: -1,MDR SACHSEN (Oldies)
+http://mdr-284280-0.cast.mdr.de/mdr/284280/0/mp3/high/stream.mp3
+
+
+#PLAYLIST: rbb Kultur (Kultur)
+#EXTGRP: 841
+#EXTINF: -1,rbb Kultur (Kultur)
+http://rbbkultur.de/livemp3
+
+
+#PLAYLIST: ORF Radio Steiermark
+#EXTGRP: 886
+#EXTINF: -1,ORF Radio Steiermark
+http://orf-live.ors-shoutcast.at/stm-q2a
+
+
+#PLAYLIST: NDR 1 Welle Nord (Oldies)
+#EXTGRP: 904
+#EXTINF: -1,NDR 1 Welle Nord (Oldies)
+http://icecast.ndr.de/ndr/ndr1wellenord/kiel/mp3/128/stream.mp3
+
+
+#PLAYLIST: MDR SPUTNIK (Charts)
+#EXTGRP: 950
+#EXTINF: -1,MDR SPUTNIK (Charts)
+http://mdr-284330-0.cast.mdr.de/mdr/284330/0/mp3/high/stream.mp3
+
+
+#PLAYLIST: WNBJ
+#EXTGRP: 995
+#EXTINF: -1,WNBJ
+https://wbnj.radioca.st/stream
+
+
+#PLAYLIST: MDR JUMP (Pop)
+#EXTGRP: 1031
+#EXTINF: -1,MDR JUMP (Pop)
+http://mdr-284320-0.cast.mdr.de/mdr/284320/0/mp3/high/stream.mp3
+
+
+#PLAYLIST: Radio Dismuke
+#EXTGRP: 1086
+#EXTINF: -1,Radio Dismuke
+http://74.208.228.126:8020/;stream.mp3
+
+
+#PLAYLIST: SRF 2 Kultur
+#EXTGRP: 1167
+#EXTINF: -1,SRF 2 Kultur
+http://stream.srg-ssr.ch/drs2/mp3_128.m3u
+
+
+#PLAYLIST: France Musique La Jazz
+#EXTGRP: 1185
+#EXTINF: -1,France Musique La Jazz
+http://icecast.radiofrance.fr/francemusiquelajazz-hifi.aac
+
+
+#PLAYLIST: hr1 Mittelhessen (Oldies)
+#EXTGRP: 1195
+#EXTINF: -1,hr1 Mittelhessen (Oldies)
+https://dispatcher.rndfnk.com/hr/hr1/mittelhessen/high
+
+
+#PLAYLIST: NDR Info (Nachrichten)
+#EXTGRP: 1231
+#EXTINF: -1,NDR Info (Nachrichten)
+http://icecast.ndr.de/ndr/ndrinfo/hamburg/mp3/128/stream.mp3
+
+
+#PLAYLIST: Bayern 2 (Kultur/Talk), Frequenz falsch, urspr 1267, aber overlap mit DLF Kultur
+#EXTGRP: 1557
+#EXTINF: -1,Bayern 2 (Kultur/Talk)
+https://dispatcher.rndfnk.com/br/br2/live/mp3/mid
+
+
+#PLAYLIST: Deutschlandfunk Kultur MP3 128 kbit/s
+#EXTGRP: 1268
+#EXTINF: -1,Deutschlandfunk Kultur MP3 128 kbit/s
+https://st02.sslstream.dlf.de/dlf/02/128/mp3/stream.mp3?aggregator=web
+
+
+#PLAYLIST: MDR KULTUR (Kultur)
+#EXTGRP: 1303
+#EXTINF: -1,MDR KULTUR (Kultur)
+http://mdr-284310-0.cast.mdr.de/mdr/284310/0/mp3/high/stream.mp3
+
+
+#PLAYLIST: NDR Info (Nachrichten)
+#EXTGRP: 1330
+#EXTINF: -1,NDR Info (Nachrichten)
+http://icecast.ndr.de/ndr/ndrinfo/hamburg/mp3/128/stream.mp3
+
+
+#PLAYLIST: SWR4
+#EXTGRP: 1450
+#EXTINF: -1,SWR4
+https://liveradio.swr.de/sw282p3/swr4bw/

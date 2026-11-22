@@ -1,0 +1,57 @@
+#EXTM3U
+
+#EXTPARAM_RECLENGTH: 00:01:00
+#EXTPARAM_BW: 6
+#EXTPARAM_OUTPUTFILE:
+#EXTPARAM_FILEPREFIX:
+#EXTPARAM_LOFREQ: 1125
+#EXTPARAM_SAMPLERATE: 1250
+#EXTPARAM_SILENCE: 1
+#EXTPARAM_MODDEPTH: 0.8
+
+
+#PLAYLIST: Zugemischter Webstream Caroline Flashback
+#EXTGRP: 855
+#EXTPARAM_BW: 4.5
+#EXTINF: -1,intro, a
+http://sc2.radiocaroline.net:10558/mp3
+
+
+#PLAYLIST: Zugemischter Webstream Archiv Saar
+#EXTGRP: 999
+#EXTPARAM_BW: 4.5
+#EXTINF: -1,intro, a
+https://archive.org/download/Radio_201903/50%20Jahre%20SR%2F00%20Intro.mp3
+#EXTINF: -1,Huesch, a
+https://archive.org/download/Radio_201903/50%20Jahre%20SR%2F01%20Hanns%20Dieter%20Huesch.mp3
+#EXTINF: -1,Voxhaus , a
+https://archive.org/download/Radio_201903/50%20Jahre%20SR%2F02%20Vor%2060%20Jahren.mp3
+#EXTINF: -1,a, a
+https://archive.org/download/Radio_201903/50%20Jahre%20SR%2F02%20Vor%2060%20Jahren.mp3
+#EXTINF: -1,Funkhaus Berlin, a
+https://archive.org/download/Radio_201903/50%20Jahre%20SR%2F03%20Funkhaus%20Berlin.mp3
+#EXTINF: -1,Einstein, a
+https://archive.org/download/Radio_201903/50%20Jahre%20SR%2F04%20Albert%20Einstein.mp3
+#EXTINF: -1,Vergnügen, a
+https://archive.org/download/Radio_201903/50%20Jahre%20SR%2F05%20ein%20teures%20vergnuegen.mp3
+
+
+#PLAYLIST: UK 1940s Radio Station
+#EXTGRP: 801
+#EXTPARAM_BW: 6
+#EXTINF: -1,stream
+http://solid2.streamupsolutions.com:24929/stream
+
+
+#PLAYLIST: ORF Radio Wien
+#EXTGRP: 1368
+#EXTPARAM_BW: 5
+#EXTINF: -1,wie-q2a
+http://orf-live.ors-shoutcast.at/wie-q2a
+
+
+#PLAYLIST: MDR Kultur
+#EXTGRP: 1303
+#EXTPARAM_BW: 5
+#EXTINF: -1,stream
+http://mdr-284310-0.cast.mdr.de/mdr/284310/0/mp3/high/stream.mp3

@@ -2774,6 +2774,8 @@ class playrec_v(QObject):
         self.gui.pushButton_Play.setEnabled(False)
         self.gui.comboBox_playrec_targetSR_2.setEnabled(False)   # no band change during recording
         self.gui.playrec_RECLENGTH_timeEdit.setEnabled(False)    # nor of the duration
+        self.gui.playrec_radioButton_RECAUTOSTART.setEnabled(False)   # nor of the autostart
+        self.gui.playrec_RECSTART_dateTimeEdit.setEnabled(False)
         self.gui.verticalSlider_Gain.setEnabled(False)
         #experimental usage of Gain in Recording module, not tested ! TODO TODO TODO: text after 11-12-2025 
         if self.m["REC_AGC"]:
@@ -2848,8 +2850,11 @@ class playrec_v(QObject):
         self.m["playlist_active"] = False      # Activate Playlist has been unchecked above
         self.update_playgroup_ready(force=True)
         self.update_bandpreset_enabled()       # 'Preset band' again usable after a recording
-        self.gui.playrec_RECLENGTH_timeEdit.setEnabled(
-            bool((self.m.get("device_ID_dict") or {}).get("RX")))     # 'REC Duration' as well
+        _rx = bool((self.m.get("device_ID_dict") or {}).get("RX"))
+        self.gui.playrec_RECLENGTH_timeEdit.setEnabled(_rx)          # 'REC Duration' as well
+        self.gui.playrec_radioButton_RECAUTOSTART.setEnabled(_rx)    # 'AUTOSTART' and its time
+        self.gui.playrec_RECSTART_dateTimeEdit.setEnabled(
+            _rx and self.gui.playrec_radioButton_RECAUTOSTART.isChecked())
         self.gui.playrec_label_REC_duration.setStyleSheet("background-color : lightgray")
         font = self.gui.playrec_label_REC_duration.font()
         font.setPointSize(14)
