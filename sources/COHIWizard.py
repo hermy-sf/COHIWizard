@@ -1579,6 +1579,19 @@ class core_v(QObject):
         if hasattr(self.gui, "label_csv_filename"):
             auxi.set_elided_text(self.gui.label_csv_filename, str(Path(value).stem) + str(Path(value).suffix))
 
+    def open_iq_file(self, path):
+        """open the IQ file path without file dialog (e.g. after 'Download IQ' in the player)
+        and relay the result like cb_open_file"""
+        if not os.path.isfile(path):
+            auxi.standard_errorbox(f"File not found: {path}")
+            self.SigRelay.emit("cm_all_",["fileopened",False])
+            return False
+        if self.fileOpen(path) is False:
+            self.SigRelay.emit("cm_all_",["fileopened",False])
+            return False
+        self.SigRelay.emit("cm_all_",["fileopened",True])
+        return True
+
     def load_station_list(self, path):
         """loads a station list without file dialog (button 'Load into Player' of the
         station editor); an m3u switches modulator_playlist_mode to m3u
@@ -1976,6 +1989,8 @@ class core_v(QObject):
                 _value[1].resize_initialize()
             if  _value[0].find("load_station_list") == 0:
                 self.load_station_list(_value[1])
+            if  _value[0].find("open_iq_file") == 0:
+                self.open_iq_file(_value[1])
                 
 
 class SplashScreen(QWidget):

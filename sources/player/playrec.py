@@ -28,6 +28,7 @@ from dev_drivers.playlist_paths import parse_station_list, band_problem
 from datetime import datetime
 import datetime as ndatetime
 from player import stemlab_control
+from player import iq_download
 from auxiliaries import ffmpeg_installtools as ffinst
 import platform
 
@@ -1500,6 +1501,7 @@ class playrec_v(QObject):
             self.rescale_logo()
             QTimer.singleShot(0, self.rescale_logo)        
         self.gui.pushButton_act_playlist.clicked.connect(self.cb_Butt_toggle_playlist)
+        self.add_download_iq_controls()
         self.gui.lineEdit_IPAddress.returnPressed.connect(self.set_IP)
         #self.gui.lineEdit_IPAddress.setInputMask('000.000.000.000')
         #self.gui.lineEdit_IPAddress.setText("000.000.000.000")
@@ -1816,6 +1818,121 @@ class playrec_v(QObject):
         # recordinggroup_activate; keep the label in sync with its field
         self.gui.label_LO.setEnabled(self.gui.lineEdit_playrec_LO.isEnabled())
 
+
+    def add_download_iq_controls(self):
+        """'Download IQ ...': button at the end of the IQ file row (skin 5) and entry in the
+        menu File (skins with menu bar); both open the archive dialog (cb_download_iq)"""
+        if hasattr(self.gui, "horizontalLayout_wavfile"):
+            self.gui.pushButton_download_iq = QPushButton("Download IQ ...")
+            self.gui.pushButton_download_iq.setToolTip(
+                "download an IQ recording from the COHIRADIA archive into the folder IQ_files")
+            self.gui.horizontalLayout_wavfile.addWidget(self.gui.pushButton_download_iq)
+            self.gui.pushButton_download_iq.clicked.connect(self.cb_download_iq)
+        if hasattr(self.gui, "menuFile"):
+            self.gui.actionDownload_IQ = QAction("Download IQ recording from COHIRADIA archive ...",
+                                                 self.gui.menuFile)
+            self.gui.menuFile.addAction(self.gui.actionDownload_IQ)
+            self.gui.actionDownload_IQ.triggered.connect(self.cb_download_iq)
+
+    def iq_download_base(self):
+        """folder IQ_files next to sources/ (like m3u_lists), or the yaml key iq_download_path"""
+        error, value = auxi.fetch_configyaml("iq_download_path")
+        if not error and value:
+            return str(value)
+        return os.path.join(os.path.dirname(os.path.abspath(os.getcwd())), "IQ_files")
+
+    def ask(self, title, text):
+        return QMessageBox.question(self.m.get("QTMAINWINDOWparent"), title, text,
+                                    QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes
+
+    def cb_download_iq(self):
+        """'Download IQ ...': select a recording of the COHIRADIA archive, download the first
+        file or all wav files of it into IQ_files/<id>_<content>/ and optionally play it.
+        Switches the MODE to 'IQ band only' to prevent wrong operation."""
+        if self.gui.pushButton_Play.isChecked() or self.m.get("recstate") or self.m.get("playthreadActive"):
+            auxi.standard_infobox("Please stop the player (or the recording) before downloading IQ files.")
+            return
+        if getattr(self, "iq_download_thread", None) is not None and self.iq_download_thread.isRunning():
+            auxi.standard_infobox("A download is already running.")
+            return
+        if hasattr(self.gui, "comboBox_modulator_type") and self.gui.comboBox_modulator_type.currentIndex() != 0:
+            self.gui.comboBox_modulator_type.setCurrentIndex(0)       # 'IQ band only'
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            recordings = iq_download.fetch_recordings()
+        except Exception as exc:
+            QApplication.restoreOverrideCursor()
+            auxi.standard_errorbox(f"The list of recordings of the COHIRADIA archive cannot be loaded "
+                                   f"({exc}). Please check the internet connection.")
+            return
+        QApplication.restoreOverrideCursor()
+        dialog = iq_download.ArchiveDialog(recordings, self.m.get("QTMAINWINDOWparent"))
+        if dialog.exec_() != QDialog.Accepted or dialog.choice is None:
+            return
+        rec, parts = dialog.choice
+        folder = iq_download.download_folder(rec, self.iq_download_base())
+        total_bytes = sum(p["size_gb"] for p in parts) * 1024**3
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        speed = iq_download.measure_speed(parts[0]["url"])
+        QApplication.restoreOverrideCursor()
+        estimate = (f"Estimated duration: about {iq_download.format_duration(total_bytes / speed)} "
+                    f"(measured download rate {speed / 1e6:.1f} MB/s)." if speed
+                    else "The download rate could not be measured.")
+        if iq_download.free_space(folder) < total_bytes * 1.05:
+            auxi.standard_errorbox(f"Not enough disk space for {total_bytes / 1e9:.1f} GB in {folder}.")
+            return
+        if not self.ask("Download IQ recording",
+                        f"{rec.get('content', '')}\n\n{len(parts)} file(s), {total_bytes / 1e9:.1f} GB in total.\n"
+                        f"{estimate}\nIQ files are very large, the download can take a long time.\n\n"
+                        f"Target folder: {folder}\n\nStart the download?"):
+            return
+        os.makedirs(folder, exist_ok=True)
+        files = [(p["url"], os.path.join(folder, p["name"])) for p in parts]
+        self.iq_download_files = files
+        self.iq_download_progress = QProgressDialog("Downloading ...", "Cancel", 0, 1000,
+                                                    self.m.get("QTMAINWINDOWparent"))
+        self.iq_download_progress.setWindowTitle("Download IQ recording")
+        self.iq_download_progress.setMinimumDuration(0)
+        self.iq_download_progress.setAutoClose(False)
+        self.iq_download_progress.setAutoReset(False)
+        self.iq_download_t0 = time.time()
+        self.iq_download_worker = iq_download.DownloadWorker(files)
+        self.iq_download_worker.SigProgress.connect(self.iq_download_progress_update)
+        self.iq_download_worker.SigFinished.connect(self.iq_download_finished)
+        self.iq_download_progress.canceled.connect(lambda: setattr(self.iq_download_worker, "cancel", True))
+        self.iq_download_thread = iq_download.start_thread(self.iq_download_worker)
+        self.iq_download_progress.show()
+
+    def iq_download_progress_update(self, done, total, name):
+        if not total:
+            return
+        dt = max(1e-3, time.time() - self.iq_download_t0)
+        rate = done / dt
+        rest = (total - done) / rate if rate > 0 else 0
+        self.iq_download_progress.setValue(int(1000 * done / total))
+        self.iq_download_progress.setLabelText(
+            f"{name}\n{done / 1e9:.2f} of {total / 1e9:.2f} GB, remaining about "
+            f"{iq_download.format_duration(rest)}")
+
+    def iq_download_finished(self, ok, message):
+        self.iq_download_progress.close()
+        if self.iq_download_thread is not None:
+            self.iq_download_thread.wait(5000)
+        if not ok:
+            auxi.standard_errorbox(message)
+            return
+        first = self.iq_download_files[0][1]
+        if self.ask("Download IQ recording",
+                    f"Download completed:\n{os.path.dirname(first)}\n\nStart playback of the recording now?"):
+            if hasattr(self.gui, "comboBox_modulator_type") and self.gui.comboBox_modulator_type.currentIndex() != 0:
+                self.gui.comboBox_modulator_type.setCurrentIndex(0)
+            self.SigRelay.emit("cexex_xcore", ["open_iq_file", first])
+            QTimer.singleShot(500, self.play_downloaded)
+
+    def play_downloaded(self):
+        """Play after the downloaded file has been opened (Play is enabled by update_playgroup_ready)"""
+        if self.gui.pushButton_Play.isEnabled() and not self.gui.pushButton_Play.isChecked():
+            self.gui.pushButton_Play.click()
 
     def update_bandpreset_enabled(self):
         """'Preset band' (comboBox_playrec_targetSR_2): active for modulator devices (type "M",
