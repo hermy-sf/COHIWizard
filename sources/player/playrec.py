@@ -420,6 +420,8 @@ class playrec_c(QObject):
         """called after the worker thread has been started: show the notice if
         the device has not delivered data within STARTUP_NOTICE_DELAY_MS
         """
+        if self.m.get("modality") == "rec" and getattr(self, "rec_next_file", False):
+            return      # next file of a running recording: the device is already delivering
         session = self.startup_session
         def _check():
             if session == self.startup_session and self.m["playthreadActive"] and not self.m["pausestate"]:
@@ -832,16 +834,20 @@ class playrec_c(QObject):
         except Exception as e:
             self.logger.error(f"fl2k driver check / Zadig failed: {e}")
 
-    def recordingsequence(self,expected_seconds):
+    def recordingsequence(self,expected_seconds, next_file=False):
         """handle recordig of a file:
         (1) check for sufficient diskspace
 
         :param expected_seconds: expected duration of the recording in seconds
         :type expected_seconds: int
+        :param next_file: True for the next file of a recording > 2 GB (recloopmanager):
+            no startup notice, the SDR server is already running
+        :type next_file: bool
         """
         #CHECK FOR SUFFICIENT DISK SPACE ON VOLUME
         errorstate = False
         value = ""
+        self.rec_next_file = next_file        # also suppresses the delayed notice (arm_startup_notice)
         self.stemlabcontrol.SigError.connect(self.stemlabcontrol_errorhandler)
         expected_filesize = expected_seconds * self.m["irate"] * self.RecBitsPerSample/4 #2**31
         #TODO TODO TODO: not correct !
@@ -854,7 +860,7 @@ class playrec_c(QObject):
                     "rates": self.m["rates"], "icorr":self.m["icorr"],
                     "HostAddress":self.m["HostAddress"], "LO_offset":self.m["LO_offset"]}
         if self.m["TEST"] is False:
-            if self.m["device_ID_dict"].get("connection_type") != "USB":
+            if self.m["device_ID_dict"].get("connection_type") != "USB" and not next_file:
                 self.show_startup_notice()
             if not self.stemlabcontrol.sdrserverstart(self.m["sdr_configparams"]):
                 self.cb_Butt_STOP()
@@ -981,7 +987,7 @@ class playrec_c(QObject):
             #wavheader_old['nextfilename'] = self.m["f1"]
             wavheader_old['nextfilename'] = Path(self.m["f1"]).name
             WAVheader_tools.write_sdruno_header(self,f1old,wavheader_old,self.m["ovwrt_flag"]) ##TODO TODO TODO Linux conf: self.m["f1"],self.m["wavheader"] must be in Windows format
-            errorstate, value = self.recordingsequence(self.m["expected_seconds"])
+            errorstate, value = self.recordingsequence(self.m["expected_seconds"], next_file=True)
             if errorstate:
                 self.errorhandler(value)
 
@@ -1803,6 +1809,16 @@ class playrec_v(QObject):
         self.gui.label_LO.setEnabled(self.gui.lineEdit_playrec_LO.isEnabled())
 
 
+    def update_bandpreset_enabled(self):
+        """'Preset band' (comboBox_playrec_targetSR_2): active for modulator devices (type "M",
+        as before) and for recording, i.e. devices with RX in the MODE 'IQ band only'
+        (STEMLAB); inactive during a running recording or playback and for all other cases"""
+        _dev = self.m.get("device_ID_dict") or {}
+        _busy = (self.m.get("recstate", False) or self.gui.pushButton_Play.isChecked())
+        _enabled = (_dev.get("modulator") == "M"
+                    or (bool(_dev.get("RX")) and self.m.get("modulator_type") == "band_only"))
+        self.gui.comboBox_playrec_targetSR_2.setEnabled(_enabled and not _busy)
+
     def recordinggroup_activate(self,value):
         """activates or inactivates GUI elements of the Recording functions based on
         value (True,False)
@@ -1923,6 +1939,7 @@ class playrec_v(QObject):
                 self.activate_samplingparameters(True)
             else:
                 self.activate_samplingparameters(False)
+            self.update_bandpreset_enabled()
 
             if self.m["device_ID_dict"]["connection_type"] == "USB":
                 self.gui.lineEdit_IPAddress.setEnabled(False)
@@ -2745,6 +2762,8 @@ class playrec_v(QObject):
         self.gui.pushButton_REW.setEnabled(False)
         self.gui.pushButton_Loop.setEnabled(False)
         self.gui.pushButton_Play.setEnabled(False)
+        self.gui.comboBox_playrec_targetSR_2.setEnabled(False)   # no band change during recording
+        self.gui.playrec_RECLENGTH_timeEdit.setEnabled(False)    # nor of the duration
         self.gui.verticalSlider_Gain.setEnabled(False)
         #experimental usage of Gain in Recording module, not tested ! TODO TODO TODO: text after 11-12-2025 
         if self.m["REC_AGC"]:
@@ -2818,6 +2837,9 @@ class playrec_v(QObject):
         self.gui.verticalSlider_Gain.setEnabled(True)
         self.m["playlist_active"] = False      # Activate Playlist has been unchecked above
         self.update_playgroup_ready(force=True)
+        self.update_bandpreset_enabled()       # 'Preset band' again usable after a recording
+        self.gui.playrec_RECLENGTH_timeEdit.setEnabled(
+            bool((self.m.get("device_ID_dict") or {}).get("RX")))     # 'REC Duration' as well
         self.gui.playrec_label_REC_duration.setStyleSheet("background-color : lightgray")
         font = self.gui.playrec_label_REC_duration.font()
         font.setPointSize(14)

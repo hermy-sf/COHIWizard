@@ -938,6 +938,9 @@ class core_v(QObject):
         #     self.gui.pushButton_Fileopen.clicked.connect(self.gui.actionFile_open.trigger)
         #     self.gui.menubar.setVisible(False)
         self.updateConfigElements()
+        # menu 'File' (IQ file, station list) is meaningless in some tabs: greyed out there
+        self.gui.tabWidget.currentChanged.connect(self.update_filemenu_enabled)
+        self.update_filemenu_enabled(self.gui.tabWidget.currentIndex())
         self.firsttick = True
         self.timethread = QThread()
         self.timertick = tw()
@@ -1224,6 +1227,20 @@ class core_v(QObject):
             self.core_c.recording_path_checker()
             #self.configuration_c.recording_path_setter()
         
+    FILEMENU_INACTIVE_TABS = ("Synthesizer", "Station Editor")
+
+    def update_filemenu_enabled(self, index):
+        """slot of tabWidget.currentChanged: grey out the menu 'File' in the tabs
+        FILEMENU_INACTIVE_TABS (they have their own file handling); skins without the
+        menu (hasattr) are not affected"""
+        enabled = self.gui.tabWidget.tabText(index) not in self.FILEMENU_INACTIVE_TABS
+        if hasattr(self.gui, "menuFile"):
+            self.gui.menuFile.menuAction().setEnabled(enabled)
+        # the entries as well, otherwise their shortcuts (Alt+F, Alt+L) would still work
+        for name in ("actionFile_open", "actionPlaylist_open"):
+            if hasattr(self.gui, name):
+                getattr(self.gui, name).setEnabled(enabled)
+
     def updatetimer(self):
         """
         updates timer functions, shows date and time, changes between UTC and local time
