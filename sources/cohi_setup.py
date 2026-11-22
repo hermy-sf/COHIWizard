@@ -67,8 +67,12 @@ CORE_FILES = ["requirements.txt", "LICENSE", "README.md",
               "sources/dev_drivers/playlist_paths.py",   # used by the universal drivers
               "sources/dev_drivers/libcheck.py"]
 # documentation/: the user manual (pdf) of the branch, whatever its file name
+# m3u_lists/: example station lists (m3u) for beginners
 CORE_DIRS = ["sources/core/", "sources/player/", "sources/resampler/",
-             "sources/logos/", "documentation/"]
+             "sources/logos/", "documentation/", "m3u_lists/"]
+# directories whose files the user may edit: a file changed locally since its installation
+# is not overwritten by an update (own files there are never touched anyway)
+USER_EDITABLE_DIRS = ["m3u_lists/"]
 GENERATED_FILES = ["sources/config_modules.yaml"]
 # C++ sources of the shared DSP libs are always installed (small)
 LIBS_DIR = "sources/dev_drivers/libs/"
@@ -626,6 +630,10 @@ def make_plan(inst, tree, modules, drivers):
     for path, (sha, _size, _mode) in sorted(want.items()):
         local = inst.p(path)
         if os.path.isfile(local) and blob_sha(local) == sha:
+            plan.uptodate += 1
+        elif (os.path.isfile(local) and any(path.startswith(d) for d in USER_EDITABLE_DIRS)
+              and blob_sha(local) != inst.state.get("files", {}).get(path)):
+            # edited by the user (or an own file with the same name): keep it
             plan.uptodate += 1
         elif os.path.isfile(local) and built_libs.get(path) == sha:
             # built here from the same repository version: keep it, do not download the
