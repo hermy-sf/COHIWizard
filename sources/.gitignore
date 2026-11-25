@@ -1,0 +1,13 @@
+# Claude Code local configuration (not for repo)
+.claude/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv*/
+
+# Build artefacts
+build/
+dist/
+*.spec
