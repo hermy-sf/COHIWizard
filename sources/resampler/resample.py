@@ -1166,7 +1166,7 @@ class resample_c(QObject):
         #TODO: revert CUTPROJECT
         if self.m["starttrim"]:
         #     #TODO: check if offset larger than filesize
-            startcutoffset = int(self.m["start_trim"].seconds*self.m["sSR"]*self.m["s_wavheader"]['nBlockAlign'])
+            startcutoffset = int(round(self.m["start_trim"].total_seconds()*self.m["sSR"]))*self.m["s_wavheader"]['nBlockAlign']
             self.logger.debug(f'LOshifter: set starttrim = {self.m["start_trim"]} seconds to {startcutoffset} bytes ')
         #TODO: revert CUTPROJECT end
 
@@ -2890,11 +2890,17 @@ class resample_v(QObject):
               
         self.m["reslist_starttime1"] = wavheader1['starttime_dt']
         self.m["reslist_stoptime1"] = wavheader1['stoptime_dt']
+        # start incl. milliseconds and end of the samples actually present (not the header stoptime,
+        # which may deviate from the filesize, e.g. SDRuno 2 GB splits)
+        self.m["reslist_starttime1_exact"], self.m["reslist_dataend1"] = self.get_data_timespan(wavheader1)
         self.m["reslist_starttime2"] = wavheader2['starttime_dt']
         self.m["reslist_stoptime2"] = wavheader2['stoptime_dt']
 
 
-        self.gui.timeEdit_resample_startcut.setDateTime(wavheader1['starttime_dt'])
+        first_sample = self.m["reslist_starttime1_exact"]
+        if first_sample.microsecond:
+            first_sample = first_sample.replace(microsecond=0) + timedelta(seconds=1)
+        self.gui.timeEdit_resample_startcut.setDateTime(first_sample)
         self.gui.timeEdit_resample_stopcut.setDateTime(wavheader2['stoptime_dt'])
         _valid,errortext = self.getCuttime()
         if not _valid:
@@ -3219,20 +3225,46 @@ class resample_v(QObject):
         if self.m["starttrim"] and self.m["stoptrim"]:
             self.m["stop_trim_reduced_duration"] = (stopcut - startcut)
             #TODO: rename, can be confuse with self.m["starttrim"]
-        self.m["start_trim"] = (startcut - self.m["reslist_starttime1"])
-        self.m["starttime_after_trim"] = startcut
+        # offset relative to the exact start of the first file (header milliseconds included)
+        file_start = self.m.get("reslist_starttime1_exact", self.m["reslist_starttime1"])
+        data_end = self.m.get("reslist_dataend1", self.m["reslist_stoptime1"])
+        self.m["start_trim"] = max(startcut - file_start, timedelta(0))
+        self.m["starttime_after_trim"] = max(startcut, file_start)
 
-        if startcut > self.m["reslist_stoptime1"]:
-            return(False, f'start cut time must be less than {self.m["reslist_stoptime1"]}')
-        if startcut < self.m["reslist_starttime1"]:
-            return(False, f'start cut time must be > {self.m["reslist_starttime1"]}')              
-        if self.m["stop_trim_duration"].seconds < 0:
+        # the start cut must lie within the samples present in the first file
+        if startcut >= data_end:
+            return(False, f'start cut time must be less than {data_end.replace(microsecond=0)}')
+        if startcut < file_start.replace(microsecond=0):
+            return(False, f'start cut time must be >= {file_start.replace(microsecond=0)}')              
+        if stopcut > self.m["reslist_stoptime2"]:
             return(False, f'stop cut time must be less than {self.m["reslist_stoptime2"]}')
         if stopcut < self.m["reslist_starttime2"]:
             return(False, f'stop cut time must be greater than or equal to {self.m["reslist_starttime2"]}')   
         #print(f"get Cuttime: cutstart datetime: {startcut} cutstop datetime: {stopcut}")
         self.logger.debug("get Cuttime: cutstart datetime: %s cutstop datetime: %s", startcut, stopcut)
         return(True,"")
+
+    def get_data_timespan(self, wavheader):
+        """time span (incl. milliseconds) covered by the samples of a file, the duration being taken
+        from the true size of the data chunk.
+        If start and stoptime in the header are compatible with the filesize, the span is anchored at the
+        starttime. If not, it is anchored at the stoptime: SDRuno writes the starttime of the first file
+        of a recording several seconds before the first sample arrives (~5 s observed), whereas the
+        stoptime coincides with the starttime of the next file.
+
+        :param wavheader: header as returned by WAVheader_tools.get_sdruno_header
+        :type wavheader: dict
+        :return: (start, end)
+        :rtype: tuple of datetime
+        """
+        bytes_per_sec = wavheader['nSamplesPerSec'] * wavheader['nBlockAlign']
+        duration = timedelta(seconds = wavheader['true_datachunksize'] / bytes_per_sec)
+        if WAVheader_tools.check_wavheader_timeconsistency(self, wavheader):
+            start = wavheader['starttime_dt'] + timedelta(milliseconds = wavheader['starttime'][7])
+            return start, start + duration
+        stop = wavheader['stoptime_dt'] + timedelta(milliseconds = wavheader['stoptime'][7])
+        self.logger.warning(f"get_data_timespan: header times incompatible with filesize, time span anchored at stoptime {stop}")
+        return stop - duration, stop
 
 
     def toggle_advanced_sampling(self):
@@ -3659,36 +3691,27 @@ class resample_v(QObject):
         return True
 
     def check_cut_time_consistency(self):
-        """checks the first and the last file in the list to be resampled
-        checks if the start/stoptime entries in the wave header are compatible with the filesize. 
-        If not then this may cause a program crash during file cutting (advanced resampling method)
+        """checks if the start cut time lies within the samples of the first file to be resampled.
+        Header times which are incompatible with the filesize (e.g. SDRuno: starttime of the first file
+        of a recording ~5 s before the first sample) do not prevent cutting; the time span of the samples
+        is then referred to the stoptime, see get_data_timespan.
 
         :parameters: none
-        :return: True if successful, False if inconsistency
+        :return: True if successful, False if the cut time is out of range
         :rtype: Boolean
         """
         lw = self.gui.listWidget_playlist_2
-        reslist_len = self.gui.listWidget_playlist_2.count()
         item = lw.item(0)
-        #tfilename, ext = os.path.splitext(item.text())
         filename = self.m["my_dirname"] + '/' + item.text()
         check_wavheader = WAVheader_tools.get_sdruno_header(self,filename)
         if not WAVheader_tools.check_wavheader_timeconsistency(filename, check_wavheader):
-            errortext = "start and stoptime entries in the wavheader of the first file to be resampled are incompatible with the filesize."
-            errortext += "The discrepancy is " + str(np.abs(check_wavheader['diff']  - check_wavheader['true_datachunksize'])) 
-            errortext += "Bytes. This prevents correct cutting of the file (may cause a program crash). Thus please either correct the wav-header with the aid of the wavheader-editor,"
-            errortext += "or uncheck the cutting option (cut start/stop)"
-            auxi.standard_errorbox(errortext)
-            return False
-        item = lw.item(reslist_len-1)
-        #tfilename, ext = os.path.splitext(item.text())
-        filename = self.m["my_dirname"] + '/' + item.text()
-        check_wavheader = WAVheader_tools.get_sdruno_header(self,filename)
-        if not WAVheader_tools.check_wavheader_timeconsistency(filename, check_wavheader):
-            errortext = "error"
-            # errortext = "start and stoptime entries in the wavheader of the last file to be resampled are incompatible with the filesize."
-            # errortext  += "The discrepancy is " + str(np.abs(check_wavheader['diff']  - check_wavheader['true_datachunksize'])) 
-            # errortext  += "Bytes. This prevents correct cutting of the file (may cause a program crash). Thus please correct the wav-header with the aid of the wavheader-editor"
+            discrepancy = np.abs(check_wavheader['diff']  - check_wavheader['true_datachunksize'])
+            self.logger.warning(f"check_cut_time_consistency: header times of {item.text()} deviate from filesize by {discrepancy} bytes; cut offset referred to the stoptime")
+        file_start, data_end = self.get_data_timespan(check_wavheader)
+        startcut = self.gui.timeEdit_resample_startcut.dateTime().toPyDateTime()
+        if not (file_start.replace(microsecond=0) <= startcut < data_end):
+            errortext = f"start cut time {startcut} lies outside the data of the first file to be resampled "
+            errortext += f"({file_start.replace(microsecond=0)} ... {data_end.replace(microsecond=0)}). Please correct the start cut time."
             auxi.standard_errorbox(errortext)
             return False
         return True
@@ -3781,10 +3804,11 @@ class resample_v(QObject):
             #self.resample_c.merge2G_cleanup()
             ########TODO TODO TODO better errorhandler; reset all resampler functions, complete list etc
             return False
-        if self.gui.checkBox_Cut.isChecked() and not self.check_cut_time_consistency():
+        if self.gui.checkBox_Cut.isChecked() and self.m["reslist_ix"] == 0 and not self.check_cut_time_consistency():
             self.SigActivateOtherTabs.emit("Resample","activate",[])
             self.enable_resamp_GUI_elemets(True)     
-            self.resample_c.merge2G_cleanup()
+            self.gui.listWidget_playlist_2.itemChanged.connect(self.reslist_update)
+            return False
         # revert for CUTPROJECT end
         #TODO: revert for CUTPROJECT
 
@@ -3828,7 +3852,15 @@ class resample_v(QObject):
                     self.m["starttrim"] = True
                     _valid,errortext = self.getCuttime()
                     #TODO TODO TODO: set label for signalling to accomplish_resample() that this is the first list file
-                    #TODO TODO TODO: react to _valid; if False: display errortext and leave resampling
+                    if not _valid:
+                        auxi.standard_errorbox(errortext)
+                        item.setBackground(QtGui.QColor("white"))
+                        self.m["reslist_ix"] = 0
+                        self.m["starttrim"] = False
+                        self.SigActivateOtherTabs.emit("Resample","activate",[])
+                        self.enable_resamp_GUI_elemets(True)
+                        self.gui.listWidget_playlist_2.itemChanged.connect(self.reslist_update)
+                        return False
                 if (self.m["reslist_ix"] == reslist_len-1) and self.gui.checkBox_Cut.isChecked():
                     self.m["stoptrim"] = True
                     _valid,errortext = self.getCuttime()
@@ -3967,7 +3999,7 @@ class resample_v(QObject):
             #BUG BUG BUG: Cutstart wird immer zurückgesetzt auf Originalwert, wenn man resample drückt.
             #Problem mit Reaktion auf Listwidget-Updates (item dazu, item weg. item dazu geht nicht mit object call, weil auch ausgelöst, wenn man vom code aus was dazufügt)
             #TODO: revert for CUTPROJECT
-            elif self.m["start_trim"].seconds > 1e-5:
+            elif self.m["starttrim"] and self.m["start_trim"].total_seconds() > 0:
                 self.resample_c.schedule_B()
                 self.logger.debug("generate schedule for simple resampling")
             #TODO: revert for CUTPROJECT end

@@ -1752,7 +1752,7 @@ class Ui_MainWindow(object):
         self.label_showdate.setMidLineWidth(1)
         self.label_showdate.setText("")
         self.label_showdate.setObjectName("label_showdate")
-        self.gridLayout_10.addWidget(self.label_showdate, 20, 9, 1, 3)
+        self.gridLayout_10.addWidget(self.label_showdate, 19, 12, 1, 1)
         self.progressBar_volume = QtWidgets.QProgressBar(self.tab_playrec)
         self.progressBar_volume.setEnabled(True)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)

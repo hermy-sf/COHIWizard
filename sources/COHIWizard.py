@@ -1592,6 +1592,17 @@ class core_v(QObject):
         self.SigRelay.emit("cm_all_",["fileopened",True])
         return True
 
+    def open_station_list_in(self, folder):
+        """'Open station list' with the file dialog in folder (e.g. m3u_lists after
+        'Download m3u' in the player); switches modulator_playlist_mode to m3u"""
+        if auxi.modulator_playlist_mode() != "m3u":
+            auxi.update_configyaml("modulator_playlist_mode", "m3u")
+            if isinstance(self.m.get("metadata"), dict):
+                self.m["metadata"]["modulator_playlist_mode"] = "m3u"
+            self.SigRelay.emit("cexex_playrec", ["show_playlist_mode", 0])
+        auxi.update_configyaml("last_modulator_playlist_path", folder)
+        self.cb_open_modulatorplaylist()
+
     def load_station_list(self, path):
         """loads a station list without file dialog (button 'Load into Player' of the
         station editor); an m3u switches modulator_playlist_mode to m3u
@@ -1991,6 +2002,8 @@ class core_v(QObject):
                 self.load_station_list(_value[1])
             if  _value[0].find("open_iq_file") == 0:
                 self.open_iq_file(_value[1])
+            if  _value[0].find("open_station_list_in") == 0:
+                self.open_station_list_in(_value[1])
                 
 
 class SplashScreen(QWidget):
@@ -2222,7 +2235,7 @@ if __name__ == '__main__':
                 tab_v.append(getattr(loaded_modules[list_mvct_modules[ix]], list_mvct_modules[ix] + "_v")(tabui[ix], tab_c[ix], tab_m[ix]))
             tab_dict["list"].append(list_mvct_modules[ix])
             tab_dict["tabname"].append(mod_name)
-            tab_v[ix].SigActivateOtherTabs.connect(xcore_v.setactivity_tabs)
+            tab_v[ix].SigActivateOtherTabs.connect(xcore_v.setactivity_tabs)    
             tab_c[ix].SigActivateOtherTabs.connect(xcore_v.setactivity_tabs)
             #print(f"Successfully created model, control, view for {mod_name}.")
         except AttributeError as e:

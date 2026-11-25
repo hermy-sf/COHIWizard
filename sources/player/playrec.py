@@ -29,6 +29,7 @@ from datetime import datetime
 import datetime as ndatetime
 from player import stemlab_control
 from player import iq_download
+from player import m3u_download
 from auxiliaries import ffmpeg_installtools as ffinst
 import platform
 
@@ -1833,6 +1834,79 @@ class playrec_v(QObject):
                                                  self.gui.menuFile)
             self.gui.menuFile.addAction(self.gui.actionDownload_IQ)
             self.gui.actionDownload_IQ.triggered.connect(self.cb_download_iq)
+        # 'Download m3u ...': below 'Download IQ ...' (place of label_showdate, which has moved
+        # above label_showtime) and in the menu File
+        if hasattr(self.gui, "horizontalLayout_wavfile") and hasattr(self.gui, "gridLayout_10"):
+            self.gui.pushButton_download_m3u = QPushButton("Download m3u ...")
+            self.gui.pushButton_download_m3u.setToolTip(
+                "download station lists (m3u) from the COHIRADIA web page into the folder m3u_lists")
+            self.gui.gridLayout_10.addWidget(self.gui.pushButton_download_m3u, 20, 9, 1, 3)
+            self.gui.pushButton_download_m3u.clicked.connect(self.cb_download_m3u)
+        if hasattr(self.gui, "menuFile"):
+            self.gui.actionDownload_m3u = QAction("Download station lists (m3u) from COHIRADIA ...",
+                                                  self.gui.menuFile)
+            self.gui.menuFile.addAction(self.gui.actionDownload_m3u)
+            self.gui.actionDownload_m3u.triggered.connect(self.cb_download_m3u)
+
+    def m3u_lists_folder(self):
+        """folder m3u_lists next to sources/ (example station lists of the setup tool)"""
+        return os.path.join(os.path.dirname(os.path.abspath(os.getcwd())), "m3u_lists")
+
+    def cb_download_m3u(self):
+        """'Download m3u ...': select station lists on the COHIRADIA web page, store them in
+        m3u_lists/ and optionally open one of them as with 'Open station list'"""
+        folder = self.m3u_lists_folder()
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            files = m3u_download.fetch_index()
+        except Exception as exc:
+            QApplication.restoreOverrideCursor()
+            auxi.standard_errorbox(f"The list of station lists on the COHIRADIA web page cannot be loaded "
+                                   f"({exc}). Please check the internet connection.")
+            return
+        QApplication.restoreOverrideCursor()
+        if not files:
+            auxi.standard_infobox(f"No m3u files found on {m3u_download.M3U_INDEX}")
+            return
+        dialog = m3u_download.M3uDialog(files, folder, self.m.get("QTMAINWINDOWparent"))
+        if dialog.exec_() != QDialog.Accepted or not dialog.choice:
+            return
+        # local files which differ from the web page are user edits: overwrite only on request
+        modified = [f for f in dialog.choice if m3u_download.local_state(f, folder) == "present, modified"]
+        overwrite = True
+        if modified:
+            overwrite = self.ask("Download m3u",
+                                 "The following local station lists differ from the version on the web page:\n\n"
+                                 + "\n".join(f"- {f['name']}" for f in modified)
+                                 + "\n\nOverwrite them? (No: the local versions are kept)")
+        os.makedirs(folder, exist_ok=True)
+        stored, kept, errors = [], [], []
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        for f in dialog.choice:
+            dest = os.path.join(folder, f["name"])
+            if f in modified and not overwrite:
+                kept.append(f["name"])
+                continue
+            try:
+                data = m3u_download.fetch_file(f["url"])
+                with open(dest + ".part", "wb") as out:
+                    out.write(data)
+                os.replace(dest + ".part", dest)
+                stored.append(f["name"])
+            except Exception as exc:
+                errors.append(f"{f['name']}: {exc}")
+        QApplication.restoreOverrideCursor()
+        if errors:
+            auxi.standard_errorbox("Download error:\n\n" + "\n".join(errors))
+        if not stored and not kept:
+            return
+        text = f"Folder: {folder}\n\n"
+        if stored:
+            text += "Downloaded:\n" + "\n".join(f"- {n}" for n in stored) + "\n\n"
+        if kept:
+            text += "Local version kept:\n" + "\n".join(f"- {n}" for n in kept) + "\n\n"
+        if self.ask("Download m3u", text + "Open one of the station lists now (as with 'Open station list')?"):
+            self.SigRelay.emit("cexex_xcore", ["open_station_list_in", folder])
 
     def iq_download_base(self):
         """folder IQ_files next to sources/ (like m3u_lists), or the yaml key iq_download_path"""
