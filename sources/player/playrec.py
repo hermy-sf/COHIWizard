@@ -1825,6 +1825,7 @@ class playrec_v(QObject):
         menu File (skins with menu bar); both open the archive dialog (cb_download_iq)"""
         if hasattr(self.gui, "horizontalLayout_wavfile"):
             self.gui.pushButton_download_iq = QPushButton("Download IQ ...")
+            self.gui.pushButton_download_iq.setObjectName("pushButton_download_iq")
             self.gui.pushButton_download_iq.setToolTip(
                 "download an IQ recording from the COHIRADIA archive into the folder IQ_files")
             self.gui.horizontalLayout_wavfile.addWidget(self.gui.pushButton_download_iq)
@@ -1838,10 +1839,17 @@ class playrec_v(QObject):
         # above label_showtime) and in the menu File
         if hasattr(self.gui, "horizontalLayout_wavfile") and hasattr(self.gui, "gridLayout_10"):
             self.gui.pushButton_download_m3u = QPushButton("Download m3u ...")
+            self.gui.pushButton_download_m3u.setObjectName("pushButton_download_m3u")
             self.gui.pushButton_download_m3u.setToolTip(
                 "download station lists (m3u) from the COHIRADIA web page into the folder m3u_lists")
-            self.gui.gridLayout_10.addWidget(self.gui.pushButton_download_m3u, 20, 9, 1, 3)
+            # right-aligned with the same width as 'Download IQ ...': the font fitting of
+            # resize_actor then gives both buttons the same font size
+            self.gui.gridLayout_10.addWidget(self.gui.pushButton_download_m3u, 20, 9, 1, 3, Qt.AlignRight)
             self.gui.pushButton_download_m3u.clicked.connect(self.cb_download_m3u)
+            width = max(self.gui.pushButton_download_iq.sizeHint().width(),
+                        self.gui.pushButton_download_m3u.sizeHint().width())
+            self.gui.pushButton_download_iq.setMinimumWidth(width)
+            self.gui.pushButton_download_m3u.setMinimumWidth(width)
         if hasattr(self.gui, "menuFile"):
             self.gui.actionDownload_m3u = QAction("Download station lists (m3u) from COHIRADIA ...",
                                                   self.gui.menuFile)

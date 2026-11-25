@@ -834,7 +834,15 @@ class annotate_c(QObject):
             MWlistname = list_selection
             self.logger.debug("read MWlist file")
             time.sleep(0.01)
-            T = self.mwlistread(MWlistname)
+            try:
+                T = self.mwlistread(MWlistname)
+            except Exception as exc:    # e.g. ImportError: openpyxl missing in the venv
+                self.logger.error(f"ann_stations: cannot read {MWlistname}: {exc}")
+                auxi.standard_errorbox(f"The station list {Path(MWlistname).name} cannot be read:\n\n{exc}\n\n"
+                                       "If a package is missing, please run the setup tool again "
+                                       "(it installs the missing packages).")
+                self.SigRelay.emit("cexex_annotate",["annotatestatusdisplay","Status: MWList could not be read"])
+                return False
             # @auxi.waiting_effect
             # T = pd.read_excel(MWlistname)
 

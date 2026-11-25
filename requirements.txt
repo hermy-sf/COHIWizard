@@ -6,6 +6,7 @@
 # directly imported
 matplotlib==3.10.3
 numpy==2.2.5
+openpyxl==3.1.5     # pandas.read_excel/to_excel (annotator: MWList xlsx, peaktrace.xlsx)
 pandas==2.2.3
 paramiko==3.5.1
 psutil==7.0.0
@@ -25,6 +26,7 @@ cffi==1.17.1
 contourpy==1.3.2
 cryptography==44.0.3
 cycler==0.12.1
+et_xmlfile==2.0.0
 fonttools==4.58.0
 ifaddr==0.2.0
 kiwisolver==1.4.8
