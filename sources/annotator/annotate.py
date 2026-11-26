@@ -22,9 +22,78 @@ from scipy.ndimage.filters import median_filter
 import pandas as pd  #TODO: check, not installed under this name
 import yaml
 import logging
+import re
+import unicodedata
 from auxiliaries import auxiliaries as auxi
 from PyQt5.QtCore import QObject, QThread, pyqtSignal, QMutex       #TODO: OBSOLETE
 #import system_module as wsys
+
+
+# ------------------------------------------------------------------ annotation templates
+# A previous annotation file (COHIRADIA yaml with 'radio-stations', or a plain list of
+# stations) of a similar spectrum can be used as template: during the interactive
+# annotation its stations are proposed for the same frequencies.
+TEMPLATE_FREQ_TOL = 0.05     # kHz
+TEMPLATE_MARK_COLOR = "yellow"
+TEMPLATE_ROW_PREFIX = "Template: "
+
+
+def read_annotation_template(filename):
+    """frequency (kHz, float) -> list of {country, programme, tx-site} of a previous annotation file
+
+    :raises: ValueError if no station entries can be found
+    """
+    with open(filename, encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    if isinstance(data, dict):
+        data = data.get("radio-stations", [])
+    if not isinstance(data, list):
+        raise ValueError("no list of stations found")
+    template = {}
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            freq = float(str(entry.get("frequency")).strip())
+        except ValueError:
+            continue
+        template.setdefault(freq, []).append({k: str(entry.get(k, "") or "").strip()
+                                              for k in ("country", "programme", "tx-site")})
+    if not template:
+        raise ValueError("no station entries with frequencies found")
+    return template
+
+
+def template_entries(template, freq):
+    """template entries for the frequency freq (kHz) or []"""
+    for f, entries in template.items():
+        if abs(f - freq) <= TEMPLATE_FREQ_TOL:
+            return entries
+    return []
+
+
+def _tokens(text, minlen):
+    """normalized parts of a station string ('A; B/C' -> ['a', 'b', 'c'])"""
+    text = "".join(c for c in unicodedata.normalize("NFKD", str(text)) if not unicodedata.combining(c))
+    parts = re.split(r"[;,/+|]", text.lower().replace("?", " "))
+    return [" ".join(p.split()) for p in parts if len(" ".join(p.split())) >= minlen]
+
+
+def _overlap(a, b):
+    return any(x in y or y in x for x in a for y in b)
+
+
+def match_template_entry(entry, candidates):
+    """row of the candidate (country, programme, tx_site) that fits the template entry best, or None.
+    score: country 1, transmitter site 2, programme 1; at least 2 points needed"""
+    tc, tp, tt = _tokens(entry["country"], 2), _tokens(entry["programme"], 4), _tokens(entry["tx-site"], 3)
+    best, best_score = None, 1
+    for row, (cc, cp, ct) in enumerate(candidates):
+        score = (1 if _overlap(tc, _tokens(cc, 2)) else 0) + (2 if _overlap(tt, _tokens(ct, 3)) else 0) \
+                + (1 if _overlap(tp, _tokens(cp, 4)) else 0)
+        if score > best_score:
+            best, best_score = row, score
+    return best
 
 
 class statlst_gen_worker(QtCore.QThread):
@@ -884,6 +953,7 @@ class annotate_c(QObject):
             self.statlst_genthread.started.connect(self.statlst_geninst.stationsloop)
             self.statlst_geninst.SigProgressBar.connect(self.m["Progressbarupdate2_ref"])  #TODO: unsaubere Lösung; controller funs should not access GUI functions
             self.statlst_geninst.SigFinished.connect(self.m["scan_completed_ref"])  #TODO: unsaubere Lösung; controller funs should not access GUI functions
+            self.statlst_geninst.SigFinished.connect(self.m["ask_template_ref"])
             self.statlst_geninst.SigFinished.connect(self.statlst_genthread.quit)
             self.statlst_geninst.SigFinished.connect(lambda: print("statlst_geninst is being terminated###############!!!!!!!!!!!!!!!!#######################!!!!!!!!!!!!!!!!!!!!!!!!#################"))
             self.statlst_geninst.SigFinished.connect(self.statlst_geninst.deleteLater)
@@ -1047,6 +1117,12 @@ class annotate_v(QObject):
         self.m["scan_completed_ref"] = self.scan_completed
         self.m["Progressbarupdate_ref"] = self.Progressbarupdate
         self.m["Progressbarupdate2_ref"] = self.Progressbarupdate2
+        self.m["ask_template_ref"] = self.ask_annotation_template
+        self.template = {}              # frequency -> entries of the annotation template
+        self.template_file = ""
+        self.template_done = set()      # (freq_ix, entry index) already entered
+        self.template_rows = []         # per pending template entry: [entry index, list row or None]
+        self.template_current = None    # entry index shown in the edit fields
 
 
     def init_annotate_ui(self):
@@ -1262,7 +1338,7 @@ class annotate_v(QObject):
         self.gui.lineEdit.setText('')
         self.gui.lineEdit_TX_Site.setText('')
         self.gui.lineEdit_Country.setText('')
-        self.gui.lineEdit.setStyleSheet("background-color : white")
+        self.highlight_template_fields(False)
         self.gui.Annotate_listWidget.clear()
         self.gui.pushButtonDiscard.setEnabled(False)
         self.gui.labelFrequency.setText("Freq:")
@@ -1381,6 +1457,143 @@ class annotate_v(QObject):
         except:
             #print("cannot get/put status")
             self.logger.error("scan_completed: cannot get/put status")
+
+    def template_default_dir(self):
+        """last folder of an annotation template (config_wizard.yaml), else COHI_root/annotation_yaml"""
+        error, value = auxi.fetch_configyaml("annotation_template_path")
+        if not error and value and os.path.isdir(str(value)):
+            return str(value)
+        folder = os.path.join(os.path.dirname(os.path.abspath(os.getcwd())), "annotation_yaml")
+        try:
+            os.makedirs(folder, exist_ok=True)
+        except OSError:
+            folder = os.path.dirname(os.path.abspath(os.getcwd()))
+        return folder
+
+    def ask_annotation_template(self):
+        """end of the scan (station list generated): optionally select a previous annotation file of
+        a similar spectrum as template; its path is stored in the status file of this annotation"""
+        answer = QMessageBox.question(self.m.get("QTMAINWINDOWparent"), "Annotation template",
+                                      "Do you want to use a previous annotation file (yaml) of a similar "
+                                      "spectrum as a template?\n\nDuring the annotation its stations are "
+                                      "proposed for the same frequencies and marked in the list.",
+                                      QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if answer != QMessageBox.Yes:
+            return
+        filename, _ = QtWidgets.QFileDialog.getOpenFileName(self.m.get("QTMAINWINDOWparent"),
+                                                            "Select annotation template (yaml)",
+                                                            self.template_default_dir(),
+                                                            "annotation files (*.yaml *.yml)")
+        if not filename:
+            return
+        folder = os.path.dirname(filename)
+        auxi.update_configyaml("annotation_template_path", folder)
+        if isinstance(self.m.get("metadata"), dict):     # ann_stations writes the whole metadata back
+            self.m["metadata"]["annotation_template_path"] = folder
+        if not self.load_annotation_template(filename):
+            return
+        try:
+            with open(self.m["status_filename"], "r") as stream:
+                status = yaml.safe_load(stream)
+            status["template_file"] = filename
+            with open(self.m["status_filename"], "w") as stream:
+                yaml.dump(status, stream)
+        except Exception as exc:
+            self.logger.error(f"ask_annotation_template: cannot store template in status file: {exc}")
+        self.gui.lineEdit.setText("autoscan has been completed, template " + os.path.basename(filename) + " selected")
+
+    def load_annotation_template(self, filename):
+        """reads the template file; False (with error box) if it cannot be used"""
+        try:
+            self.template = read_annotation_template(filename)
+        except Exception as exc:
+            self.template, self.template_file = {}, ""
+            auxi.standard_errorbox(f"The annotation template {os.path.basename(filename)} cannot be used:\n\n{exc}")
+            return False
+        self.template_file = filename
+        self.template_done = set()
+        self.logger.debug(f"annotation template {filename}: {len(self.template)} frequencies")
+        return True
+
+    def template_from_status(self, status):
+        """template of this annotation (status file); loaded once"""
+        filename = status.get("template_file", "") if isinstance(status, dict) else ""
+        if not filename:
+            self.template, self.template_file = {}, ""
+            return
+        if filename != self.template_file:
+            # continued annotation (e.g. after a restart): tell the user which template is active
+            if not os.path.isfile(filename):
+                self.logger.warning(f"annotation template {filename} not found, annotation without template")
+                self.template, self.template_file = {}, filename
+                self.show_template_notice(f"The annotation template of this recording\n{filename}\n"
+                                          "cannot be found. The annotation is continued without template.")
+                return
+            if self.load_annotation_template(filename):
+                self.show_template_notice(f"The annotation template '{os.path.basename(filename)}' of this "
+                                          "recording is loaded.\n\nStations proposed by the template are "
+                                          f"further highlighted in the list.\n\n({filename})")
+
+    def show_template_notice(self, text):
+        """info box after the list of the current frequency has been filled"""
+        QtCore.QTimer.singleShot(0, lambda: auxi.standard_infobox(text))
+
+    def mark_template_stations(self, freq_ix):
+        """marks the list entries proposed by the template for the current frequency and fills the
+        edit fields with the first entry not yet entered"""
+        self.template_rows = []
+        self.template_current = None
+        try:
+            freq = float(str(self.stations[freq_ix]['frequency']).strip())
+        except (ValueError, KeyError, IndexError):
+            return
+        entries = template_entries(self.template, freq) if self.template else []
+        if not entries:
+            return
+        plen = int((len(self.stations[freq_ix])-2)/3)
+        candidates = [(self.stations[freq_ix]['country' + str(i)], self.stations[freq_ix]['programme' + str(i)],
+                       self.stations[freq_ix]['tx-site' + str(i)]) for i in range(plen)]
+        for ix, entry in enumerate(entries):
+            if (freq_ix, ix) in self.template_done:
+                continue
+            row = match_template_entry(entry, candidates)
+            self.template_rows.append([ix, row])
+            if row is not None:
+                self.gui.Annotate_listWidget.item(row).setBackground(QColor(TEMPLATE_MARK_COLOR))
+        if not self.template_rows:
+            return
+        # the proposals themselves as additional marked lines: they stay available after a click
+        # on another line (correction) and also when the station is not in the MWList
+        for ix, _row in self.template_rows:
+            entry = entries[ix]
+            item = QtWidgets.QListWidgetItem(TEMPLATE_ROW_PREFIX + entry["country"] + ' | ' + entry["programme"]
+                                             + ' | ' + entry["tx-site"])
+            item.setData(QtCore.Qt.UserRole, ix)
+            item.setBackground(QColor(TEMPLATE_MARK_COLOR))
+            self.gui.Annotate_listWidget.addItem(item)
+        self.show_template_entry(freq_ix, self.template_rows[0][0], entries)
+
+    def highlight_template_fields(self, on):
+        """the edit fields are highlighted while they contain a proposal of the template, so that it is
+        not overlooked when the station is not in the list (not in the MWList)"""
+        style = f"background-color : {TEMPLATE_MARK_COLOR}" if on else "background-color : white"
+        for widget in (self.gui.lineEdit, self.gui.lineEdit_TX_Site, self.gui.lineEdit_Country):
+            widget.setStyleSheet(style)
+        self.gui.lineEdit.setFont(QFont('MS Shell Dlg 2', 12))
+
+    def show_template_entry(self, freq_ix, ix, entries=None):
+        if entries is None:
+            entries = template_entries(self.template, float(str(self.stations[freq_ix]['frequency'])))
+        entry = entries[ix]
+        self.template_current = ix
+        for widget, text in ((self.gui.lineEdit, entry["programme"]), (self.gui.lineEdit_TX_Site, entry["tx-site"]),
+                             (self.gui.lineEdit_Country, entry["country"])):
+            widget.setText(text)
+            widget.setAlignment(QtCore.Qt.AlignLeft)
+            widget.home(True)
+        self.highlight_template_fields(True)
+        self.current_freq_ix = freq_ix
+        self.gui.pushButtonENTER.setEnabled(True)
 
     def scan_activate(self):
         """_summary_
@@ -1563,6 +1776,7 @@ class annotate_v(QObject):
         self.gui.lineEdit.setText('')
         self.gui.lineEdit_TX_Site.setText('')
         self.gui.lineEdit_Country.setText('')
+        self.highlight_template_fields(False)
         ### reading again the yaml is inefficient: could be passed from ann_stations
         try:
             stream = open(self.m["status_filename"], "r")
@@ -1580,6 +1794,7 @@ class annotate_v(QObject):
             return False
         
         freq_ix = status["freqindex"] # read last frequency index which was treated in interactive list checking
+        self.template_from_status(status)
         if freq_ix >= len(self.stations):
             self.annotation_completed()
             status["annotated"] = True
@@ -1611,6 +1826,7 @@ class annotate_v(QObject):
         # dum_txstr = 'OTHER TX SITE, Please enter manually'
         # item.setText(dum_cstr.strip('\n') + ' | ' + dum_pstr.strip('\n') + ' | ' + dum_txstr.strip('\n'))
         # time.sleep(0.01)
+        self.mark_template_stations(freq_ix)
         self.gui.pushButtonDiscard.setEnabled(True)
 
 
@@ -1630,6 +1846,11 @@ class annotate_v(QObject):
             #print("cannot get status")
             return False 
         freq_ix = status["freqindex"] # read last frequency index which was treated in interactive list checking
+        template_ix = item.data(QtCore.Qt.UserRole) if item is not None else None
+        if freq_ix < len(self.stations) and template_ix is not None:
+            # additional line with a template proposal: back to the text of the template
+            self.show_template_entry(freq_ix, template_ix)
+            return
         if freq_ix < len(self.stations):
             #read index of clicked row and fetch associated content from stations list
             cr_ix = self.gui.Annotate_listWidget.currentRow()
@@ -1648,6 +1869,8 @@ class annotate_v(QObject):
             self.gui.lineEdit_Country.setAlignment(QtCore.Qt.AlignLeft)
             self.gui.lineEdit_Country.home(True)
             self.current_freq_ix = freq_ix
+            self.template_current = next((ix for ix, row in self.template_rows if row == cr_ix), None)
+            self.highlight_template_fields(False)
 
         # end of stationslist reached
             self.gui.pushButtonENTER.setEnabled(True)
@@ -1722,7 +1945,13 @@ class annotate_v(QObject):
             f.write(country_string)
             f.write(programme_string)
             f.write(tx_site_string)
-        freq_ix += 1
+        # template: the entered station is no longer marked; while further template entries of this
+        # frequency are pending, the frequency is kept (as with 'Back') so that they can be checked
+        if self.template_current is not None:
+            self.template_done.add((freq_ix, self.template_current))
+        if not any(ix != self.template_current for ix, _row in self.template_rows):
+            freq_ix += 1
+        self.template_current = None
         status["freqindex"] = freq_ix
         status["annotated"] = False
         stream = open(self.m["status_filename"], "w")

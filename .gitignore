@@ -175,3 +175,6 @@ installer/build/
 installer/Output/
 
 sources/COHIWizard_console*.log
+
+# IQ recordings downloaded from the COHIRADIA archive (player: Download IQ)
+IQ_files/
