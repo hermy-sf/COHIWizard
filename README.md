@@ -24,7 +24,7 @@ found on the [COHIRADIA webpage](https://www.cohiradia.org/en/).
 | [STEMLAB 125-14 / 125-10](https://redpitaya.com/stemlab-125-14/) (Red Pitaya), via LAN/WLAN | yes | yes |
 | FL2000 USB-VGA dongle ([osmo-fl2k](https://osmocom.org/projects/osmo-fl2k/wiki)), 8 bit | yes | no |
 | [ADALM2000](https://www.analog.com/en/resources/evaluation-hardware-and-software/evaluation-boards-kits/adalm2000.html) (Analog Devices), USB | yes | no |
-| [smiSDR / parlioSDR](https://github.com/radiolab81/smisdr) (FPGA or ESP32-P4 with software DUC), via LAN | yes | no |
+| [parlioSDR](https://github.com/radiolab81/parlioSDR)/[smiSDR](https://github.com/radiolab81/smisdr) (FPGA or ESP32-P4 with software DUC), via LAN | yes | no |
 
 Each device is operated by a driver in `sources/dev_drivers`:
 
