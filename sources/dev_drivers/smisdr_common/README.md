@@ -1,6 +1,6 @@
 # smisdr drivers (smiSDR / parlioSDR)
 
-Four **playback** drivers for [smiSDR / parlioSDR](https://github.com/radiolab81/smisdr) (https://github.com/radiolab81/parlioSDR), ported from the
+Four **playback** drivers for [smiSDR](https://github.com/radiolab81/smisdr)/[parlioSDR](https://github.com/radiolab81/parlioSDR), ported from the
 hardware-tested backends of COHI-Player-Universal (GPL-3.0, Claus Peter Gallenmiller / radiolab81):
 
 | driver                 | signal | wire format | listed in modes |
