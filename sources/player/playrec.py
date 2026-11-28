@@ -522,14 +522,14 @@ class playrec_c(QObject):
 
         if self.m["TEST"] is False:
             self.m["sdr_configparams"]["TEST"] = False
-            if self.m["device_ID_dict"].get("connection_type") != "USB":
+            if self.device_boots_server():
                 self.show_startup_notice()
             errorstate, process = self.stemlabcontrol.sdrserverstart(self.m["sdr_configparams"])
             # This 5s pause gives a real SDR server (e.g. STEMLAB) time to
             # boot after sdrserverstart(). Devices connected directly via
             # USB (e.g. fl2k) don't start a server at all -- sdrserverstart()
             # is a no-op for them -- so the wait serves no purpose there.
-            if self.m["device_ID_dict"].get("connection_type") != "USB":
+            if self.device_boots_server():
                 time.sleep(5)
             #stdout, stderr = process.communicate()
             #print(stderr.decode())
@@ -571,6 +571,14 @@ class playrec_c(QObject):
         
         self.SigRelay.emit("cexex_playrec",["listhighlighter",0])
         return(errorstate,value)
+
+    def device_boots_server(self):
+        """True if starting the device means starting a server that needs time to boot
+        (STEMLAB). False for USB devices and for network devices that are always on:
+        their identify() dict says so with "server_boot": False (smisdr_iq, smisdr_raw).
+        Without that key the former behaviour applies: everything but USB boots a server."""
+        dev = self.m["device_ID_dict"]
+        return bool(dev.get("server_boot", dev.get("connection_type") != "USB"))
 
     def errorhandler(self,value):
         """handles errors when methods return errormessages on errorstate == True
@@ -1670,7 +1678,7 @@ class playrec_v(QObject):
         for ix, cf in enumerate(self.m["devicelist"]):
 
             ###TODO: test / check after 24-07-2026 after implementing modulator_listselected(self,cf) instead of repetitions of same code
-            if self.m["modulator_type"] == "audio_only" and (cf.endswith("_modulator") or cf in ("fl2k_universal", "stemlab_universal", "ADALM2000_universal")) and not (cf.find("__") == 0 ):
+            if self.m["modulator_type"] == "audio_only" and (cf.endswith("_modulator") or cf.endswith("_universal")) and not (cf.find("__") == 0 ):
                 boxix = self.modulator_listselected(cf,boxix)
             if self.m["modulator_type"] == "band_and_audio" and (cf.endswith("_plus") or cf.endswith("_universal")) and not (cf.find("__") == 0 ):
                 boxix = self.modulator_listselected(cf,boxix)
@@ -2659,8 +2667,7 @@ class playrec_v(QObject):
             _dev_name     = self.gui.comboBox_stemlab.itemText(self.m["currentSDRindex"])
             _is_synth_only = (_dev_name.endswith("_modulator") or
                               (self.m.get("modulator_type") == "audio_only" and
-                               _dev_name in ("fl2k_universal", "stemlab_universal",
-                                             "ADALM2000_universal")))
+                               _dev_name.endswith("_universal")))
 
             _no_iq_file = (_is_synth_only or ("modulator" in self.m["device_ID_dict"]
                                               and self.m["device_ID_dict"]["modulator"] == "M"))

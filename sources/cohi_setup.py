@@ -133,6 +133,41 @@ DRIVERS = {
         "libs": {},
         "needs": ["libm2k"],
     },
+    # smiSDR / parlioSDR (play only). "also_dirs": code shared by these drivers; "requires":
+    # drivers that must be installed with it (the live drivers use the signal chain of
+    # stemlab_universal); "build_tool": a tool built from its source on Linux
+    "smisdr_iq": {
+        "label": "smiSDR / parlioSDR, I/Q with in-band signalling",
+        "group": "other",
+        "libs": {},
+        "needs": [],
+        "also_dirs": ["sources/dev_drivers/smisdr_common/"],
+    },
+    "smisdr_raw": {
+        "label": "smiSDR / parlioSDR, RAW HF (host up-conversion)",
+        "group": "other",
+        "libs": {},
+        "needs": [],
+        "also_dirs": ["sources/dev_drivers/smisdr_common/"],
+        "build_tool": {"dir": "sources/dev_drivers/smisdr_common/upconverter/", "binary": "cohi_native_upconverter"},
+    },
+    "smisdr_iq_universal": {
+        "label": "smiSDR / parlioSDR, I/Q with in-band signalling, live audio (universal)",
+        "group": "universal",
+        "libs": {},
+        "needs": [],
+        "also_dirs": ["sources/dev_drivers/smisdr_common/"],
+        "requires": ["stemlab_universal"],
+    },
+    "smisdr_raw_universal": {
+        "label": "smiSDR / parlioSDR, RAW HF, live audio (universal)",
+        "group": "universal",
+        "libs": {},
+        "needs": [],
+        "also_dirs": ["sources/dev_drivers/smisdr_common/"],
+        "requires": ["stemlab_universal"],
+        "build_tool": {"dir": "sources/dev_drivers/smisdr_common/upconverter/", "binary": "cohi_native_upconverter"},
+    },
 }
 # preferred default selection, the first one available in the branch is used
 DEFAULT_DRIVERS = ["fl2k_universal", "fl2k_stream", "fl2k"]
@@ -193,6 +228,16 @@ def branch_catalog(tree):
                 and not parts[2].startswith(("__", "."))):
             drivers.add(parts[2])
     return modules, driver_order(drivers)
+
+
+def expand_requires(names):
+    """Selected drivers plus the drivers they need to run (manifest key "requires")."""
+    out = list(names)
+    for d in list(out):
+        for r in driver_spec(d).get("requires", []):
+            if r not in out:
+                out.append(r)
+    return out
 
 
 def default_drivers(available):
@@ -574,6 +619,7 @@ def wanted_files(tree, modules, drivers, osk=None):
         dirs.append(f"sources/dev_drivers/{d}/")
         libs.update(driver_spec(d)["libs"].get(osk, []))
         dirs += driver_spec(d).get("extra_dirs", {}).get(osk, [])
+        dirs += driver_spec(d).get("also_dirs", [])
     out = {}
     for path, entry in tree.items():
         if _excluded(path) or path in GENERATED_FILES:
@@ -622,7 +668,7 @@ class Plan:
 def make_plan(inst, tree, modules, drivers):
     plan = Plan()
     plan.modules = [d for d, _, _ in MODULES if d in modules or d in MANDATORY_MODULES]
-    plan.drivers = driver_order(drivers)
+    plan.drivers = driver_order(expand_requires(drivers))
     have_drivers = inst.installed_drivers()
     plan.new_drivers = [d for d in plan.drivers if d not in have_drivers]
     want = wanted_files(tree, plan.modules, plan.drivers)
@@ -1027,6 +1073,48 @@ class Installer:
                     if rdir + lib in tree:
                         self.inst.state.setdefault("built_libs", {})[rdir + lib] = tree[rdir + lib][0]
         self.inst.state["built_lib_dirs"] = sorted(built)
+        self.inst.save_state()
+
+    def ensure_smisdr_tools(self, plan, tree):
+        """Tools built from source for the drivers (manifest key "build_tool"), e.g. the
+        up-conversion tool of smisdr_raw. Linux: built with make on this computer, again after
+        an update of its source; Windows: no binary is shipped, the user is told how to get it."""
+        specs = {}
+        for d in plan.drivers:
+            spec = driver_spec(d).get("build_tool")
+            if spec:
+                specs[spec["dir"] + spec["binary"]] = spec
+        if not specs or self.dry_run:
+            return
+        built = self.inst.state.setdefault("built_tools", {})
+        for key, spec in sorted(specs.items()):
+            rdir, binary = spec["dir"], spec["binary"]
+            local = os.path.join(self.inst.target, rdir)
+            if os_key() != "linux":
+                if not os.path.isfile(os.path.join(local, binary + ".exe")):
+                    self.manual_steps.append(
+                        f"{binary}.exe is not part of the installation: build it in {local} "
+                        f"(MSYS2/MinGW: make EXE=.exe) or set smisdr_upconverter_path in config_wizard.yaml")
+                continue
+            source = rdir + binary + ".cpp"
+            sha = tree.get(source, (None,))[0]
+            if os.path.isfile(os.path.join(local, binary)) and sha and built.get(key) == sha:
+                self.ui.log(f"{rdir}{binary}: up to date")
+                continue
+            if not os.path.isfile(os.path.join(local, "Makefile")):
+                continue
+            self.ui.log(f"{rdir}: building {binary} for this computer (make)")
+            if not self._build_tools(rdir):
+                self.manual_steps.append(f"cd {local} && make")
+                continue
+            if run_logged(["make"], self.ui.log, cwd=local) != 0 \
+                    or not os.path.isfile(os.path.join(local, binary)):
+                self.ui.log(f"{rdir}: make failed")
+                self.manual_steps.append(f"cd {local} && make")
+                continue
+            if sha:
+                built[key] = sha
+            self.ui.log(f"{rdir}{binary}: built")
         self.inst.save_state()
 
     def _build_tools(self, rdir):
@@ -1674,6 +1762,7 @@ def run_install(inst, ui, branch, modules, drivers, dry_run, shortcut=True, reso
         installer.manual_steps.append(f'"{inst.python}" -m pip install -r requirements.txt')
     installer.ensure_third_party(plan)
     installer.ensure_native_libs(plan, tree)
+    installer.ensure_smisdr_tools(plan, tree)
     installer.create_launchers(shortcut)
     if installer.manual_steps:
         ui.info("Please complete these steps manually:\n\n" + "\n".join("- " + s for s in installer.manual_steps))
