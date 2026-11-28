@@ -24,10 +24,12 @@ found on the [COHIRADIA webpage](https://www.cohiradia.org/en/).
 | [STEMLAB 125-14 / 125-10](https://redpitaya.com/stemlab-125-14/) (Red Pitaya), via LAN/WLAN | yes | yes |
 | FL2000 USB-VGA dongle ([osmo-fl2k](https://osmocom.org/projects/osmo-fl2k/wiki)), 8 bit | yes | no |
 | [ADALM2000](https://www.analog.com/en/resources/evaluation-hardware-and-software/evaluation-boards-kits/adalm2000.html) (Analog Devices), USB | yes | no |
+| [parlioSDR](https://github.com/radiolab81/parlioSDR)/[smiSDR](https://github.com/radiolab81/smisdr) (FPGA or ESP32-P4 with software DUC), via LAN | yes | no |
 
 Each device is operated by a driver in `sources/dev_drivers`:
 
-- **Universal drivers (recommended):** `fl2k_universal`, `stemlab_universal`, `ADALM2000_universal`.
+- **Universal drivers (recommended):** `fl2k_universal`, `stemlab_universal`, `ADALM2000_universal`,
+  `smisdr_iq_universal`, `smisdr_raw_universal`.
   Besides plain IQ playback they can add AM carriers generated from audio sources (web radio streams,
   local audio files, m3u/pls playlists) to the IQ band or synthesize a band from audio sources only
   ("modulator types" *IQ band only*, *IQ band and audio modulator*, *audio modulator only*).
@@ -35,6 +37,9 @@ Each device is operated by a driver in `sources/dev_drivers`:
   The computationally expensive parts run in C++ libraries.
 - **Reference drivers:** `fl2k_stream`, `stemlab_125_14`, `ADALM2000`, the drivers of v2.2
   (IQ playback only).
+- **smiSDR / parlioSDR drivers:** `smisdr_iq` (IQ data with in-band signalling, up-conversion in the
+  FPGA or in the software DUC of the ESP32P4) and `smisdr_raw` (finished RF samples, up-conversion on
+  the PC). Play only. Settings, operating modes of parlioSDR (v2) and tests: [`sources/dev_drivers/smisdr_common/README.md`](sources/dev_drivers/smisdr_common/README.md).
 
 ## What is new in v2.3
 
@@ -42,7 +47,7 @@ Each device is operated by a driver in `sources/dev_drivers`:
   download the program directly from GitHub, manage modules and drivers and perform updates. The
   zip file with `SDR_COHIWizard_v2.x.exe` is no longer used.
   
-- **New driver architecture** with universal drivers.These now offer the following capabilities in addition to simply playing classic recordings
+- **New driver architecture** with universal drivers. These now offer the following capabilities in addition to simply playing classic recordings
 in WAV format:
 - Playing any number of web radio streams from the Internet on an equal number of user-defined frequencies on the connected radio
 
@@ -61,6 +66,12 @@ This also opens up enormous new possibilities for expanding the “jukebox.” F
 The new drivers even make it possible to mix “real” recordings with historical spectra and individual carriers with your own content.
 
 In this context the following new feature appear:
+
+- **smiSDR / parlioSDR drivers** (`smisdr_iq`, `smisdr_raw` and the live variants
+  `smisdr_iq_universal`, `smisdr_raw_universal`): IQ playback in the two operating modes of these
+  devices (in-band signalling for the DUC, or RF samples with up-conversion on the PC). With
+  parlioSDR the driver switches the operating mode on the control port by itself. A peak limiter
+  protects the DAC stage against overload by the AVC.
 
 - **New GUI appearance of the Player** with universal drivers, audio modulator, audio station lists
   and a mixer slider for the level of the audio carriers.
@@ -103,7 +114,9 @@ setup tool `cohi_setup.py`.
 4. In the window *COHIWizard setup* select the modules (tabs) and device drivers and press
    *Install / apply changes*. The setup tool also installs the external software needed by the
    selected drivers after a confirmation: ffmpeg, the osmo-fl2k library and the USB driver tool
-   Zadig (FL2K dongle), libm2k (ADALM2000).
+   Zadig (FL2K dongle), libm2k (ADALM2000). For `smisdr_raw` and `smisdr_raw_universal` the
+   up-conversion tool `cohi_native_upconverter` is needed; no Windows binary is shipped (build it
+   with MSYS2: `make EXE=.exe`, see the README).
 5. Start COHIWizard from the setup window or later from the start menu (*COHIWizard*; for error
    messages *COHIWizard (with console for error messages)*).
 
@@ -129,13 +142,14 @@ python3 cohi_setup.py
 The tool asks for the installation directory (default `~/COHIWizard`), creates the virtual
 environment, installs the Python packages and opens the setup window. Missing system packages
 (python3-venv, ffmpeg, osmo-fl2k, udev rules for the FL2K dongle and the ADALM2000) are installed with
-apt after a query (root rights via sudo or pkexec). It creates the launchers `COHIWizard.sh` and
+apt after a query (root rights via sudo or pkexec). For the drivers `smisdr_raw` and
+`smisdr_raw_universal` it builds the up-conversion tool with `make` (g++ required). It creates the launchers `COHIWizard.sh` and
 `COHIWizard_setup.sh` and a menu entry.
 
 Without a graphical desktop the setup tool can be used from the command line, e.g.
 
 ```bash
-python3 cohi_setup.py --no-gui --modules synthesizer,annotator --drivers fl2k_universal
+python3 cohi_setup.py --no-gui --modules synthesizer,annotator --drivers fl2k_universal,smisdr_iq
 python3 cohi_setup.py --help
 ```
 
@@ -184,6 +198,9 @@ drivers*. The Windows installer itself is built from `installer/` (Inno Setup, `
   The setup tool installs it into the `documentation` folder of the installation; in COHIWizard it
   is opened with the menu *Documentation → open pdf*. It describes installation, all tabs, the device
   drivers and the configuration files.
+- **smiSDR / parlioSDR drivers:** [`sources/dev_drivers/smisdr_common/README.md`](sources/dev_drivers/smisdr_common/README.md)
+  (settings in `config_wizard.yaml`, operating modes, level, build of the up-conversion tool, tests);
+  these drivers are not yet part of the user manual.
 - **Experimental versions:** description on the COHIRADIA webpage,
   [Software – Experimental Versions](https://www.cohiradia.org/en/docs/documentation/software/#experimental-versions).
 - **COHIRADIA project, hardware setup and recordings:** [www.cohiradia.org](https://www.cohiradia.org/en/).
